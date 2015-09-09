@@ -1,4 +1,4 @@
 Deploy Agent
 ----------
 
-Pure go unit agent to manage deploys in containers.
+Pure go agent to manage deploys in containers.
