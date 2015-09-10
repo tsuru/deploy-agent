@@ -9,7 +9,11 @@ func deployAgent(args []string) {
 		URL:   args[0],
 		Token: args[1],
 	}
-	_, err := c.registerUnit(args[2], nil)
+	envs, err := c.registerUnit(args[2], nil)
+	if err != nil {
+		panic(err)
+	}
+	err = execStartScript(args[3:], envs)
 	if err != nil {
 		panic(err)
 	}

@@ -12,6 +12,7 @@ import (
 )
 
 func TestDeploy(t *testing.T) {
+	workingDir = "/tmp"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/apps/app1/units/register" {
 			t.Errorf("URL should be /apps/app1/units/register. Got %s", r.URL.Path)
@@ -22,6 +23,6 @@ func TestDeploy(t *testing.T) {
 		e, _ := json.Marshal(envs)
 		w.Write(e)
 	}))
-	args := []string{server.URL, "fake-token", "app1", "cmd"}
+	args := []string{server.URL, "fake-token", "app1", "ls"}
 	deployAgent(args)
 }
