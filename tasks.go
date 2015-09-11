@@ -2,15 +2,19 @@ package main
 
 import (
 	"fmt"
+	"github.com/tsuru/tsuru/fs"
+	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"os/exec"
 	"sync"
 )
 
 var (
-	workingDir string = "/home/application/current"
+	workingDir     = "/home/application/current"
+	tsuruYamlFiles = []string{"tsuru.yml", "tsuru.yaml", "app.yml", "app.yaml"}
 )
 
-func execStartScript(cmds []string, envs map[string]interface{}) error {
+func execScript(cmds []string, envs map[string]interface{}) error {
 	formatedEnvs := []string{}
 	for k, env := range envs {
 		formatedEnv := fmt.Sprintf("%s=%s", k, env)
@@ -23,7 +27,6 @@ func execStartScript(cmds []string, envs map[string]interface{}) error {
 		go func() {
 			defer wg.Done()
 			cmd := exec.Command("/bin/bash", "-lc", cmd)
-			cmd.Dir = workingDir
 			cmd.Env = formatedEnvs
 			err := cmd.Run()
 			if err != nil {
@@ -41,4 +44,35 @@ func execStartScript(cmds []string, envs map[string]interface{}) error {
 		return fmt.Errorf("%s", formatedErrors)
 	}
 	return nil
+}
+
+var fsystem fs.Fs
+
+func filesystem() fs.Fs {
+	if fsystem == nil {
+		fsystem = &fs.OsFs{}
+	}
+	return fsystem
+}
+
+func loadTsuruYaml() (map[string]interface{}, error) {
+	var tsuruYamlData map[string]interface{}
+	for _, yamlFile := range tsuruYamlFiles {
+		filePath := fmt.Sprintf("%s/%s", workingDir, yamlFile)
+		f, err := filesystem().Open(filePath)
+		if err != nil {
+			continue
+		}
+		defer f.Close()
+		tsuruYaml, err := ioutil.ReadAll(f)
+		if err != nil {
+			return nil, err
+		}
+		err = yaml.Unmarshal(tsuruYaml, &tsuruYamlData)
+		if err != nil {
+			return nil, err
+		}
+		break
+	}
+	return tsuruYamlData, nil
 }
