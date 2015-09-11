@@ -27,6 +27,11 @@ func (s *S) TeardownTest(c *check.C) {
 }
 
 func (s *S) TestExecScript(c *check.C) {
+	oldWorkingDir := workingDir
+	workingDir = "/tmp"
+	defer func() {
+		workingDir = oldWorkingDir
+	}()
 	cmds := []string{"ls", "ls"}
 	envs := map[string]interface{}{
 		"foo": "bar",

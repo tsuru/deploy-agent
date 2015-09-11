@@ -27,6 +27,7 @@ func execScript(cmds []string, envs map[string]interface{}) error {
 		go func() {
 			defer wg.Done()
 			cmd := exec.Command("/bin/bash", "-lc", cmd)
+			cmd.Dir = workingDir
 			cmd.Env = formatedEnvs
 			err := cmd.Run()
 			if err != nil {
