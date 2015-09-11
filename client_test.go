@@ -6,31 +6,25 @@ package main
 
 import (
 	"encoding/json"
+	"gopkg.in/check.v1"
 	"net/http"
 	"net/http/httptest"
-	"testing"
 )
 
-func TestClient(t *testing.T) {
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") == "" {
-			t.Errorf("Authorization header is required.")
-		}
-		if r.URL.Path != "/apps/test/units/register" {
-			t.Errorf("Expected /apps/test/units/register URL. Got %s", r.URL.Path)
-		}
+func (s *S) TestClient(c *check.C) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c.Assert(r.Header.Get("Authorization"), check.Not(check.Equals), "")
+		c.Assert(r.URL.Path, check.Equals, "/apps/test/units/register")
 		envs := map[string]interface{}{
 			"foo": "bar",
 		}
 		e, _ := json.Marshal(envs)
 		w.Write(e)
 	}))
-	c := Client{
-		URL:   s.URL,
+	cli := Client{
+		URL:   server.URL,
 		Token: "test-token",
 	}
-	_, err := c.registerUnit("test", nil)
-	if err != nil {
-		t.Errorf("Got error %s", err)
-	}
+	_, err := cli.registerUnit("test", nil)
+	c.Assert(err, check.IsNil)
 }

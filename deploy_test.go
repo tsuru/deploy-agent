@@ -6,17 +6,14 @@ package main
 
 import (
 	"encoding/json"
+	"gopkg.in/check.v1"
 	"net/http"
 	"net/http/httptest"
-	"testing"
 )
 
-func TestDeploy(t *testing.T) {
-	workingDir = "/tmp"
+func (s *S) TestDeploy(c *check.C) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/apps/app1/units/register" {
-			t.Errorf("URL should be /apps/app1/units/register. Got %s", r.URL.Path)
-		}
+		c.Assert(r.URL.Path, check.Equals, "/apps/app1/units/register")
 		envs := map[string]interface{}{
 			"foo": "bar",
 		}
