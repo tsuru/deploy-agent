@@ -13,7 +13,7 @@ func deployAgent(args []string) {
 	if err != nil {
 		panic(err)
 	}
-	err = execStartScript(args[3:], envs)
+	err = execScript(args[3:], envs)
 	if err != nil {
 		panic(err)
 	}
