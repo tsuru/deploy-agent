@@ -37,12 +37,28 @@ func (s *S) TestLoadAppYaml(c *check.C) {
 	_, err := s.fs.Create(tsuruYmlPath)
 	c.Assert(err, check.IsNil)
 	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", tsuruYmlPath)), check.Equals, true)
-	expected := map[string]interface{}{
-		"hooks": map[interface{}]interface{}{
-			"build": []interface{}{"test", "another_test"},
-		},
+	expected := map[string]TsuruYaml{
+		"hooks": {BuildHooks: []string{"test", "another_test"}},
 	}
 	t, err := loadTsuruYaml()
 	c.Assert(err, check.IsNil)
 	c.Assert(t, check.DeepEquals, expected)
+}
+
+func (s *S) TestBuildHooks(c *check.C) {
+	tsuruYaml := TsuruYaml{
+		BuildHooks: []string{"ls", "cd"},
+	}
+	envs := map[string]interface{}{
+		"foo": "bar",
+	}
+	yamlData := map[string]TsuruYaml{
+		"hooks": tsuruYaml,
+	}
+	err := buildHooks(yamlData, envs)
+	c.Assert(err, check.IsNil)
+	executedCmds := s.exec.GetCommands("/bin/bash -lc ls")
+	c.Assert(len(executedCmds), check.Equals, 1)
+	executedCmds = s.exec.GetCommands("/bin/bash -lc cd")
+	c.Assert(len(executedCmds), check.Equals, 1)
 }

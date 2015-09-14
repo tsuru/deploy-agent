@@ -59,8 +59,12 @@ func filesystem() fs.Fs {
 	return fsystem
 }
 
-func loadTsuruYaml() (map[string]interface{}, error) {
-	var tsuruYamlData map[string]interface{}
+type TsuruYaml struct {
+	BuildHooks []string `yaml:"build,omitempty"`
+}
+
+func loadTsuruYaml() (map[string]TsuruYaml, error) {
+	var tsuruYamlData map[string]TsuruYaml
 	for _, yamlFile := range tsuruYamlFiles {
 		filePath := fmt.Sprintf("%s/%s", workingDir, yamlFile)
 		f, err := filesystem().Open(filePath)
@@ -79,4 +83,13 @@ func loadTsuruYaml() (map[string]interface{}, error) {
 		break
 	}
 	return tsuruYamlData, nil
+}
+
+func buildHooks(yamlData map[string]TsuruYaml, envs map[string]interface{}) error {
+	var cmds []string
+	hooks := yamlData["hooks"]
+	for _, cmd := range hooks.BuildHooks {
+		cmds = append(cmds, fmt.Sprintf("%s %s %s", "/bin/bash", "-lc", cmd))
+	}
+	return execScript(cmds, envs)
 }

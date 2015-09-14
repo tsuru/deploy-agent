@@ -17,4 +17,12 @@ func deployAgent(args []string) {
 	if err != nil {
 		panic(err)
 	}
+	yamlData, err := loadTsuruYaml()
+	if err != nil {
+		panic(err)
+	}
+	err = buildHooks(yamlData, envs)
+	if err != nil {
+		panic(err)
+	}
 }

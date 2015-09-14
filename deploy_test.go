@@ -6,6 +6,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"gopkg.in/check.v1"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,14 @@ func (s *S) TestDeploy(c *check.C) {
 		e, _ := json.Marshal(envs)
 		w.Write(e)
 	}))
+	tsuruYmlData := `hooks:
+  build:
+    - ls 
+    - ls`
+	tsuruYmlPath := fmt.Sprintf("%s/%s", workingDir, "tsuru.yml")
+	s.fs.FileContent = tsuruYmlData
+	_, err := s.fs.Create(tsuruYmlPath)
+	c.Assert(err, check.IsNil)
 	args := []string{server.URL, "fake-token", "app1", "ls"}
 	deployAgent(args)
 }
