@@ -2,16 +2,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/tsuru/tsuru/fs/fstest"
+	"github.com/tsuru/tsuru/exec/exectest"
 	"gopkg.in/check.v1"
 )
 
 func (s *S) TestExecScript(c *check.C) {
-	oldWorkingDir := workingDir
-	workingDir = "/tmp"
-	defer func() {
-		workingDir = oldWorkingDir
-	}()
 	cmds := []string{"ls", "ls"}
 	envs := map[string]interface{}{
 		"foo": "bar",
@@ -19,10 +14,14 @@ func (s *S) TestExecScript(c *check.C) {
 	}
 	err := execScript(cmds, envs)
 	c.Assert(err, check.IsNil)
+	executedCmds := s.exec.GetCommands("ls")
+	c.Assert(len(executedCmds), check.Equals, 2)
+	c.Assert(s.exec.ExecutedCmd("ls", nil), check.Equals, true)
 }
 
 func (s *S) TestExecScriptWithError(c *check.C) {
 	cmds := []string{"not-exists"}
+	osExecutor = &exectest.ErrorExecutor{}
 	envs := map[string]interface{}{}
 	err := execScript(cmds, envs)
 	c.Assert(err, check.NotNil)

@@ -2,11 +2,10 @@ package main
 
 import (
 	"fmt"
+	"github.com/tsuru/tsuru/exec"
 	"github.com/tsuru/tsuru/fs"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
-	"os/exec"
-	"sync"
 )
 
 var (
@@ -14,6 +13,14 @@ var (
 	tsuruYamlFiles = []string{"tsuru.yml", "tsuru.yaml", "app.yml", "app.yaml"}
 )
 
+var osExecutor exec.Executor
+
+func executor() exec.Executor {
+	if osExecutor == nil {
+		return &exec.OsExecutor{}
+	}
+	return osExecutor
+}
 func execScript(cmds []string, envs map[string]interface{}) error {
 	formatedEnvs := []string{}
 	for k, env := range envs {
@@ -21,21 +28,17 @@ func execScript(cmds []string, envs map[string]interface{}) error {
 		formatedEnvs = append(formatedEnvs, formatedEnv)
 	}
 	errors := make(chan error, len(cmds))
-	var wg sync.WaitGroup
 	for _, cmd := range cmds {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			cmd := exec.Command("/bin/bash", "-lc", cmd)
-			cmd.Dir = workingDir
-			cmd.Env = formatedEnvs
-			err := cmd.Run()
-			if err != nil {
-				errors <- err
-			}
-		}()
+		execOpts := exec.ExecuteOptions{
+			Cmd:  cmd,
+			Dir:  workingDir,
+			Envs: formatedEnvs,
+		}
+		err := executor().Execute(execOpts)
+		if err != nil {
+			errors <- err
+		}
 	}
-	wg.Wait()
 	close(errors)
 	formatedErrors := ""
 	for e := range errors {

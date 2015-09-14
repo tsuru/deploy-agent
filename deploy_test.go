@@ -12,11 +12,6 @@ import (
 )
 
 func (s *S) TestDeploy(c *check.C) {
-	oldWorkingDir := workingDir
-	workingDir = "/tmp"
-	defer func() {
-		workingDir = oldWorkingDir
-	}()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c.Assert(r.URL.Path, check.Equals, "/apps/app1/units/register")
 		envs := map[string]interface{}{
