@@ -25,4 +25,8 @@ func deployAgent(args []string) {
 	if err != nil {
 		panic(err)
 	}
+	err = loadProcfile(&yamlData)
+	if err != nil {
+		panic(err)
+	}
 }

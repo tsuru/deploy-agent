@@ -60,11 +60,17 @@ func filesystem() fs.Fs {
 }
 
 type TsuruYaml struct {
+	Hooks    BuildHook `yaml:hooks`
+	Proccess map[string]string
+	Procfile string
+}
+
+type BuildHook struct {
 	BuildHooks []string `yaml:"build,omitempty"`
 }
 
-func loadTsuruYaml() (map[string]TsuruYaml, error) {
-	var tsuruYamlData map[string]TsuruYaml
+func loadTsuruYaml() (TsuruYaml, error) {
+	var tsuruYamlData TsuruYaml
 	for _, yamlFile := range tsuruYamlFiles {
 		filePath := fmt.Sprintf("%s/%s", workingDir, yamlFile)
 		f, err := filesystem().Open(filePath)
@@ -74,22 +80,36 @@ func loadTsuruYaml() (map[string]TsuruYaml, error) {
 		defer f.Close()
 		tsuruYaml, err := ioutil.ReadAll(f)
 		if err != nil {
-			return nil, err
+			return TsuruYaml{}, err
 		}
 		err = yaml.Unmarshal(tsuruYaml, &tsuruYamlData)
 		if err != nil {
-			return nil, err
+			return TsuruYaml{}, err
 		}
 		break
 	}
 	return tsuruYamlData, nil
 }
 
-func buildHooks(yamlData map[string]TsuruYaml, envs map[string]interface{}) error {
+func buildHooks(yamlData TsuruYaml, envs map[string]interface{}) error {
 	var cmds []string
-	hooks := yamlData["hooks"]
-	for _, cmd := range hooks.BuildHooks {
+	for _, cmd := range yamlData.Hooks.BuildHooks {
 		cmds = append(cmds, fmt.Sprintf("%s %s %s", "/bin/bash", "-lc", cmd))
 	}
 	return execScript(cmds, envs)
+}
+
+func loadProcfile(t *TsuruYaml) error {
+	procfilePath := fmt.Sprintf("%s/%s", workingDir, "Procfile")
+	f, err := filesystem().Open(procfilePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	procfile, err := ioutil.ReadAll(f)
+	if err != nil {
+		return err
+	}
+	t.Procfile = string(procfile)
+	return nil
 }
