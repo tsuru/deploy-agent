@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/tsuru/tsuru/app/bind"
 	"github.com/tsuru/tsuru/exec"
 	"github.com/tsuru/tsuru/fs"
 	"gopkg.in/yaml.v2"
@@ -22,10 +23,10 @@ func executor() exec.Executor {
 	}
 	return osExecutor
 }
-func execScript(cmds []string, envs map[string]interface{}) error {
+func execScript(cmds []string, envs []bind.EnvVar) error {
 	formatedEnvs := []string{}
-	for k, env := range envs {
-		formatedEnv := fmt.Sprintf("%s=%s", k, env)
+	for _, env := range envs {
+		formatedEnv := fmt.Sprintf("%s=%s", env.Name, env.Value)
 		formatedEnvs = append(formatedEnvs, formatedEnv)
 	}
 	errors := make(chan error, len(cmds))
@@ -92,7 +93,7 @@ func loadTsuruYaml() (TsuruYaml, error) {
 	return tsuruYamlData, nil
 }
 
-func buildHooks(yamlData TsuruYaml, envs map[string]interface{}) error {
+func buildHooks(yamlData TsuruYaml, envs []bind.EnvVar) error {
 	var cmds []string
 	for _, cmd := range yamlData.Hooks.BuildHooks {
 		cmds = append(cmds, fmt.Sprintf("%s %s %s", "/bin/bash", "-lc", cmd))

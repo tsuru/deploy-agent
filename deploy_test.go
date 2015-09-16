@@ -7,6 +7,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/tsuru/tsuru/app/bind"
 	"gopkg.in/check.v1"
 	"net/http"
 	"net/http/httptest"
@@ -15,9 +16,11 @@ import (
 func (s *S) TestDeploy(c *check.C) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c.Assert(r.URL.Path, check.Equals, "/apps/app1/units/register")
-		envs := map[string]interface{}{
-			"foo": "bar",
-		}
+		envs := []bind.EnvVar{{
+			Name:   "foo",
+			Value:  "bar",
+			Public: true,
+		}}
 		e, _ := json.Marshal(envs)
 		w.Write(e)
 	}))

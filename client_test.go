@@ -6,6 +6,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/tsuru/tsuru/app/bind"
 	"gopkg.in/check.v1"
 	"net/http"
 	"net/http/httptest"
@@ -15,9 +16,11 @@ func (s *S) TestClient(c *check.C) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c.Assert(r.Header.Get("Authorization"), check.Not(check.Equals), "")
 		c.Assert(r.URL.Path, check.Equals, "/apps/test/units/register")
-		envs := map[string]interface{}{
-			"foo": "bar",
-		}
+		envs := []bind.EnvVar{{
+			Name:   "foo",
+			Value:  "bar",
+			Public: true,
+		}}
 		e, _ := json.Marshal(envs)
 		w.Write(e)
 	}))

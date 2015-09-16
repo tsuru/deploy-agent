@@ -7,6 +7,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/tsuru/tsuru/app/bind"
 	"net/http"
 )
 
@@ -15,7 +16,7 @@ type Client struct {
 	Token string
 }
 
-func (c Client) registerUnit(appName string, customData map[string]interface{}) (map[string]interface{}, error) {
+func (c Client) registerUnit(appName string, customData map[string]interface{}) ([]bind.EnvVar, error) {
 	url := fmt.Sprintf("%s/apps/%s/units/register", c.URL, appName)
 	req, err := http.NewRequest("POST", url, nil)
 	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.Token))
@@ -27,7 +28,7 @@ func (c Client) registerUnit(appName string, customData map[string]interface{}) 
 	if err != nil {
 		return nil, err
 	}
-	var envs map[string]interface{}
+	var envs []bind.EnvVar
 	defer resp.Body.Close()
 	err = json.NewDecoder(resp.Body).Decode(&envs)
 	if err != nil {

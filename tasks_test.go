@@ -2,28 +2,36 @@ package main
 
 import (
 	"fmt"
+	"github.com/tsuru/tsuru/app/bind"
 	"github.com/tsuru/tsuru/exec/exectest"
 	"gopkg.in/check.v1"
 )
 
 func (s *S) TestExecScript(c *check.C) {
 	cmds := []string{"ls", "ls"}
-	envs := map[string]interface{}{
-		"foo": "bar",
-		"bar": 2,
-	}
+	envs := []bind.EnvVar{{
+		Name:   "foo",
+		Value:  "bar",
+		Public: true,
+	}, {
+		Name:   "bar",
+		Value:  "2",
+		Public: true,
+	}}
 	err := execScript(cmds, envs)
 	c.Assert(err, check.IsNil)
 	executedCmds := s.exec.GetCommands("ls")
 	c.Assert(len(executedCmds), check.Equals, 2)
-	c.Assert(s.exec.ExecutedCmd("ls", nil), check.Equals, true)
+	dir := executedCmds[0].GetDir()
+	c.Assert(dir, check.Equals, workingDir)
+	cmdEnvs := executedCmds[0].GetEnvs()
+	c.Assert(cmdEnvs, check.DeepEquals, []string{"foo=bar", "bar=2"})
 }
 
 func (s *S) TestExecScriptWithError(c *check.C) {
 	cmds := []string{"not-exists"}
 	osExecutor = &exectest.ErrorExecutor{}
-	envs := map[string]interface{}{}
-	err := execScript(cmds, envs)
+	err := execScript(cmds, nil)
 	c.Assert(err, check.NotNil)
 }
 
@@ -49,9 +57,11 @@ func (s *S) TestBuildHooks(c *check.C) {
 	tsuruYaml := TsuruYaml{
 		Hooks: BuildHook{BuildHooks: []string{"ls", "cd"}},
 	}
-	envs := map[string]interface{}{
-		"foo": "bar",
-	}
+	envs := []bind.EnvVar{{
+		Name:   "foo",
+		Value:  "bar",
+		Public: true,
+	}}
 	err := buildHooks(tsuruYaml, envs)
 	c.Assert(err, check.IsNil)
 	executedCmds := s.exec.GetCommands("/bin/bash -lc ls")
