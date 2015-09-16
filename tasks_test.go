@@ -92,3 +92,21 @@ worker: python worker.py`
 	c.Assert(err, check.IsNil)
 	c.Assert(t, check.DeepEquals, expected)
 }
+
+func (s *S) TestLoadProccess(c *check.C) {
+	procfile := "web: python app.py"
+	procfilePath := fmt.Sprintf("%s/%s", workingDir, "Procfile")
+	s.fs.FileContent = procfile
+	_, err := s.fs.Create(procfilePath)
+	c.Assert(err, check.IsNil)
+	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
+	expected := TsuruYaml{
+		Proccess: map[string]string{
+			"web": "python app.py",
+		},
+	}
+	t := TsuruYaml{}
+	err = loadProccess(&t)
+	c.Assert(err, check.IsNil)
+	c.Assert(t, check.DeepEquals, expected)
+}

@@ -30,6 +30,12 @@ func (s *S) TestDeploy(c *check.C) {
 	c.Assert(err, check.IsNil)
 	_, err = f.WriteString(tsuruYmlData)
 	c.Assert(err, check.IsNil)
+	procfileData := `web: run-app`
+	p, err := s.fs.Create(fmt.Sprintf("%s/%s", workingDir, "Procfile"))
+	defer p.Close()
+	c.Assert(err, check.IsNil)
+	_, err = p.WriteString(procfileData)
+	c.Assert(err, check.IsNil)
 	args := []string{server.URL, "fake-token", "app1", "ls"}
 	deployAgent(args)
 }

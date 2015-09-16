@@ -6,6 +6,7 @@ import (
 	"github.com/tsuru/tsuru/fs"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
+	"strings"
 )
 
 var (
@@ -99,17 +100,40 @@ func buildHooks(yamlData TsuruYaml, envs map[string]interface{}) error {
 	return execScript(cmds, envs)
 }
 
-func loadProcfile(t *TsuruYaml) error {
+func readProcfile() (string, error) {
 	procfilePath := fmt.Sprintf("%s/%s", workingDir, "Procfile")
 	f, err := filesystem().Open(procfilePath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer f.Close()
 	procfile, err := ioutil.ReadAll(f)
 	if err != nil {
+		return "", err
+	}
+	return string(procfile), nil
+}
+
+func loadProcfile(t *TsuruYaml) error {
+	procfile, err := readProcfile()
+	if err != nil {
 		return err
 	}
-	t.Procfile = string(procfile)
+	t.Procfile = procfile
+	return nil
+}
+
+func loadProccess(t *TsuruYaml) error {
+	procfile, err := readProcfile()
+	if err != nil {
+		return err
+	}
+	proccess := map[string]string{}
+	proccesses := strings.Split(procfile, "\n")
+	for _, proc := range proccesses {
+		p := strings.SplitN(proc, ":", 2)
+		proccess[p[0]] = strings.Trim(p[1], " ")
+	}
+	t.Proccess = proccess
 	return nil
 }
