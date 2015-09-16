@@ -23,11 +23,12 @@ func (s *S) TestDeploy(c *check.C) {
 	}))
 	tsuruYmlData := `hooks:
   build:
-    - ls 
+    - ls
     - ls`
-	tsuruYmlPath := fmt.Sprintf("%s/%s", workingDir, "tsuru.yml")
-	s.fs.FileContent = tsuruYmlData
-	_, err := s.fs.Create(tsuruYmlPath)
+	f, err := s.fs.Create(fmt.Sprintf("%s/%s", workingDir, "tsuru.yml"))
+	defer f.Close()
+	c.Assert(err, check.IsNil)
+	_, err = f.WriteString(tsuruYmlData)
 	c.Assert(err, check.IsNil)
 	args := []string{server.URL, "fake-token", "app1", "ls"}
 	deployAgent(args)
