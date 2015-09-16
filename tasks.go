@@ -62,7 +62,7 @@ func filesystem() fs.Fs {
 
 type TsuruYaml struct {
 	Hooks    BuildHook `yaml:hooks`
-	Proccess map[string]string
+	Process  map[string]string
 	Procfile string
 }
 
@@ -123,17 +123,17 @@ func loadProcfile(t *TsuruYaml) error {
 	return nil
 }
 
-func loadProccess(t *TsuruYaml) error {
+func loadProcess(t *TsuruYaml) error {
 	procfile, err := readProcfile()
 	if err != nil {
 		return err
 	}
-	proccess := map[string]string{}
-	proccesses := strings.Split(procfile, "\n")
-	for _, proc := range proccesses {
+	process := map[string]string{}
+	processes := strings.Split(procfile, "\n")
+	for _, proc := range processes {
 		p := strings.SplitN(proc, ":", 2)
-		proccess[p[0]] = strings.Trim(p[1], " ")
+		process[p[0]] = strings.Trim(p[1], " ")
 	}
-	t.Proccess = proccess
+	t.Process = process
 	return nil
 }

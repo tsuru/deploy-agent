@@ -29,7 +29,7 @@ func deployAgent(args []string) {
 	if err != nil {
 		panic(err)
 	}
-	err = loadProccess(&yamlData)
+	err = loadProcess(&yamlData)
 	if err != nil {
 		panic(err)
 	}
