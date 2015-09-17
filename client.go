@@ -7,8 +7,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/tsuru/tsuru/app/bind"
 	"net/http"
+	"net/url"
+
+	"github.com/tsuru/tsuru/app/bind"
 )
 
 type Client struct {
@@ -16,8 +18,12 @@ type Client struct {
 	Token string
 }
 
-func (c Client) registerUnit(appName string, customData map[string]interface{}) ([]bind.EnvVar, error) {
-	url := fmt.Sprintf("%s/apps/%s/units/register", c.URL, appName)
+func (c Client) registerUnit(appName string, customData TsuruYaml) ([]bind.EnvVar, error) {
+	yamlData, err := json.Marshal(customData)
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/apps/%s/units/register?customdata=%s", c.URL, appName, url.QueryEscape(string(yamlData)))
 	req, err := http.NewRequest("POST", url, nil)
 	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.Token))
 	if err != nil {
@@ -32,7 +38,6 @@ func (c Client) registerUnit(appName string, customData map[string]interface{}) 
 	defer resp.Body.Close()
 	err = json.NewDecoder(resp.Body).Decode(&envs)
 	if err != nil {
-		println(err.Error())
 		return nil, err
 	}
 	return envs, nil

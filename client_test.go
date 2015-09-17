@@ -22,12 +22,17 @@ func (s *S) TestClient(c *check.C) {
 			Public: true,
 		}}
 		e, _ := json.Marshal(envs)
+		if customData := r.URL.Query().Get("customdata"); customData != "" {
+			var tsuruCustomData TsuruYaml
+			err := json.Unmarshal([]byte(customData), &tsuruCustomData)
+			c.Assert(err, check.IsNil)
+		}
 		w.Write(e)
 	}))
 	cli := Client{
 		URL:   server.URL,
 		Token: "test-token",
 	}
-	_, err := cli.registerUnit("test", nil)
+	_, err := cli.registerUnit("test", TsuruYaml{})
 	c.Assert(err, check.IsNil)
 }

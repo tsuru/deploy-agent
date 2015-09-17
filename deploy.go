@@ -9,7 +9,8 @@ func deployAgent(args []string) {
 		URL:   args[0],
 		Token: args[1],
 	}
-	envs, err := c.registerUnit(args[2], nil)
+	var yamlData TsuruYaml
+	envs, err := c.registerUnit(args[2], yamlData)
 	if err != nil {
 		panic(err)
 	}
@@ -17,7 +18,7 @@ func deployAgent(args []string) {
 	if err != nil {
 		panic(err)
 	}
-	yamlData, err := loadTsuruYaml()
+	yamlData, err = loadTsuruYaml()
 	if err != nil {
 		panic(err)
 	}
@@ -30,6 +31,10 @@ func deployAgent(args []string) {
 		panic(err)
 	}
 	err = loadProcess(&yamlData)
+	if err != nil {
+		panic(err)
+	}
+	_, err = c.registerUnit(args[2], yamlData)
 	if err != nil {
 		panic(err)
 	}

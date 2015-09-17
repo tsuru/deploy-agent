@@ -62,13 +62,13 @@ func filesystem() fs.Fs {
 }
 
 type TsuruYaml struct {
-	Hooks    BuildHook `yaml:hooks`
-	Process  map[string]string
-	Procfile string
+	Hooks    BuildHook         `json:"hooks"`
+	Process  map[string]string `json:"process"`
+	Procfile string            `json:"procfile"`
 }
 
 type BuildHook struct {
-	BuildHooks []string `yaml:"build,omitempty"`
+	BuildHooks []string `yaml:"build,omitempty" json:"build"`
 }
 
 func loadTsuruYaml() (TsuruYaml, error) {
