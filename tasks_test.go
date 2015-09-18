@@ -35,6 +35,25 @@ func (s *S) TestExecScriptWithError(c *check.C) {
 	c.Assert(err, check.NotNil)
 }
 
+func (s *S) TestExecScriptWorkingDirNotExist(c *check.C) {
+	err := s.fs.Remove(workingDir)
+	c.Assert(err, check.IsNil)
+	err = s.fs.Mkdir("/", 0777)
+	c.Assert(err, check.IsNil)
+	cmds := []string{"ls"}
+	envs := []bind.EnvVar{{
+		Name:   "foo",
+		Value:  "bar",
+		Public: true,
+	}}
+	err = execScript(cmds, envs)
+	c.Assert(err, check.IsNil)
+	executedCmds := s.exec.GetCommands("ls")
+	c.Assert(len(executedCmds), check.Equals, 1)
+	dir := executedCmds[0].GetDir()
+	c.Assert(dir, check.Equals, "/")
+}
+
 func (s *S) TestLoadAppYaml(c *check.C) {
 	tsuruYmlData := `hooks:
   build:

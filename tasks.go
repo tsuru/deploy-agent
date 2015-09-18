@@ -7,6 +7,7 @@ import (
 	"github.com/tsuru/tsuru/fs"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
+	"os"
 	"strings"
 )
 
@@ -24,6 +25,13 @@ func executor() exec.Executor {
 	return osExecutor
 }
 func execScript(cmds []string, envs []bind.EnvVar) error {
+	if _, err := os.Stat(workingDir); err != nil {
+		if os.IsNotExist(err) {
+			workingDir = "/"
+		} else {
+			return err
+		}
+	}
 	formatedEnvs := []string{}
 	for _, env := range envs {
 		formatedEnv := fmt.Sprintf("%s=%s", env.Name, env.Value)
