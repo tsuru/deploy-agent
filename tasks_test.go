@@ -20,12 +20,15 @@ func (s *S) TestExecScript(c *check.C) {
 	}}
 	err := execScript(cmds, envs)
 	c.Assert(err, check.IsNil)
-	executedCmds := s.exec.GetCommands("ls")
+	executedCmds := s.exec.GetCommands("/bin/bash")
 	c.Assert(len(executedCmds), check.Equals, 2)
 	dir := executedCmds[0].GetDir()
 	c.Assert(dir, check.Equals, workingDir)
 	cmdEnvs := executedCmds[0].GetEnvs()
 	c.Assert(cmdEnvs, check.DeepEquals, []string{"foo=bar", "bar=2"})
+	args := executedCmds[0].GetArgs()
+	expectedArgs := []string{"-lc", "ls"}
+	c.Assert(args, check.DeepEquals, expectedArgs)
 }
 
 func (s *S) TestExecScriptWithError(c *check.C) {
@@ -48,7 +51,7 @@ func (s *S) TestExecScriptWorkingDirNotExist(c *check.C) {
 	}}
 	err = execScript(cmds, envs)
 	c.Assert(err, check.IsNil)
-	executedCmds := s.exec.GetCommands("ls")
+	executedCmds := s.exec.GetCommands("/bin/bash")
 	c.Assert(len(executedCmds), check.Equals, 1)
 	dir := executedCmds[0].GetDir()
 	c.Assert(dir, check.Equals, "/")
@@ -83,10 +86,14 @@ func (s *S) TestBuildHooks(c *check.C) {
 	}}
 	err := buildHooks(tsuruYaml, envs)
 	c.Assert(err, check.IsNil)
-	executedCmds := s.exec.GetCommands("/bin/bash -lc ls")
-	c.Assert(len(executedCmds), check.Equals, 1)
-	executedCmds = s.exec.GetCommands("/bin/bash -lc cd")
-	c.Assert(len(executedCmds), check.Equals, 1)
+	executedCmds := s.exec.GetCommands("/bin/bash")
+	c.Assert(len(executedCmds), check.Equals, 2)
+	args := executedCmds[0].GetArgs()
+	expectedArgs := []string{"-lc", "/bin/bash -lc ls"}
+	c.Assert(args, check.DeepEquals, expectedArgs)
+	args = executedCmds[1].GetArgs()
+	expectedArgs = []string{"-lc", "/bin/bash -lc cd"}
+	c.Assert(args, check.DeepEquals, expectedArgs)
 }
 
 func (s *S) TestLoadProcfile(c *check.C) {
