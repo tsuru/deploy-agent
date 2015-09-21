@@ -23,7 +23,7 @@ func (s *S) TestExecScript(c *check.C) {
 	executedCmds := s.exec.GetCommands("/bin/bash")
 	c.Assert(len(executedCmds), check.Equals, 2)
 	dir := executedCmds[0].GetDir()
-	c.Assert(dir, check.Equals, workingDir)
+	c.Assert(dir, check.Equals, defaultWorkingDir)
 	cmdEnvs := executedCmds[0].GetEnvs()
 	c.Assert(cmdEnvs, check.DeepEquals, []string{"foo=bar", "bar=2"})
 	args := executedCmds[0].GetArgs()
@@ -39,7 +39,7 @@ func (s *S) TestExecScriptWithError(c *check.C) {
 }
 
 func (s *S) TestExecScriptWorkingDirNotExist(c *check.C) {
-	err := s.fs.Remove(workingDir)
+	err := s.fs.Remove(defaultWorkingDir)
 	c.Assert(err, check.IsNil)
 	err = s.fs.Mkdir("/", 0777)
 	c.Assert(err, check.IsNil)
@@ -62,7 +62,7 @@ func (s *S) TestLoadAppYaml(c *check.C) {
   build:
     - test
     - another_test`
-	tsuruYmlPath := fmt.Sprintf("%s/%s", workingDir, "tsuru.yml")
+	tsuruYmlPath := fmt.Sprintf("%s/%s", defaultWorkingDir, "tsuru.yml")
 	s.fs.FileContent = tsuruYmlData
 	_, err := s.fs.Create(tsuruYmlPath)
 	c.Assert(err, check.IsNil)
@@ -98,7 +98,7 @@ func (s *S) TestBuildHooks(c *check.C) {
 
 func (s *S) TestLoadProcfile(c *check.C) {
 	procfile := "web: python app.py"
-	procfilePath := fmt.Sprintf("%s/%s", workingDir, "Procfile")
+	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
 	s.fs.FileContent = procfile
 	_, err := s.fs.Create(procfilePath)
 	c.Assert(err, check.IsNil)
@@ -115,7 +115,7 @@ func (s *S) TestLoadProcfile(c *check.C) {
 func (s *S) TestLoadMultilineProcfile(c *check.C) {
 	procfile := `web: python app.py
 worker: python worker.py`
-	procfilePath := fmt.Sprintf("%s/%s", workingDir, "Procfile")
+	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
 	s.fs.FileContent = procfile
 	_, err := s.fs.Create(procfilePath)
 	c.Assert(err, check.IsNil)
@@ -131,7 +131,7 @@ worker: python worker.py`
 
 func (s *S) TestLoadProcess(c *check.C) {
 	procfile := "web: python app.py"
-	procfilePath := fmt.Sprintf("%s/%s", workingDir, "Procfile")
+	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
 	s.fs.FileContent = procfile
 	_, err := s.fs.Create(procfilePath)
 	c.Assert(err, check.IsNil)
@@ -150,7 +150,7 @@ func (s *S) TestLoadProcess(c *check.C) {
 func (s *S) TestLoadMultiProcess(c *check.C) {
 	procfile := `web: python app.py
 worker: run-task`
-	procfilePath := fmt.Sprintf("%s/%s", workingDir, "Procfile")
+	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
 	s.fs.FileContent = procfile
 	_, err := s.fs.Create(procfilePath)
 	c.Assert(err, check.IsNil)

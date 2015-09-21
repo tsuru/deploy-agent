@@ -12,9 +12,18 @@ import (
 )
 
 var (
-	workingDir     = "/home/application/current"
-	tsuruYamlFiles = []string{"tsuru.yml", "tsuru.yaml", "app.yml", "app.yaml"}
+	defaultWorkingDir = "/home/application/current"
+	tsuruYamlFiles    = []string{"tsuru.yml", "tsuru.yaml", "app.yml", "app.yaml"}
 )
+
+var fsystem fs.Fs
+
+func filesystem() fs.Fs {
+	if fsystem == nil {
+		fsystem = &fs.OsFs{}
+	}
+	return fsystem
+}
 
 var osExecutor exec.Executor
 
@@ -25,7 +34,8 @@ func executor() exec.Executor {
 	return osExecutor
 }
 func execScript(cmds []string, envs []bind.EnvVar) error {
-	if _, err := os.Stat(workingDir); err != nil {
+	workingDir := defaultWorkingDir
+	if _, err := filesystem().Stat(defaultWorkingDir); err != nil {
 		if os.IsNotExist(err) {
 			workingDir = "/"
 		} else {
@@ -61,15 +71,6 @@ func execScript(cmds []string, envs []bind.EnvVar) error {
 	return nil
 }
 
-var fsystem fs.Fs
-
-func filesystem() fs.Fs {
-	if fsystem == nil {
-		fsystem = &fs.OsFs{}
-	}
-	return fsystem
-}
-
 type TsuruYaml struct {
 	Hooks    BuildHook         `json:"hooks"`
 	Process  map[string]string `json:"process"`
@@ -83,7 +84,7 @@ type BuildHook struct {
 func loadTsuruYaml() (TsuruYaml, error) {
 	var tsuruYamlData TsuruYaml
 	for _, yamlFile := range tsuruYamlFiles {
-		filePath := fmt.Sprintf("%s/%s", workingDir, yamlFile)
+		filePath := fmt.Sprintf("%s/%s", defaultWorkingDir, yamlFile)
 		f, err := filesystem().Open(filePath)
 		if err != nil {
 			continue
@@ -111,7 +112,7 @@ func buildHooks(yamlData TsuruYaml, envs []bind.EnvVar) error {
 }
 
 func readProcfile() (string, error) {
-	procfilePath := fmt.Sprintf("%s/%s", workingDir, "Procfile")
+	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
 	f, err := filesystem().Open(procfilePath)
 	if err != nil {
 		return "", err

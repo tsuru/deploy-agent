@@ -28,13 +28,13 @@ func (s *S) TestDeploy(c *check.C) {
   build:
     - ls
     - ls`
-	f, err := s.fs.Create(fmt.Sprintf("%s/%s", workingDir, "tsuru.yml"))
+	f, err := s.fs.Create(fmt.Sprintf("%s/%s", defaultWorkingDir, "tsuru.yml"))
 	defer f.Close()
 	c.Assert(err, check.IsNil)
 	_, err = f.WriteString(tsuruYmlData)
 	c.Assert(err, check.IsNil)
 	procfileData := `web: run-app`
-	p, err := s.fs.Create(fmt.Sprintf("%s/%s", workingDir, "Procfile"))
+	p, err := s.fs.Create(fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile"))
 	defer p.Close()
 	c.Assert(err, check.IsNil)
 	_, err = p.WriteString(procfileData)

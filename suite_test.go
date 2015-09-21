@@ -21,7 +21,7 @@ func (s *S) SetUpTest(c *check.C) {
 	fsystem = s.fs
 	s.exec = &exectest.FakeExecutor{}
 	osExecutor = s.exec
-	err := s.fs.Mkdir(workingDir, 0777)
+	err := s.fs.Mkdir(defaultWorkingDir, 0777)
 	c.Assert(err, check.IsNil)
 }
 
