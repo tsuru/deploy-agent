@@ -8,6 +8,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -134,6 +135,8 @@ func loadProcfile(t *TsuruYaml) error {
 	return nil
 }
 
+var procfileRegex = regexp.MustCompile("^([A-Za-z0-9_]+):\\s*(.+)$")
+
 func loadProcess(t *TsuruYaml) error {
 	procfile, err := readProcfile()
 	if err != nil {
@@ -142,8 +145,9 @@ func loadProcess(t *TsuruYaml) error {
 	process := map[string]string{}
 	processes := strings.Split(procfile, "\n")
 	for _, proc := range processes {
-		p := strings.SplitN(proc, ":", 2)
-		process[p[0]] = strings.Trim(p[1], " ")
+		if p := procfileRegex.FindStringSubmatch(proc); p != nil {
+			process[p[1]] = strings.Trim(p[2], " ")
+		}
 	}
 	t.Process = process
 	return nil
