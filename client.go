@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"strings"
 
 	"github.com/tsuru/tsuru/app/bind"
 )
@@ -24,7 +26,11 @@ func (c Client) registerUnit(appName string, customData TsuruYaml) ([]bind.EnvVa
 		return nil, err
 	}
 	url := fmt.Sprintf("%s/apps/%s/units/register?customdata=%s", c.URL, appName, url.QueryEscape(string(yamlData)))
-	req, err := http.NewRequest("POST", url, nil)
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest("POST", url, strings.NewReader(fmt.Sprintf("hostname=%s", hostname)))
 	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.Token))
 	if err != nil {
 		return nil, err
