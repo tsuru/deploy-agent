@@ -15,20 +15,22 @@ import (
 )
 
 func (s *S) TestClient(c *check.C) {
+	call := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call += 1
 		c.Assert(r.Header.Get("Authorization"), check.Not(check.Equals), "")
 		c.Assert(r.URL.Path, check.Equals, "/apps/test/units/register")
-		if customData := r.URL.Query().Get("customdata"); customData != "" {
-			var tsuruCustomData TsuruYaml
-			err := json.Unmarshal([]byte(customData), &tsuruCustomData)
-			c.Assert(err, check.IsNil)
-		}
 		b, err := ioutil.ReadAll(r.Body)
 		c.Assert(err, check.IsNil)
 		val, err := url.ParseQuery(string(b))
 		c.Assert(err, check.IsNil)
 		hostname := val.Get("hostname")
 		c.Assert(hostname, check.Not(check.Equals), "")
+		if call == 2 {
+			customdata := val.Get("customdata")
+			expected := "{\"hooks\":{\"build\":[\"ls\",\"ls\"]},\"process\":{\"web\":\"test\"},\"procfile\":\"web: test\"}"
+			c.Assert(customdata, check.Equals, expected)
+		}
 		envs := []bind.EnvVar{{
 			Name:   "foo",
 			Value:  "bar",
@@ -42,5 +44,12 @@ func (s *S) TestClient(c *check.C) {
 		Token: "test-token",
 	}
 	_, err := cli.registerUnit("test", TsuruYaml{})
+	c.Assert(err, check.IsNil)
+	t := TsuruYaml{
+		Hooks:    BuildHook{[]string{"ls", "ls"}},
+		Process:  map[string]string{"web": "test"},
+		Procfile: "web: test",
+	}
+	_, err = cli.registerUnit("test", t)
 	c.Assert(err, check.IsNil)
 }

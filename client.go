@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 
@@ -25,12 +24,16 @@ func (c Client) registerUnit(appName string, customData TsuruYaml) ([]bind.EnvVa
 	if err != nil {
 		return nil, err
 	}
-	url := fmt.Sprintf("%s/apps/%s/units/register?customdata=%s", c.URL, appName, url.QueryEscape(string(yamlData)))
+	url := fmt.Sprintf("%s/apps/%s/units/register", c.URL, appName)
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest("POST", url, strings.NewReader(fmt.Sprintf("hostname=%s", hostname)))
+	data := fmt.Sprintf("hostname=%s&customdata=%s", hostname, yamlData)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest("POST", url, strings.NewReader(data))
 	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.Token))
 	if err != nil {
 		return nil, err
