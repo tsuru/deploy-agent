@@ -21,9 +21,13 @@ type Client struct {
 }
 
 func (c Client) registerUnit(appName string, customData TsuruYaml) ([]bind.EnvVar, error) {
-	yamlData, err := json.Marshal(customData)
-	if err != nil {
-		return nil, err
+	var err error
+	yamlData := []byte("")
+	if !customData.isEmpty() {
+		yamlData, err = json.Marshal(customData)
+		if err != nil {
+			return nil, err
+		}
 	}
 	hostname, err := os.Hostname()
 	if err != nil {

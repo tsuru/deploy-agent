@@ -7,6 +7,13 @@ import (
 	"gopkg.in/check.v1"
 )
 
+func (s *S) TestIsEmpty(c *check.C) {
+	t := TsuruYaml{}
+	c.Assert(t.isEmpty(), check.Equals, true)
+	t.Procfile = "web: nothing"
+	c.Assert(t.isEmpty(), check.Equals, false)
+}
+
 func (s *S) TestExecScript(c *check.C) {
 	cmds := []string{"ls", "ls"}
 	envs := []bind.EnvVar{{

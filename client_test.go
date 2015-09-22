@@ -27,7 +27,9 @@ func (s *S) TestClient(c *check.C) {
 		c.Assert(err, check.IsNil)
 		hostname := val.Get("hostname")
 		c.Assert(hostname, check.Not(check.Equals), "")
-		if call == 2 {
+		if call == 1 {
+			c.Assert(val.Get("customdata"), check.Equals, "")
+		} else {
 			customdata := val.Get("customdata")
 			expected := "{\"hooks\":{\"build\":[\"ls\",\"ls\"]},\"process\":{\"web\":\"test\"},\"procfile\":\"web: test\"}"
 			c.Assert(customdata, check.Equals, expected)

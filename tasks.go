@@ -73,15 +73,21 @@ func execScript(cmds []string, envs []bind.EnvVar) error {
 }
 
 type TsuruYaml struct {
-	Hooks    BuildHook         `json:"hooks"`
-	Process  map[string]string `json:"process"`
-	Procfile string            `json:"procfile"`
+	Hooks    BuildHook         `json:"hooks,omitempty"`
+	Process  map[string]string `json:"process,omitempty"`
+	Procfile string            `json:"procfile,omitempty"`
 }
 
 type BuildHook struct {
 	BuildHooks []string `yaml:"build,omitempty" json:"build"`
 }
 
+func (t *TsuruYaml) isEmpty() bool {
+	if len(t.Hooks.BuildHooks) == 0 && t.Process == nil && t.Procfile == "" {
+		return true
+	}
+	return false
+}
 func loadTsuruYaml() (TsuruYaml, error) {
 	var tsuruYamlData TsuruYaml
 	for _, yamlFile := range tsuruYamlFiles {
