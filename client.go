@@ -38,6 +38,7 @@ func (c Client) registerUnit(appName string, customData TsuruYaml) ([]bind.EnvVa
 		return nil, err
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.Token))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	cli := &http.Client{}
 	resp, err := cli.Do(req)
 	if err != nil {
