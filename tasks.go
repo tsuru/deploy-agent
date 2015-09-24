@@ -51,10 +51,12 @@ func execScript(cmds []string, envs []bind.EnvVar) error {
 	errors := make(chan error, len(cmds))
 	for _, cmd := range cmds {
 		execOpts := exec.ExecuteOptions{
-			Cmd:  "/bin/bash",
-			Args: []string{"-lc", cmd},
-			Dir:  workingDir,
-			Envs: formatedEnvs,
+			Cmd:    "/bin/bash",
+			Args:   []string{"-lc", cmd},
+			Dir:    workingDir,
+			Envs:   formatedEnvs,
+			Stdout: os.Stdout,
+			Stderr: os.Stderr,
 		}
 		err := executor().Execute(execOpts)
 		if err != nil {
