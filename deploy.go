@@ -5,6 +5,10 @@
 package main
 
 func deployAgent(args []string) {
+	// backward compatibility with tsuru 0.12.x
+	if args[len(args)-1] == "deploy" {
+		args = args[:len(args)-1]
+	}
 	c := Client{
 		URL:   args[0],
 		Token: args[1],
