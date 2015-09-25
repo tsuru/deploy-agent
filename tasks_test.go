@@ -96,10 +96,10 @@ func (s *S) TestBuildHooks(c *check.C) {
 	executedCmds := s.exec.GetCommands("/bin/bash")
 	c.Assert(len(executedCmds), check.Equals, 2)
 	args := executedCmds[0].GetArgs()
-	expectedArgs := []string{"-lc", "/bin/bash -lc ls"}
+	expectedArgs := []string{"-lc", "ls"}
 	c.Assert(args, check.DeepEquals, expectedArgs)
 	args = executedCmds[1].GetArgs()
-	expectedArgs = []string{"-lc", "/bin/bash -lc cd"}
+	expectedArgs = []string{"-lc", "cd"}
 	c.Assert(args, check.DeepEquals, expectedArgs)
 }
 

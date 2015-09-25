@@ -4,6 +4,10 @@
 
 package main
 
+import (
+	"log"
+)
+
 func deployAgent(args []string) {
 	// backward compatibility with tsuru 0.12.x
 	if args[len(args)-1] == "deploy" {
@@ -16,30 +20,30 @@ func deployAgent(args []string) {
 	var yamlData TsuruYaml
 	envs, err := c.registerUnit(args[2], yamlData)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	err = execScript(args[3:], envs)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	yamlData, err = loadTsuruYaml()
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	err = buildHooks(yamlData, envs)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	err = loadProcfile(&yamlData)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	err = loadProcess(&yamlData)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	_, err = c.registerUnit(args[2], yamlData)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }

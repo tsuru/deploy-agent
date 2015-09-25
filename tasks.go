@@ -115,7 +115,7 @@ func loadTsuruYaml() (TsuruYaml, error) {
 func buildHooks(yamlData TsuruYaml, envs []bind.EnvVar) error {
 	var cmds []string
 	for _, cmd := range yamlData.Hooks.BuildHooks {
-		cmds = append(cmds, fmt.Sprintf("%s %s %s", "/bin/bash", "-lc", cmd))
+		cmds = append(cmds, cmd)
 	}
 	return execScript(cmds, envs)
 }
