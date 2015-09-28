@@ -75,13 +75,14 @@ func execScript(cmds []string, envs []bind.EnvVar) error {
 }
 
 type TsuruYaml struct {
-	Hooks    BuildHook         `json:"hooks,omitempty"`
+	Hooks    Hook              `json:"hooks,omitempty"`
 	Process  map[string]string `json:"process,omitempty"`
 	Procfile string            `json:"procfile,omitempty"`
 }
 
-type BuildHook struct {
-	BuildHooks []string `yaml:"build,omitempty" json:"build"`
+type Hook struct {
+	BuildHooks []string               `yaml:"build,omitempty" json:"build"`
+	Restart    map[string]interface{} `yaml:"restart" json:"restart"`
 }
 
 func (t *TsuruYaml) isEmpty() bool {

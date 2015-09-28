@@ -31,7 +31,7 @@ func (s *S) TestClient(c *check.C) {
 			c.Assert(val.Get("customdata"), check.Equals, "")
 		} else {
 			customdata := val.Get("customdata")
-			expected := "{\"hooks\":{\"build\":[\"ls\",\"ls\"]},\"process\":{\"web\":\"test\"},\"procfile\":\"web: test\"}"
+			expected := "{\"hooks\":{\"build\":[\"ls\",\"ls\"],\"restart\":null},\"process\":{\"web\":\"test\"},\"procfile\":\"web: test\"}"
 			c.Assert(customdata, check.Equals, expected)
 		}
 		envs := []bind.EnvVar{{
@@ -49,7 +49,7 @@ func (s *S) TestClient(c *check.C) {
 	_, err := cli.registerUnit("test", TsuruYaml{})
 	c.Assert(err, check.IsNil)
 	t := TsuruYaml{
-		Hooks:    BuildHook{[]string{"ls", "ls"}},
+		Hooks:    Hook{BuildHooks: []string{"ls", "ls"}},
 		Process:  map[string]string{"web": "test"},
 		Procfile: "web: test",
 	}

@@ -68,23 +68,31 @@ func (s *S) TestLoadAppYaml(c *check.C) {
 	tsuruYmlData := `hooks:
   build:
     - test
-    - another_test`
+    - another_test
+  restart:
+    before:
+      - static`
 	tsuruYmlPath := fmt.Sprintf("%s/%s", defaultWorkingDir, "tsuru.yml")
 	s.fs.FileContent = tsuruYmlData
 	_, err := s.fs.Create(tsuruYmlPath)
 	c.Assert(err, check.IsNil)
 	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", tsuruYmlPath)), check.Equals, true)
 	expected := TsuruYaml{
-		Hooks: BuildHook{BuildHooks: []string{"test", "another_test"}},
+		Hooks: Hook{
+			BuildHooks: []string{"test", "another_test"},
+			Restart: map[string]interface{}{
+				"before": []interface{}{"static"},
+			},
+		},
 	}
 	t, err := loadTsuruYaml()
 	c.Assert(err, check.IsNil)
 	c.Assert(t, check.DeepEquals, expected)
 }
 
-func (s *S) TestBuildHooks(c *check.C) {
+func (s *S) TestHooks(c *check.C) {
 	tsuruYaml := TsuruYaml{
-		Hooks: BuildHook{BuildHooks: []string{"ls", "cd"}},
+		Hooks: Hook{BuildHooks: []string{"ls", "cd"}},
 	}
 	envs := []bind.EnvVar{{
 		Name:   "foo",
