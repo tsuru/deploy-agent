@@ -5,6 +5,7 @@ import (
 	"github.com/tsuru/tsuru/app/bind"
 	"github.com/tsuru/tsuru/exec/exectest"
 	"gopkg.in/check.v1"
+	"io/ioutil"
 )
 
 func (s *S) TestIsEmpty(c *check.C) {
@@ -187,4 +188,10 @@ func (s *S) TestSaveAppEnvsFile(c *check.C) {
 	err := saveAppEnvsFile(envs)
 	c.Assert(err, check.IsNil)
 	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", appEnvsFile)), check.Equals, true)
+	f, err := s.fs.Open(appEnvsFile)
+	c.Assert(err, check.IsNil)
+	defer f.Close()
+	content, err := ioutil.ReadAll(f)
+	c.Assert(err, check.IsNil)
+	c.Assert(string(content), check.Equals, "export foo='bar'\n")
 }

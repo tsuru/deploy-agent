@@ -170,7 +170,7 @@ func saveAppEnvsFile(envs []bind.EnvVar) error {
 	}
 	defer f.Close()
 	for _, e := range envs {
-		f.Write([]byte(fmt.Sprintf("%s=%s\n", e.Name, e.Value)))
+		f.Write([]byte(fmt.Sprintf("export %s='%s'\n", e.Name, e.Value)))
 	}
 	return nil
 }
