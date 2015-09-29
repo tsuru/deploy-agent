@@ -181,3 +181,10 @@ worker: run-task`
 	c.Assert(err, check.IsNil)
 	c.Assert(t, check.DeepEquals, expected)
 }
+
+func (s *S) TestSaveAppEnvsFile(c *check.C) {
+	envs := []bind.EnvVar{{Name: "foo", Value: "bar"}}
+	err := saveAppEnvsFile(envs)
+	c.Assert(err, check.IsNil)
+	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", appEnvsFile)), check.Equals, true)
+}

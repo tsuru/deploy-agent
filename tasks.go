@@ -15,6 +15,7 @@ import (
 var (
 	defaultWorkingDir = "/home/application/current"
 	tsuruYamlFiles    = []string{"tsuru.yml", "tsuru.yaml", "app.yml", "app.yaml"}
+	appEnvsFile       = "/tmp/app_envs"
 )
 
 var fsystem fs.Fs
@@ -159,5 +160,17 @@ func loadProcess(t *TsuruYaml) error {
 		}
 	}
 	t.Process = process
+	return nil
+}
+
+func saveAppEnvsFile(envs []bind.EnvVar) error {
+	f, err := filesystem().Create(appEnvsFile)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	for _, e := range envs {
+		f.Write([]byte(fmt.Sprintf("%s=%s\n", e.Name, e.Value)))
+	}
 	return nil
 }

@@ -42,6 +42,10 @@ func deployAgent(args []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	err = saveAppEnvsFile(envs)
+	if err != nil {
+		log.Fatal(err)
+	}
 	_, err = c.registerUnit(args[2], yamlData)
 	if err != nil {
 		log.Fatal(err)
