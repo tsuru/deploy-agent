@@ -22,6 +22,10 @@ func deployAgent(args []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	err = saveAppEnvsFile(envs)
+	if err != nil {
+		log.Fatal(err)
+	}
 	err = execScript(args[3:], envs)
 	if err != nil {
 		log.Fatal(err)
@@ -39,10 +43,6 @@ func deployAgent(args []string) {
 		log.Fatal(err)
 	}
 	err = loadProcess(&yamlData)
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = saveAppEnvsFile(envs)
 	if err != nil {
 		log.Fatal(err)
 	}
