@@ -6,6 +6,7 @@ import (
 	"github.com/tsuru/tsuru/exec/exectest"
 	"gopkg.in/check.v1"
 	"io/ioutil"
+	"os"
 )
 
 func (s *S) TestIsEmpty(c *check.C) {
@@ -33,7 +34,9 @@ func (s *S) TestExecScript(c *check.C) {
 	dir := executedCmds[0].GetDir()
 	c.Assert(dir, check.Equals, defaultWorkingDir)
 	cmdEnvs := executedCmds[0].GetEnvs()
-	c.Assert(cmdEnvs, check.DeepEquals, []string{"foo=bar", "bar=2"})
+	expectedEnvs := []string{"foo=bar", "bar=2"}
+	expectedEnvs = append(expectedEnvs, os.Environ()...)
+	c.Assert(cmdEnvs, check.DeepEquals, expectedEnvs)
 	args := executedCmds[0].GetArgs()
 	expectedArgs := []string{"-lc", "ls"}
 	c.Assert(args, check.DeepEquals, expectedArgs)

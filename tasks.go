@@ -49,6 +49,7 @@ func execScript(cmds []string, envs []bind.EnvVar) error {
 		formatedEnv := fmt.Sprintf("%s=%s", env.Name, env.Value)
 		formatedEnvs = append(formatedEnvs, formatedEnv)
 	}
+	formatedEnvs = append(formatedEnvs, os.Environ()...)
 	errors := make(chan error, len(cmds))
 	for _, cmd := range cmds {
 		execOpts := exec.ExecuteOptions{
