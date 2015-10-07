@@ -77,9 +77,10 @@ func execScript(cmds []string, envs []bind.EnvVar) error {
 }
 
 type TsuruYaml struct {
-	Hooks    Hook              `json:"hooks,omitempty"`
-	Process  map[string]string `json:"process,omitempty"`
-	Procfile string            `json:"procfile,omitempty"`
+	Hooks       Hook                   `json:"hooks,omitempty"`
+	Process     map[string]string      `json:"process,omitempty"`
+	Procfile    string                 `json:"procfile,omitempty"`
+	Healthcheck map[string]interface{} `yaml:"healthcheck" json:"healthcheck,omitempty"`
 }
 
 type Hook struct {

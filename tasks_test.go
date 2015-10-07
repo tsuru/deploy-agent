@@ -75,7 +75,13 @@ func (s *S) TestLoadAppYaml(c *check.C) {
     - another_test
   restart:
     before:
-      - static`
+      - static
+healthcheck:
+  path: /test
+  method: GET
+  status: 200
+  match: .*OK
+  allowed_failures: 0`
 	tsuruYmlPath := fmt.Sprintf("%s/%s", defaultWorkingDir, "tsuru.yml")
 	s.fs.FileContent = tsuruYmlData
 	_, err := s.fs.Create(tsuruYmlPath)
@@ -87,6 +93,13 @@ func (s *S) TestLoadAppYaml(c *check.C) {
 			Restart: map[string]interface{}{
 				"before": []interface{}{"static"},
 			},
+		},
+		Healthcheck: map[string]interface{}{
+			"path":             "/test",
+			"method":           "GET",
+			"status":           200,
+			"match":            ".*OK",
+			"allowed_failures": 0,
 		},
 	}
 	t, err := loadTsuruYaml()
