@@ -7,6 +7,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -50,9 +51,13 @@ func (c Client) registerUnit(appName string, customData TsuruYaml) ([]bind.EnvVa
 	}
 	var envs []bind.EnvVar
 	defer resp.Body.Close()
-	err = json.NewDecoder(resp.Body).Decode(&envs)
+	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+	err = json.Unmarshal(data, &envs)
+	if err != nil {
+		return nil, fmt.Errorf("invalid response from tsuru API: %s", data)
 	}
 	return envs, nil
 }
