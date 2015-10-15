@@ -6,12 +6,13 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/tsuru/tsuru/app/bind"
-	"gopkg.in/check.v1"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+
+	"github.com/tsuru/tsuru/app/bind"
+	"gopkg.in/check.v1"
 )
 
 func (s *S) TestClient(c *check.C) {

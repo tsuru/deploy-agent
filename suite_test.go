@@ -5,10 +5,11 @@
 package main
 
 import (
+	"testing"
+
 	"github.com/tsuru/tsuru/exec/exectest"
 	"github.com/tsuru/tsuru/fs/fstest"
 	"gopkg.in/check.v1"
-	"testing"
 )
 
 func Test(t *testing.T) { check.TestingT(t) }

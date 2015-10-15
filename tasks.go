@@ -6,14 +6,15 @@ package main
 
 import (
 	"fmt"
-	"github.com/tsuru/tsuru/app/bind"
-	"github.com/tsuru/tsuru/exec"
-	"github.com/tsuru/tsuru/fs"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/tsuru/tsuru/app/bind"
+	"github.com/tsuru/tsuru/exec"
+	"github.com/tsuru/tsuru/fs"
+	"gopkg.in/yaml.v2"
 )
 
 var (

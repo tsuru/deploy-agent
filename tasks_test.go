@@ -6,11 +6,12 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
+
 	"github.com/tsuru/tsuru/app/bind"
 	"github.com/tsuru/tsuru/exec/exectest"
 	"gopkg.in/check.v1"
-	"io/ioutil"
-	"os"
 )
 
 func (s *S) TestIsEmpty(c *check.C) {

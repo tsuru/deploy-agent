@@ -7,10 +7,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/tsuru/tsuru/app/bind"
-	"gopkg.in/check.v1"
 	"net/http"
 	"net/http/httptest"
+
+	"github.com/tsuru/tsuru/app/bind"
+	"gopkg.in/check.v1"
 )
 
 func (s *S) TestDeploy(c *check.C) {
