@@ -186,7 +186,10 @@ func (s *S) TestLoadProcesses(c *check.C) {
 
 func (s *S) TestLoadMultiProcesses(c *check.C) {
 	procfile := `web: python app.py
-worker: run-task`
+# worker: run-task
+another-worker: run-task
+# disabled-worker: run-task
+`
 	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
 	s.fs.FileContent = procfile
 	_, err := s.fs.Create(procfilePath)
@@ -194,8 +197,8 @@ worker: run-task`
 	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
 	expected := TsuruYaml{
 		Processes: map[string]string{
-			"web":    "python app.py",
-			"worker": "run-task",
+			"web":            "python app.py",
+			"another-worker": "run-task",
 		},
 	}
 	t := TsuruYaml{}

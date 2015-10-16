@@ -149,15 +149,15 @@ func loadProcfile(t *TsuruYaml) error {
 	return nil
 }
 
-var procfileRegex = regexp.MustCompile("^([A-Za-z0-9_]+):\\s*(.+)$")
+var procfileRegex = regexp.MustCompile("^([A-Za-z0-9_-]+):\\s*(.+)$")
 
 func loadProcesses(t *TsuruYaml) error {
 	procfile, err := readProcfile()
 	if err != nil {
 		return err
 	}
-	processes := make(map[string]string)
 	processList := strings.Split(procfile, "\n")
+	processes := make(map[string]string, len(processList))
 	for _, proc := range processList {
 		if p := procfileRegex.FindStringSubmatch(proc); p != nil {
 			processes[p[1]] = strings.Trim(p[2], " ")
