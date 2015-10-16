@@ -83,7 +83,7 @@ func execScript(cmds []string, envs []bind.EnvVar) error {
 
 type TsuruYaml struct {
 	Hooks       Hook                   `json:"hooks,omitempty"`
-	Process     map[string]string      `json:"process,omitempty"`
+	Processes   map[string]string      `json:"process,omitempty"`
 	Procfile    string                 `json:"procfile,omitempty"`
 	Healthcheck map[string]interface{} `yaml:"healthcheck" json:"healthcheck,omitempty"`
 }
@@ -94,10 +94,7 @@ type Hook struct {
 }
 
 func (t *TsuruYaml) isEmpty() bool {
-	if len(t.Hooks.BuildHooks) == 0 && t.Process == nil && t.Procfile == "" {
-		return true
-	}
-	return false
+	return len(t.Hooks.BuildHooks) == 0 && t.Processes == nil && t.Procfile == ""
 }
 func loadTsuruYaml() (TsuruYaml, error) {
 	var tsuruYamlData TsuruYaml
@@ -154,19 +151,19 @@ func loadProcfile(t *TsuruYaml) error {
 
 var procfileRegex = regexp.MustCompile("^([A-Za-z0-9_]+):\\s*(.+)$")
 
-func loadProcess(t *TsuruYaml) error {
+func loadProcesses(t *TsuruYaml) error {
 	procfile, err := readProcfile()
 	if err != nil {
 		return err
 	}
-	process := map[string]string{}
-	processes := strings.Split(procfile, "\n")
-	for _, proc := range processes {
+	processes := make(map[string]string)
+	processList := strings.Split(procfile, "\n")
+	for _, proc := range processList {
 		if p := procfileRegex.FindStringSubmatch(proc); p != nil {
-			process[p[1]] = strings.Trim(p[2], " ")
+			processes[p[1]] = strings.Trim(p[2], " ")
 		}
 	}
-	t.Process = process
+	t.Processes = processes
 	return nil
 }
 

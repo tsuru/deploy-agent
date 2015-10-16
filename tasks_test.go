@@ -166,7 +166,7 @@ worker: python worker.py`
 	c.Assert(t, check.DeepEquals, expected)
 }
 
-func (s *S) TestLoadProcess(c *check.C) {
+func (s *S) TestLoadProcesses(c *check.C) {
 	procfile := "web: python app.py"
 	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
 	s.fs.FileContent = procfile
@@ -174,17 +174,17 @@ func (s *S) TestLoadProcess(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
 	expected := TsuruYaml{
-		Process: map[string]string{
+		Processes: map[string]string{
 			"web": "python app.py",
 		},
 	}
 	t := TsuruYaml{}
-	err = loadProcess(&t)
+	err = loadProcesses(&t)
 	c.Assert(err, check.IsNil)
 	c.Assert(t, check.DeepEquals, expected)
 }
 
-func (s *S) TestLoadMultiProcess(c *check.C) {
+func (s *S) TestLoadMultiProcesses(c *check.C) {
 	procfile := `web: python app.py
 worker: run-task`
 	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
@@ -193,13 +193,13 @@ worker: run-task`
 	c.Assert(err, check.IsNil)
 	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
 	expected := TsuruYaml{
-		Process: map[string]string{
+		Processes: map[string]string{
 			"web":    "python app.py",
 			"worker": "run-task",
 		},
 	}
 	t := TsuruYaml{}
-	err = loadProcess(&t)
+	err = loadProcesses(&t)
 	c.Assert(err, check.IsNil)
 	c.Assert(t, check.DeepEquals, expected)
 }

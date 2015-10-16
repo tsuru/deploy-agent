@@ -42,7 +42,7 @@ func deployAgent(args []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = loadProcess(&yamlData)
+	err = loadProcesses(&yamlData)
 	if err != nil {
 		log.Fatal(err)
 	}

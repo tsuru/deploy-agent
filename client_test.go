@@ -50,9 +50,9 @@ func (s *S) TestClient(c *check.C) {
 	_, err := cli.registerUnit("test", TsuruYaml{})
 	c.Assert(err, check.IsNil)
 	t := TsuruYaml{
-		Hooks:    Hook{BuildHooks: []string{"ls", "ls"}},
-		Process:  map[string]string{"web": "test"},
-		Procfile: "web: test",
+		Hooks:     Hook{BuildHooks: []string{"ls", "ls"}},
+		Processes: map[string]string{"web": "test"},
+		Procfile:  "web: test",
 	}
 	_, err = cli.registerUnit("test", t)
 	c.Assert(err, check.IsNil)
