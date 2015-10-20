@@ -17,7 +17,7 @@ import (
 func (s *S) TestIsEmpty(c *check.C) {
 	t := TsuruYaml{}
 	c.Assert(t.isEmpty(), check.Equals, true)
-	t.Procfile = "web: nothing"
+	t.Processes = map[string]string{"web": "python something.py"}
 	c.Assert(t.isEmpty(), check.Equals, false)
 }
 
@@ -131,39 +131,6 @@ func (s *S) TestHooks(c *check.C) {
 	args = executedCmds[1].GetArgs()
 	expectedArgs = []string{"-lc", "cd"}
 	c.Assert(args, check.DeepEquals, expectedArgs)
-}
-
-func (s *S) TestLoadProcfile(c *check.C) {
-	procfile := "web: python app.py"
-	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
-	s.fs.FileContent = procfile
-	_, err := s.fs.Create(procfilePath)
-	c.Assert(err, check.IsNil)
-	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
-	expected := TsuruYaml{
-		Procfile: "web: python app.py",
-	}
-	t := TsuruYaml{}
-	err = loadProcfile(&t)
-	c.Assert(err, check.IsNil)
-	c.Assert(t, check.DeepEquals, expected)
-}
-
-func (s *S) TestLoadMultilineProcfile(c *check.C) {
-	procfile := `web: python app.py
-worker: python worker.py`
-	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
-	s.fs.FileContent = procfile
-	_, err := s.fs.Create(procfilePath)
-	c.Assert(err, check.IsNil)
-	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
-	expected := TsuruYaml{
-		Procfile: "web: python app.py\nworker: python worker.py",
-	}
-	t := TsuruYaml{}
-	err = loadProcfile(&t)
-	c.Assert(err, check.IsNil)
-	c.Assert(t, check.DeepEquals, expected)
 }
 
 func (s *S) TestLoadProcesses(c *check.C) {

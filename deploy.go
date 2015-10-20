@@ -38,10 +38,6 @@ func deployAgent(args []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = loadProcfile(&yamlData)
-	if err != nil {
-		log.Fatal(err)
-	}
 	err = loadProcesses(&yamlData)
 	if err != nil {
 		log.Fatal(err)

@@ -83,8 +83,7 @@ func execScript(cmds []string, envs []bind.EnvVar) error {
 
 type TsuruYaml struct {
 	Hooks       Hook                   `json:"hooks,omitempty"`
-	Processes   map[string]string      `json:"process,omitempty"`
-	Procfile    string                 `json:"procfile,omitempty"`
+	Processes   map[string]string      `json:"processes,omitempty"`
 	Healthcheck map[string]interface{} `yaml:"healthcheck" json:"healthcheck,omitempty"`
 }
 
@@ -94,7 +93,7 @@ type Hook struct {
 }
 
 func (t *TsuruYaml) isEmpty() bool {
-	return len(t.Hooks.BuildHooks) == 0 && t.Processes == nil && t.Procfile == ""
+	return len(t.Hooks.BuildHooks) == 0 && t.Processes == nil
 }
 func loadTsuruYaml() (TsuruYaml, error) {
 	var tsuruYamlData TsuruYaml
@@ -138,15 +137,6 @@ func readProcfile() (string, error) {
 		return "", err
 	}
 	return string(procfile), nil
-}
-
-func loadProcfile(t *TsuruYaml) error {
-	procfile, err := readProcfile()
-	if err != nil {
-		return err
-	}
-	t.Procfile = procfile
-	return nil
 }
 
 var procfileRegex = regexp.MustCompile("^([A-Za-z0-9_-]+):\\s*(.+)$")
