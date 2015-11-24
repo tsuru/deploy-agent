@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/tsuru/tsuru/app/bind"
 )
@@ -19,6 +21,18 @@ import (
 type Client struct {
 	URL   string
 	Token string
+}
+
+var httpClient = &http.Client{
+	Transport: &http.Transport{
+		Dial: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).Dial,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+	},
+	Timeout: time.Minute,
 }
 
 func (c Client) registerUnit(appName string, customData TsuruYaml) ([]bind.EnvVar, error) {
@@ -44,8 +58,7 @@ func (c Client) registerUnit(appName string, customData TsuruYaml) ([]bind.EnvVa
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.Token))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	cli := &http.Client{}
-	resp, err := cli.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
