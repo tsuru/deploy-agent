@@ -186,3 +186,31 @@ func (s *S) TestSaveAppEnvsFile(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(string(content), check.Equals, "export foo='bar'\n")
 }
+
+func (s *S) TestDiffDeploy(c *check.C) {
+	diff := `--- hello.go	2015-11-25 16:04:22.409241045 +0000
++++ hello.go	2015-11-18 18:40:21.385697080 +0000
+@@ -1,10 +1,7 @@
+ package main
+
+-import (
+-    "fmt"
+-)
++import "fmt"
+
+-func main() {
+-	fmt.Println("Hello")
++func main2() {
++	fmt.Println("Hello World!")
+ }
+`
+	diffPath := fmt.Sprintf("%s/%s", defaultWorkingDir, "diff")
+	s.fs.FileContent = diff
+	_, err := s.fs.Create(diffPath)
+	c.Assert(err, check.IsNil)
+	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", diffPath)), check.Equals, true)
+	result, first, err := readDiffDeploy()
+	c.Assert(err, check.IsNil)
+	c.Assert(result, check.DeepEquals, diff)
+	c.Assert(first, check.Equals, false)
+}

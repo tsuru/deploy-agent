@@ -168,3 +168,18 @@ func saveAppEnvsFile(envs []bind.EnvVar) error {
 	}
 	return nil
 }
+
+func readDiffDeploy() (string, bool, error) {
+	filePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "diff")
+	f, err := filesystem().Open(filePath)
+	defer f.Close()
+	defer filesystem().Remove(filePath)
+	if err != nil {
+		return "", true, nil
+	}
+	deployDiff, err := ioutil.ReadAll(f)
+	if err != nil {
+		return "", true, err
+	}
+	return string(deployDiff), false, nil
+}

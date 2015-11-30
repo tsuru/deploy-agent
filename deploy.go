@@ -30,6 +30,16 @@ func deployAgent(args []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	diff, firstDeploy, err := readDiffDeploy()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if !firstDeploy {
+		err = c.sendDiffDeploy(diff, args[2])
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 	yamlData, err = loadTsuruYaml()
 	if err != nil {
 		log.Fatal(err)

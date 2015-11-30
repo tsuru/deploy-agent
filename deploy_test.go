@@ -16,6 +16,10 @@ import (
 
 func (s *S) TestDeploy(c *check.C) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/apps/app1/diff" {
+			fmt.Fprint(w, "")
+			return
+		}
 		c.Assert(r.URL.Path, check.Equals, "/apps/app1/units/register")
 		envs := []bind.EnvVar{{
 			Name:   "foo",
@@ -30,9 +34,14 @@ func (s *S) TestDeploy(c *check.C) {
     - ls
     - ls`
 	f, err := s.fs.Create(fmt.Sprintf("%s/%s", defaultWorkingDir, "tsuru.yml"))
-	defer f.Close()
 	c.Assert(err, check.IsNil)
+	defer f.Close()
+	diff, err := s.fs.Create(fmt.Sprintf("%s/%s", defaultWorkingDir, "diff"))
+	c.Assert(err, check.IsNil)
+	defer diff.Close()
 	_, err = f.WriteString(tsuruYmlData)
+	c.Assert(err, check.IsNil)
+	_, err = diff.WriteString(`diff`)
 	c.Assert(err, check.IsNil)
 	procfileData := `web: run-app`
 	p, err := s.fs.Create(fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile"))
@@ -46,6 +55,10 @@ func (s *S) TestDeploy(c *check.C) {
 
 func (s *S) TestDeployBackwardCompatibility(c *check.C) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/apps/app1/diff" {
+			fmt.Fprint(w, "")
+			return
+		}
 		c.Assert(r.URL.Path, check.Equals, "/apps/app1/units/register")
 		envs := []bind.EnvVar{{
 			Name:   "foo",
@@ -62,7 +75,12 @@ func (s *S) TestDeployBackwardCompatibility(c *check.C) {
 	f, err := s.fs.Create(fmt.Sprintf("%s/%s", defaultWorkingDir, "tsuru.yml"))
 	defer f.Close()
 	c.Assert(err, check.IsNil)
+	diff, err := s.fs.Create(fmt.Sprintf("%s/%s", defaultWorkingDir, "diff"))
+	c.Assert(err, check.IsNil)
+	defer diff.Close()
 	_, err = f.WriteString(tsuruYmlData)
+	c.Assert(err, check.IsNil)
+	_, err = diff.WriteString(`diff`)
 	c.Assert(err, check.IsNil)
 	procfileData := `web: run-app`
 	p, err := s.fs.Create(fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile"))

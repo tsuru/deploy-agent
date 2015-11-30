@@ -53,3 +53,47 @@ func (s *S) TestClient(c *check.C) {
 	_, err = cli.registerUnit("test", t)
 	c.Assert(err, check.IsNil)
 }
+
+func (s *S) TestClientSendDiff(c *check.C) {
+	diff := `--- hello.go	2015-11-25 16:04:22.409241045 +0000
++++ hello.go	2015-11-18 18:40:21.385697080 +0000
+@@ -1,10 +1,7 @@
+ package main
+
+-import (
+-    "fmt"
+-)
++import "fmt"
+
+-func main() {
+-	fmt.Println("Hello")
++func main2() {
++	fmt.Println("Hello World!")
+ }
+`
+	call := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call++
+		c.Assert(r.Header.Get("Authorization"), check.Not(check.Equals), "")
+		c.Assert(r.Header.Get("Content-Type"), check.Equals, "application/x-www-form-urlencoded")
+		c.Assert(r.URL.Path, check.Equals, "/apps/test/diff")
+		b, err := ioutil.ReadAll(r.Body)
+		c.Assert(err, check.IsNil)
+		val, err := url.ParseQuery(string(b))
+		c.Assert(err, check.IsNil)
+		if call == 1 {
+			c.Assert(val.Get("customdata"), check.Equals, "")
+		} else {
+			customdata := val.Get("customdata")
+			c.Assert(customdata, check.Equals, diff)
+		}
+	}))
+	cli := Client{
+		URL:   server.URL,
+		Token: "test-token",
+	}
+	err := cli.sendDiffDeploy("", "test")
+	c.Assert(err, check.IsNil)
+	err = cli.sendDiffDeploy(diff, "test")
+	c.Assert(err, check.IsNil)
+}
