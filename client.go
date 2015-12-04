@@ -77,9 +77,6 @@ func (c Client) registerUnit(appName string, customData TsuruYaml) ([]bind.EnvVa
 
 func (c Client) sendDiffDeploy(diff, appName string) error {
 	var err error
-	if err != nil {
-		return err
-	}
 	v := url.Values{}
 	v.Set("customdata", diff)
 	u := fmt.Sprintf("%s/apps/%s/diff", c.URL, appName)
@@ -89,8 +86,7 @@ func (c Client) sendDiffDeploy(diff, appName string) error {
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.Token))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	cli := &http.Client{}
-	resp, err := cli.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}
