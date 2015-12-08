@@ -97,3 +97,21 @@ func (s *S) TestClientSendDiff(c *check.C) {
 	err = cli.sendDiffDeploy(diff, "test")
 	c.Assert(err, check.IsNil)
 }
+
+func (s *S) TestClientUrl(c *check.C) {
+	var tests = []struct {
+		input    string
+		expected string
+	}{
+		{"/", "http://localhost/"},
+		{"/index", "http://localhost/index"},
+		{"///index", "http://localhost/index"},
+		{"/v1/register", "http://localhost/v1/register"},
+		{"v1/register", "http://localhost/v1/register"},
+	}
+	cli := Client{URL: "http://localhost/", Token: "test-token"}
+	for _, test := range tests {
+		got := cli.url(test.input)
+		c.Check(got, check.Equals, test.expected)
+	}
+}

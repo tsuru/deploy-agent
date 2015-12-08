@@ -51,7 +51,7 @@ func (c Client) registerUnit(appName string, customData TsuruYaml) ([]bind.EnvVa
 	v := url.Values{}
 	v.Set("hostname", hostname)
 	v.Set("customdata", string(yamlData))
-	u := fmt.Sprintf("%s/apps/%s/units/register", c.URL, appName)
+	u := c.url(fmt.Sprintf("/apps/%s/units/register", appName))
 	req, err := http.NewRequest("POST", u, strings.NewReader(v.Encode()))
 	if err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ func (c Client) sendDiffDeploy(diff, appName string) error {
 	var err error
 	v := url.Values{}
 	v.Set("customdata", diff)
-	u := fmt.Sprintf("%s/apps/%s/diff", c.URL, appName)
+	u := c.url(fmt.Sprintf("/apps/%s/diff", appName))
 	req, err := http.NewRequest("POST", u, strings.NewReader(v.Encode()))
 	if err != nil {
 		return err
@@ -99,4 +99,8 @@ func (c Client) sendDiffDeploy(diff, appName string) error {
 		fmt.Println(string(data))
 	}
 	return nil
+}
+
+func (c Client) url(path string) string {
+	return fmt.Sprintf("%s/%s", strings.TrimRight(c.URL, "/"), strings.TrimLeft(path, "/"))
 }
