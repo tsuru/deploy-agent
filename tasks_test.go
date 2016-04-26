@@ -174,6 +174,20 @@ another-worker: run-task
 	c.Assert(t, check.DeepEquals, expected)
 }
 
+func (s *S) TestDontLoadWrongProcfile(c *check.C) {
+	procfile := `web: 
+	@python test.py`
+	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
+	s.fs.FileContent = procfile
+	_, err := s.fs.Create(procfilePath)
+	c.Assert(err, check.IsNil)
+	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
+	t := TsuruYaml{}
+	err = loadProcesses(&t)
+	c.Assert(err, check.IsNil)
+	c.Assert(t.Processes, check.DeepEquals, map[string]string{})
+}
+
 func (s *S) TestSaveAppEnvsFile(c *check.C) {
 	envs := []bind.EnvVar{{Name: "foo", Value: "bar"}}
 	err := saveAppEnvsFile(envs)

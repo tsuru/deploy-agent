@@ -139,7 +139,7 @@ func readProcfile() (string, error) {
 	return string(procfile), nil
 }
 
-var procfileRegex = regexp.MustCompile("^([A-Za-z0-9_-]+):\\s*(.+)$")
+var procfileRegex = regexp.MustCompile("^([\\w-]+):\\s*(\\S.+)$")
 
 func loadProcesses(t *TsuruYaml) error {
 	procfile, err := readProcfile()
