@@ -118,10 +118,7 @@ func loadTsuruYaml() (TsuruYaml, error) {
 }
 
 func buildHooks(yamlData TsuruYaml, envs []bind.EnvVar) error {
-	var cmds []string
-	for _, cmd := range yamlData.Hooks.BuildHooks {
-		cmds = append(cmds, cmd)
-	}
+	cmds := append([]string{}, yamlData.Hooks.BuildHooks...)
 	return execScript(cmds, envs)
 }
 
@@ -139,7 +136,7 @@ func readProcfile() (string, error) {
 	return string(procfile), nil
 }
 
-var procfileRegex = regexp.MustCompile("^([\\w-]+):\\s*(\\S.+)$")
+var procfileRegex = regexp.MustCompile(`^([\w-]+):\s*(\S.+)$`)
 
 func loadProcesses(t *TsuruYaml) error {
 	procfile, err := readProcfile()
