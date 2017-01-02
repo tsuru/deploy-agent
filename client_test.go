@@ -18,7 +18,7 @@ import (
 func (s *S) TestClient(c *check.C) {
 	call := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		call += 1
+		call++
 		c.Assert(r.Header.Get("Authorization"), check.Not(check.Equals), "")
 		c.Assert(r.Header.Get("Content-Type"), check.Equals, "application/x-www-form-urlencoded")
 		c.Assert(r.URL.Path, check.Equals, "/apps/test/units/register")
