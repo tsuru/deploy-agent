@@ -9,6 +9,7 @@ import (
 )
 
 func deployAgent(args []string) {
+	log.SetFlags(0)
 	// backward compatibility with tsuru 0.12.x
 	if args[len(args)-1] == "deploy" {
 		args = args[:len(args)-1]
