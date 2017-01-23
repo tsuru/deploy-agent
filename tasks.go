@@ -1,4 +1,4 @@
-// Copyright 2015 deploy-agent authors. All rights reserved.
+// Copyright 2017 deploy-agent authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
