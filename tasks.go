@@ -6,6 +6,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"regexp"
@@ -40,7 +41,10 @@ func executor() exec.Executor {
 	}
 	return osExecutor
 }
-func execScript(cmds []string, envs []bind.EnvVar) error {
+func execScript(cmds []string, envs []bind.EnvVar, w io.Writer) error {
+	if w == nil {
+		w = ioutil.Discard
+	}
 	workingDir := defaultWorkingDir
 	if _, err := filesystem().Stat(defaultWorkingDir); err != nil {
 		if os.IsNotExist(err) {
@@ -55,7 +59,6 @@ func execScript(cmds []string, envs []bind.EnvVar) error {
 		formatedEnvs = append(formatedEnvs, formatedEnv)
 	}
 	formatedEnvs = append(formatedEnvs, os.Environ()...)
-	errors := make(chan error, len(cmds))
 	for _, cmd := range cmds {
 		execOpts := exec.ExecuteOptions{
 			Cmd:    "/bin/bash",
@@ -65,18 +68,11 @@ func execScript(cmds []string, envs []bind.EnvVar) error {
 			Stdout: os.Stdout,
 			Stderr: os.Stderr,
 		}
+		fmt.Fprintf(w, " ---> Running %q\n", cmd)
 		err := executor().Execute(execOpts)
 		if err != nil {
-			errors <- err
+			return fmt.Errorf("error running %q: %s\n", cmd, err)
 		}
-	}
-	close(errors)
-	formatedErrors := ""
-	for e := range errors {
-		formatedErrors += fmt.Sprintf("%s\n", e)
-	}
-	if formatedErrors != "" {
-		return fmt.Errorf("%s", formatedErrors)
 	}
 	return nil
 }
@@ -119,7 +115,8 @@ func loadTsuruYaml() (TsuruYaml, error) {
 
 func buildHooks(yamlData TsuruYaml, envs []bind.EnvVar) error {
 	cmds := append([]string{}, yamlData.Hooks.BuildHooks...)
-	return execScript(cmds, envs)
+	fmt.Fprintln(os.Stdout, "---- Running build hooks ----")
+	return execScript(cmds, envs, os.Stdout)
 }
 
 func readProcfile() (string, error) {

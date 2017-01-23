@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -32,7 +33,8 @@ func (s *S) TestExecScript(c *check.C) {
 		Value:  "2",
 		Public: true,
 	}}
-	err := execScript(cmds, envs)
+	buf := bytes.NewBufferString("")
+	err := execScript(cmds, envs, buf)
 	c.Assert(err, check.IsNil)
 	executedCmds := s.exec.GetCommands("/bin/bash")
 	c.Assert(len(executedCmds), check.Equals, 2)
@@ -45,12 +47,13 @@ func (s *S) TestExecScript(c *check.C) {
 	args := executedCmds[0].GetArgs()
 	expectedArgs := []string{"-lc", "ls"}
 	c.Assert(args, check.DeepEquals, expectedArgs)
+	c.Assert(buf.String(), check.Equals, " ---> Running \"ls\"\n ---> Running \"ls\"\n")
 }
 
 func (s *S) TestExecScriptWithError(c *check.C) {
 	cmds := []string{"not-exists"}
 	osExecutor = &exectest.ErrorExecutor{}
-	err := execScript(cmds, nil)
+	err := execScript(cmds, nil, nil)
 	c.Assert(err, check.NotNil)
 }
 
@@ -65,7 +68,7 @@ func (s *S) TestExecScriptWorkingDirNotExist(c *check.C) {
 		Value:  "bar",
 		Public: true,
 	}}
-	err = execScript(cmds, envs)
+	err = execScript(cmds, envs, nil)
 	c.Assert(err, check.IsNil)
 	executedCmds := s.exec.GetCommands("/bin/bash")
 	c.Assert(len(executedCmds), check.Equals, 1)
@@ -175,7 +178,7 @@ another-worker: run-task
 }
 
 func (s *S) TestDontLoadWrongProcfile(c *check.C) {
-	procfile := `web: 
+	procfile := `web:
 	@python test.py`
 	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
 	s.fs.FileContent = procfile

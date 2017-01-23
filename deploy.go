@@ -27,7 +27,7 @@ func deployAgent(args []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = execScript(args[3:], envs)
+	err = execScript(args[3:], envs, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
