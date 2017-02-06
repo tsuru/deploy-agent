@@ -187,8 +187,8 @@ func (s *S) TestDontLoadWrongProcfile(c *check.C) {
 	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
 	t := TsuruYaml{}
 	err = loadProcesses(&t)
-	c.Assert(err, check.IsNil)
-	c.Assert(t.Processes, check.DeepEquals, map[string]string{})
+	c.Assert(err, check.NotNil)
+	c.Assert(err.Error(), check.Equals, `invalid Procfile, no processes found in "web:\n\t@python test.py"`)
 }
 
 func (s *S) TestSaveAppEnvsFile(c *check.C) {

@@ -147,6 +147,9 @@ func loadProcesses(t *TsuruYaml) error {
 			processes[p[1]] = strings.Trim(p[2], " ")
 		}
 	}
+	if len(processes) == 0 {
+		return fmt.Errorf("invalid Procfile, no processes found in %q", procfile)
+	}
 	t.Processes = processes
 	return nil
 }
