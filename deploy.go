@@ -4,22 +4,11 @@
 
 package main
 
-import (
-	"log"
-)
+import "log"
 
-func deployAgent(args []string) {
+func build(c Client, appName string, cmd []string) {
 	log.SetFlags(0)
-	// backward compatibility with tsuru 0.12.x
-	if args[len(args)-1] == "deploy" {
-		args = args[:len(args)-1]
-	}
-	c := Client{
-		URL:   args[0],
-		Token: args[1],
-	}
-	var yamlData TsuruYaml
-	envs, err := c.registerUnit(args[2], yamlData)
+	envs, err := c.getAppEnvs(appName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -27,7 +16,16 @@ func deployAgent(args []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = execScript(args[3:], envs, nil)
+	err = execScript(cmd, envs, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func deploy(c Client, appName string) {
+	log.SetFlags(0)
+	var yamlData TsuruYaml
+	envs, err := c.registerUnit(appName, yamlData)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -36,7 +34,7 @@ func deployAgent(args []string) {
 		log.Fatal(err)
 	}
 	if !firstDeploy {
-		err = c.sendDiffDeploy(diff, args[2])
+		err = c.sendDiffDeploy(diff, appName)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -53,7 +51,7 @@ func deployAgent(args []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	_, err = c.registerUnit(args[2], yamlData)
+	_, err = c.registerUnit(appName, yamlData)
 	if err != nil {
 		log.Fatal(err)
 	}
