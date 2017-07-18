@@ -35,6 +35,37 @@ var httpClient = &http.Client{
 	Timeout: time.Minute,
 }
 
+func (c Client) getAppEnvs(appName string) ([]bind.EnvVar, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, err
+	}
+	v := url.Values{}
+	v.Set("hostname", hostname)
+	u := c.url(fmt.Sprintf("/apps/%s/env", appName))
+	req, err := http.NewRequest("GET", u, strings.NewReader(v.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.Token))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	var envs []bind.EnvVar
+	defer resp.Body.Close()
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(data, &envs)
+	if err != nil {
+		return nil, fmt.Errorf("invalid response from tsuru API: %s", data)
+	}
+	return envs, nil
+}
+
 func (c Client) registerUnit(appName string, customData TsuruYaml) ([]bind.EnvVar, error) {
 	var err error
 	var yamlData []byte

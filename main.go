@@ -10,7 +10,7 @@ import (
 	"os"
 )
 
-const version = "0.2.3"
+const version = "0.2.4"
 
 var printVersion bool
 
@@ -24,5 +24,24 @@ func main() {
 		fmt.Printf("deploy-agent version %s\n", version)
 		return
 	}
-	deployAgent(os.Args[1:])
+	c := Client{
+		URL:   os.Args[1],
+		Token: os.Args[2],
+	}
+	appName := os.Args[3]
+	command := os.Args[4:]
+	if command[len(command)-1] == "build" {
+		build(c, appName, command[:len(command)-1])
+		return
+	}
+	if command[len(command)-1] == "deploy-only" {
+		deploy(c, appName)
+		return
+	}
+	// backward compatibility with tsuru < 1.4.0
+	if command[len(command)-1] == "deploy" {
+		command = command[:len(command)-1]
+	}
+	build(c, appName, command)
+	deploy(c, appName)
 }
