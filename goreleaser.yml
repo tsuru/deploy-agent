@@ -1,7 +1,7 @@
 # goreleaser.yml
 # Build customization
 build:
-  main: ./main.go
+  main: .
   binary: tsuru_unit_agent
   goos:
     - linux
