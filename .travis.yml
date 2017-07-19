@@ -1,5 +1,8 @@
 language: go
-sudo: false
+sudo: required
+install: true
+os:
+  - linux
 go:
   - 1.8.x
   - master
