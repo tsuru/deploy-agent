@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/tsuru/deploy-agent/internal/user"
 	"github.com/tsuru/tsuru/app/bind"
 	"github.com/tsuru/tsuru/exec"
 	"github.com/tsuru/tsuru/fs"
@@ -41,9 +42,14 @@ func executor() exec.Executor {
 	}
 	return osExecutor
 }
+
 func execScript(cmds []string, envs []bind.EnvVar, w io.Writer) error {
 	if w == nil {
 		w = ioutil.Discard
+	}
+	currentExecutor, err := user.ChangeUser(executor(), envs)
+	if err != nil {
+		return err
 	}
 	workingDir := defaultWorkingDir
 	if _, err := filesystem().Stat(defaultWorkingDir); err != nil {
@@ -69,7 +75,7 @@ func execScript(cmds []string, envs []bind.EnvVar, w io.Writer) error {
 			Stderr: os.Stderr,
 		}
 		fmt.Fprintf(w, " ---> Running %q\n", cmd)
-		err := executor().Execute(execOpts)
+		err := currentExecutor.Execute(execOpts)
 		if err != nil {
 			return fmt.Errorf("error running %q: %s\n", cmd, err)
 		}
