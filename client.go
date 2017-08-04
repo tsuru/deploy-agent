@@ -136,5 +136,5 @@ func (c Client) url(path string) string {
 func (c Client) setHeaders(req *http.Request) {
 	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.Token))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Version", version)
+	req.Header.Set("x-Agent-Version", version)
 }

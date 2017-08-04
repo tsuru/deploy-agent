@@ -21,7 +21,7 @@ func (s *S) TestClient(c *check.C) {
 		call++
 		c.Assert(r.Header.Get("Authorization"), check.Not(check.Equals), "")
 		c.Assert(r.Header.Get("Content-Type"), check.Equals, "application/x-www-form-urlencoded")
-		c.Assert(r.Header.Get("Version"), check.Equals, version)
+		c.Assert(r.Header.Get("x-Agent-Version"), check.Equals, version)
 		c.Assert(r.URL.Path, check.Equals, "/apps/test/units/register")
 		b, err := ioutil.ReadAll(r.Body)
 		c.Assert(err, check.IsNil)
@@ -77,7 +77,7 @@ func (s *S) TestClientSendDiff(c *check.C) {
 		call++
 		c.Assert(r.Header.Get("Authorization"), check.Not(check.Equals), "")
 		c.Assert(r.Header.Get("Content-Type"), check.Equals, "application/x-www-form-urlencoded")
-		c.Assert(r.Header.Get("Version"), check.Equals, version)
+		c.Assert(r.Header.Get("x-Agent-Version"), check.Equals, version)
 		c.Assert(r.URL.Path, check.Equals, "/apps/test/diff")
 		b, err := ioutil.ReadAll(r.Body)
 		c.Assert(err, check.IsNil)
