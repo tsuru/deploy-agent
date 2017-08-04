@@ -7,7 +7,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"os"
 
 	"github.com/tsuru/tsuru/app/bind"
@@ -189,19 +188,6 @@ func (s *S) TestDontLoadWrongProcfile(c *check.C) {
 	err = loadProcesses(&t)
 	c.Assert(err, check.NotNil)
 	c.Assert(err.Error(), check.Equals, `invalid Procfile, no processes found in "web:\n\t@python test.py"`)
-}
-
-func (s *S) TestSaveAppEnvsFile(c *check.C) {
-	envs := []bind.EnvVar{{Name: "foo", Value: "bar"}}
-	err := saveAppEnvsFile(envs)
-	c.Assert(err, check.IsNil)
-	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", appEnvsFile)), check.Equals, true)
-	f, err := s.fs.Open(appEnvsFile)
-	c.Assert(err, check.IsNil)
-	defer f.Close()
-	content, err := ioutil.ReadAll(f)
-	c.Assert(err, check.IsNil)
-	c.Assert(string(content), check.Equals, "export foo='bar'\n")
 }
 
 func (s *S) TestDiffDeploy(c *check.C) {

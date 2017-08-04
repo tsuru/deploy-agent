@@ -154,18 +154,6 @@ func loadProcesses(t *TsuruYaml) error {
 	return nil
 }
 
-func saveAppEnvsFile(envs []bind.EnvVar) error {
-	f, err := filesystem().Create(appEnvsFile)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	for _, e := range envs {
-		f.Write([]byte(fmt.Sprintf("export %s='%s'\n", e.Name, e.Value)))
-	}
-	return nil
-}
-
 func readDiffDeploy() (string, bool, error) {
 	filePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "diff")
 	f, err := filesystem().Open(filePath)

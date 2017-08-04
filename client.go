@@ -47,8 +47,7 @@ func (c Client) getAppEnvs(appName string) ([]bind.EnvVar, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.Token))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	c.setHeaders(req)
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -87,8 +86,7 @@ func (c Client) registerUnit(appName string, customData TsuruYaml) ([]bind.EnvVa
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.Token))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	c.setHeaders(req)
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -115,8 +113,7 @@ func (c Client) sendDiffDeploy(diff, appName string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.Token))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	c.setHeaders(req)
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
@@ -134,4 +131,10 @@ func (c Client) sendDiffDeploy(diff, appName string) error {
 
 func (c Client) url(path string) string {
 	return fmt.Sprintf("%s/%s", strings.TrimRight(c.URL, "/"), strings.TrimLeft(path, "/"))
+}
+
+func (c Client) setHeaders(req *http.Request) {
+	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.Token))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Version", version)
 }
