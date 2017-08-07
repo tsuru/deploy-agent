@@ -12,10 +12,6 @@ func build(c Client, appName string, cmd []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = saveAppEnvsFile(envs)
-	if err != nil {
-		log.Fatal(err)
-	}
 	err = execScript(cmd, envs, nil)
 	if err != nil {
 		log.Fatal(err)
