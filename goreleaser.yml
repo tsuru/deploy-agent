@@ -3,6 +3,8 @@
 build:
   main: .
   binary: tsuru_unit_agent
+  env:
+    - CGO_ENABLED=0
   goos:
     - linux
   goarch:
