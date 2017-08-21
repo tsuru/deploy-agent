@@ -31,7 +31,7 @@ usermod -u {{.newUID}} {{.username}};
 groupmod -g {{.newUID}} {{.username}};
 useradd -M -U -u {{.oldUID}} {{.oldUserPrefix}}{{.username}};
 echo "{{.oldUserPrefix}}{{.username}} ALL=(#{{.newUID}}) NOPASSWD:ALL" >>/etc/sudoers;
-find / \( -name proc -o -name dev -o -name sys \) -prune -o \( -user {{.oldUID}} -exec chown -h {{.newUID}}:{{.newUID}} {} + \);
+find / -mount -user {{.oldUID}} -exec chown -h {{.newUID}}:{{.newUID}} {} +;
 `)
 }
 
