@@ -45,7 +45,7 @@ usermod -u 1234 .+?;
 groupmod -g 1234 .+?;
 useradd -M -U -u \d+ tsuru\.old\..+?;
 echo "tsuru\.old\..+? ALL=\(#1234\) NOPASSWD:ALL" >>/etc/sudoers;
-find / \\\( -name proc -o -name dev -o -name sys \\\) -prune -o \\\( -user \d+ -exec chown -h 1234:1234 \{\} \+ \\\);
+find / -mount -user \d+ -exec chown -h 1234:1234 \{\} \+;
 `)
 }
 
