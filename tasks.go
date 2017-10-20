@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -125,9 +126,8 @@ func buildHooks(yamlData TsuruYaml, envs []bind.EnvVar) error {
 	return execScript(cmds, envs, os.Stdout)
 }
 
-func readProcfile() (string, error) {
-	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
-	f, err := filesystem().Open(procfilePath)
+func readProcfile(path string) (string, error) {
+	f, err := filesystem().Open(fmt.Sprintf("%v/Procfile", path))
 	if err != nil {
 		return "", err
 	}
@@ -136,13 +136,13 @@ func readProcfile() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(procfile), nil
+	return string(bytes.Replace(procfile, []byte("\r\n"), []byte("\n"), -1)), nil
 }
 
 var procfileRegex = regexp.MustCompile(`^([\w-]+):\s*(\S.+)$`)
 
 func loadProcesses(t *TsuruYaml) error {
-	procfile, err := readProcfile()
+	procfile, err := readProcfile(defaultWorkingDir)
 	if err != nil {
 		return err
 	}
