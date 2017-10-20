@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"syscall"
 
 	"github.com/tsuru/tsuru/app/bind"
 	"github.com/tsuru/tsuru/exec/exectest"
@@ -216,4 +217,38 @@ func (s *S) TestDiffDeploy(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(result, check.DeepEquals, diff)
 	c.Assert(first, check.Equals, false)
+}
+
+func (s *S) TestReadProcfileNotFound(c *check.C) {
+	_, err := readProcfile("./fake-path")
+	_, ok := err.(syscall.Errno)
+	c.Assert(ok, check.Equals, true)
+}
+
+func (s *S) TestReadProcfileFound(c *check.C) {
+	expected := "web: ls\naxl: \"echo Guns N' Roses\""
+	procfilePath := "."
+	procfileContent := expected
+	procfile, err := s.fs.Create(fmt.Sprintf("%v/Procfile", procfilePath))
+	c.Assert(err, check.IsNil)
+	_, err = procfile.Write([]byte(procfileContent))
+	c.Assert(err, check.IsNil)
+	c.Assert(procfile.Close(), check.IsNil)
+	result, err := readProcfile(procfilePath)
+	c.Assert(err, check.IsNil)
+	c.Assert(result, check.Equals, expected)
+}
+
+func (s *S) TestReadProcfileNormalizeCRLFToLF(c *check.C) {
+	procfilePath := "."
+	procfileContent := "web: ls\r\nslash: \"echo Guns N' Roses\""
+	expected := "web: ls\nslash: \"echo Guns N' Roses\""
+	procfile, err := s.fs.Create(fmt.Sprintf("%v/Procfile", procfilePath))
+	c.Assert(err, check.IsNil)
+	_, err = procfile.Write([]byte(procfileContent))
+	c.Assert(err, check.IsNil)
+	c.Assert(procfile.Close(), check.IsNil)
+	result, err := readProcfile(procfilePath)
+	c.Assert(err, check.IsNil)
+	c.Assert(result, check.Equals, expected)
 }
