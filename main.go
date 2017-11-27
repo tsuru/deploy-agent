@@ -10,7 +10,7 @@ import (
 	"os"
 )
 
-const version = "0.2.7"
+const version = "0.2.8"
 
 var printVersion bool
 
