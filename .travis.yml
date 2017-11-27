@@ -4,11 +4,11 @@ install: true
 os:
   - linux
 go:
-  - 1.8.x
+  - 1.9.2
   - master
 env:
   global:
-    - GO_FOR_RELEASE=1.8
+    - GO_FOR_RELEASE=1.9
   matrix:
     - GOARCH=amd64
     - GOARCH=386
