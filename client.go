@@ -26,11 +26,10 @@ type Client struct {
 var httpClient = &http.Client{
 	Transport: &http.Transport{
 		Dial: (&net.Dialer{
-			Timeout:   10 * time.Second,
+			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).Dial,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: 10 * time.Second,
+		TLSHandshakeTimeout: 30 * time.Second,
 	},
 	Timeout: time.Minute,
 }
