@@ -33,15 +33,15 @@ func main() {
 
 	switch command[len(command)-1] {
 	case "build":
-		build(c, appName, command[:len(command)-1])
+		build(c, appName, command[:len(command)-1], &fs.OsFs{})
 	case "deploy-only":
-		deploy(c, appName)
+		deploy(c, appName, &fs.OsFs{})
 	case "deploy":
 		// backward compatibility with tsuru < 1.4.0
 		command = command[:len(command)-1]
 		fallthrough
 	default:
-		build(c, appName, command)
-		deploy(c, appName)
+		build(c, appName, command, &fs.OsFs{})
+		deploy(c, appName, &fs.OsFs{})
 	}
 }

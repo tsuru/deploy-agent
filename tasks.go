@@ -26,15 +26,6 @@ var (
 	appEnvsFile       = "/tmp/app_envs"
 )
 
-var fsystem fs.Fs
-
-func filesystem() fs.Fs {
-	if fsystem == nil {
-		fsystem = &fs.OsFs{}
-	}
-	return fsystem
-}
-
 var osExecutor exec.Executor
 
 func executor() exec.Executor {
@@ -44,7 +35,7 @@ func executor() exec.Executor {
 	return osExecutor
 }
 
-func execScript(cmds []string, envs []bind.EnvVar, w io.Writer) error {
+func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, filesystem fs.Fs) error {
 	if w == nil {
 		w = ioutil.Discard
 	}
@@ -53,7 +44,7 @@ func execScript(cmds []string, envs []bind.EnvVar, w io.Writer) error {
 		return err
 	}
 	workingDir := defaultWorkingDir
-	if _, err := filesystem().Stat(defaultWorkingDir); err != nil {
+	if _, err := filesystem.Stat(defaultWorkingDir); err != nil {
 		if os.IsNotExist(err) {
 			workingDir = "/"
 		} else {
@@ -98,11 +89,11 @@ type Hook struct {
 func (t *TsuruYaml) isEmpty() bool {
 	return len(t.Hooks.BuildHooks) == 0 && t.Processes == nil
 }
-func loadTsuruYaml() (TsuruYaml, error) {
+func loadTsuruYaml(filesystem fs.Fs) (TsuruYaml, error) {
 	var tsuruYamlData TsuruYaml
 	for _, yamlFile := range tsuruYamlFiles {
 		filePath := fmt.Sprintf("%s/%s", defaultWorkingDir, yamlFile)
-		f, err := filesystem().Open(filePath)
+		f, err := filesystem.Open(filePath)
 		if err != nil {
 			continue
 		}
@@ -120,14 +111,14 @@ func loadTsuruYaml() (TsuruYaml, error) {
 	return tsuruYamlData, nil
 }
 
-func buildHooks(yamlData TsuruYaml, envs []bind.EnvVar) error {
+func buildHooks(yamlData TsuruYaml, envs []bind.EnvVar, filesystem fs.Fs) error {
 	cmds := append([]string{}, yamlData.Hooks.BuildHooks...)
 	fmt.Fprintln(os.Stdout, "---- Running build hooks ----")
-	return execScript(cmds, envs, os.Stdout)
+	return execScript(cmds, envs, os.Stdout, filesystem)
 }
 
-func readProcfile(path string) (string, error) {
-	f, err := filesystem().Open(fmt.Sprintf("%v/Procfile", path))
+func readProcfile(path string, filesystem fs.Fs) (string, error) {
+	f, err := filesystem.Open(fmt.Sprintf("%v/Procfile", path))
 	if err != nil {
 		return "", err
 	}
@@ -141,8 +132,8 @@ func readProcfile(path string) (string, error) {
 
 var procfileRegex = regexp.MustCompile(`^([\w-]+):\s*(\S.+)$`)
 
-func loadProcesses(t *TsuruYaml) error {
-	procfile, err := readProcfile(defaultWorkingDir)
+func loadProcesses(t *TsuruYaml, filesystem fs.Fs) error {
+	procfile, err := readProcfile(defaultWorkingDir, filesystem)
 	if err != nil {
 		return err
 	}
@@ -160,11 +151,11 @@ func loadProcesses(t *TsuruYaml) error {
 	return nil
 }
 
-func readDiffDeploy() (string, bool, error) {
+func readDiffDeploy(filesystem fs.Fs) (string, bool, error) {
 	filePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "diff")
-	f, err := filesystem().Open(filePath)
+	f, err := filesystem.Open(filePath)
 	defer f.Close()
-	defer filesystem().Remove(filePath)
+	defer filesystem.Remove(filePath)
 	if err != nil {
 		return "", true, nil
 	}

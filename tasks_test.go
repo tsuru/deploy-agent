@@ -34,7 +34,7 @@ func (s *S) TestExecScript(c *check.C) {
 		Public: true,
 	}}
 	buf := bytes.NewBufferString("")
-	err := execScript(cmds, envs, buf)
+	err := execScript(cmds, envs, buf, s.fs)
 	c.Assert(err, check.IsNil)
 	executedCmds := s.exec.GetCommands("/bin/bash")
 	c.Assert(len(executedCmds), check.Equals, 2)
@@ -53,7 +53,7 @@ func (s *S) TestExecScript(c *check.C) {
 func (s *S) TestExecScriptWithError(c *check.C) {
 	cmds := []string{"not-exists"}
 	osExecutor = &exectest.ErrorExecutor{}
-	err := execScript(cmds, nil, nil)
+	err := execScript(cmds, nil, nil, s.fs)
 	c.Assert(err, check.NotNil)
 }
 
@@ -68,7 +68,7 @@ func (s *S) TestExecScriptWorkingDirNotExist(c *check.C) {
 		Value:  "bar",
 		Public: true,
 	}}
-	err = execScript(cmds, envs, nil)
+	err = execScript(cmds, envs, nil, s.fs)
 	c.Assert(err, check.IsNil)
 	executedCmds := s.exec.GetCommands("/bin/bash")
 	c.Assert(len(executedCmds), check.Equals, 1)
@@ -110,7 +110,7 @@ healthcheck:
 			"allowed_failures": 0,
 		},
 	}
-	t, err := loadTsuruYaml()
+	t, err := loadTsuruYaml(s.fs)
 	c.Assert(err, check.IsNil)
 	c.Assert(t, check.DeepEquals, expected)
 }
@@ -124,7 +124,7 @@ func (s *S) TestHooks(c *check.C) {
 		Value:  "bar",
 		Public: true,
 	}}
-	err := buildHooks(tsuruYaml, envs)
+	err := buildHooks(tsuruYaml, envs, s.fs)
 	c.Assert(err, check.IsNil)
 	executedCmds := s.exec.GetCommands("/bin/bash")
 	c.Assert(len(executedCmds), check.Equals, 2)
@@ -149,7 +149,7 @@ func (s *S) TestLoadProcesses(c *check.C) {
 		},
 	}
 	t := TsuruYaml{}
-	err = loadProcesses(&t)
+	err = loadProcesses(&t, s.fs)
 	c.Assert(err, check.IsNil)
 	c.Assert(t, check.DeepEquals, expected)
 }
@@ -172,7 +172,7 @@ another-worker: run-task
 		},
 	}
 	t := TsuruYaml{}
-	err = loadProcesses(&t)
+	err = loadProcesses(&t, s.fs)
 	c.Assert(err, check.IsNil)
 	c.Assert(t, check.DeepEquals, expected)
 }
@@ -186,7 +186,7 @@ func (s *S) TestDontLoadWrongProcfile(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
 	t := TsuruYaml{}
-	err = loadProcesses(&t)
+	err = loadProcesses(&t, s.fs)
 	c.Assert(err, check.NotNil)
 	c.Assert(err.Error(), check.Equals, `invalid Procfile, no processes found in "web:\n\t@python test.py"`)
 }
@@ -213,14 +213,14 @@ func (s *S) TestDiffDeploy(c *check.C) {
 	_, err := s.fs.Create(diffPath)
 	c.Assert(err, check.IsNil)
 	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", diffPath)), check.Equals, true)
-	result, first, err := readDiffDeploy()
+	result, first, err := readDiffDeploy(s.fs)
 	c.Assert(err, check.IsNil)
 	c.Assert(result, check.DeepEquals, diff)
 	c.Assert(first, check.Equals, false)
 }
 
 func (s *S) TestReadProcfileNotFound(c *check.C) {
-	_, err := readProcfile("./fake-path")
+	_, err := readProcfile("./fake-path", s.fs)
 	_, ok := err.(syscall.Errno)
 	c.Assert(ok, check.Equals, true)
 }
@@ -234,7 +234,7 @@ func (s *S) TestReadProcfileFound(c *check.C) {
 	_, err = procfile.Write([]byte(procfileContent))
 	c.Assert(err, check.IsNil)
 	c.Assert(procfile.Close(), check.IsNil)
-	result, err := readProcfile(procfilePath)
+	result, err := readProcfile(procfilePath, s.fs)
 	c.Assert(err, check.IsNil)
 	c.Assert(result, check.Equals, expected)
 }
@@ -248,7 +248,7 @@ func (s *S) TestReadProcfileNormalizeCRLFToLF(c *check.C) {
 	_, err = procfile.Write([]byte(procfileContent))
 	c.Assert(err, check.IsNil)
 	c.Assert(procfile.Close(), check.IsNil)
-	result, err := readProcfile(procfilePath)
+	result, err := readProcfile(procfilePath, s.fs)
 	c.Assert(err, check.IsNil)
 	c.Assert(result, check.Equals, expected)
 }
