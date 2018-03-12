@@ -6,7 +6,7 @@ import (
 )
 
 func (s *S) TestDockerExecutor(c *check.C) {
-	e := dockerExecutor{containerID: "dd5e0fbf6d3c"}
+	e := dockerExecutor{containerID: "dd5e0fbf6d3c", executor: s.exec}
 	e.Execute(exec.ExecuteOptions{
 		Cmd: "/bin/ps",
 	})

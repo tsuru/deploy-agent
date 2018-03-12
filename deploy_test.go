@@ -29,7 +29,7 @@ func (s *S) TestBuild(c *check.C) {
 		URL:   server.URL,
 		Token: "fake-token",
 	}
-	build(client, "app1", []string{"ls"}, s.fs)
+	build(client, "app1", []string{"ls"}, s.fs, s.exec)
 }
 
 func (s *S) TestDeploy(c *check.C) {
@@ -71,5 +71,5 @@ func (s *S) TestDeploy(c *check.C) {
 		URL:   server.URL,
 		Token: "fake-token",
 	}
-	deploy(client, "app1", s.fs)
+	deploy(client, "app1", s.fs, s.exec)
 }

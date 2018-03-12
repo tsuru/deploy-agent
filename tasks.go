@@ -26,20 +26,11 @@ var (
 	appEnvsFile       = "/tmp/app_envs"
 )
 
-var osExecutor exec.Executor
-
-func executor() exec.Executor {
-	if osExecutor == nil {
-		return &exec.OsExecutor{}
-	}
-	return osExecutor
-}
-
-func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, filesystem fs.Fs) error {
+func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, filesystem fs.Fs, executor exec.Executor) error {
 	if w == nil {
 		w = ioutil.Discard
 	}
-	currentExecutor, err := user.ChangeUser(executor(), envs)
+	currentExecutor, err := user.ChangeUser(executor, envs)
 	if err != nil {
 		return err
 	}
@@ -111,10 +102,10 @@ func loadTsuruYaml(filesystem fs.Fs) (TsuruYaml, error) {
 	return tsuruYamlData, nil
 }
 
-func buildHooks(yamlData TsuruYaml, envs []bind.EnvVar, filesystem fs.Fs) error {
+func buildHooks(yamlData TsuruYaml, envs []bind.EnvVar, filesystem fs.Fs, executor exec.Executor) error {
 	cmds := append([]string{}, yamlData.Hooks.BuildHooks...)
 	fmt.Fprintln(os.Stdout, "---- Running build hooks ----")
-	return execScript(cmds, envs, os.Stdout, filesystem)
+	return execScript(cmds, envs, os.Stdout, filesystem, executor)
 }
 
 func readProcfile(path string, filesystem fs.Fs) (string, error) {
