@@ -8,29 +8,28 @@ import (
 	"log"
 
 	"github.com/tsuru/tsuru/exec"
-	"github.com/tsuru/tsuru/fs"
 )
 
-func build(c Client, appName string, cmd []string, filesystem fs.Fs, executor exec.Executor) {
+func build(c Client, appName string, cmd []string, fs Filesystem, executor exec.Executor) {
 	log.SetFlags(0)
 	envs, err := c.getAppEnvs(appName)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = execScript(cmd, envs, nil, filesystem, executor)
+	err = execScript(cmd, envs, nil, fs, executor)
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-func deploy(c Client, appName string, filesystem fs.Fs, executor exec.Executor) {
+func deploy(c Client, appName string, fs Filesystem, executor exec.Executor) {
 	log.SetFlags(0)
 	var yamlData TsuruYaml
 	envs, err := c.registerUnit(appName, yamlData)
 	if err != nil {
 		log.Fatal(err)
 	}
-	diff, firstDeploy, err := readDiffDeploy(filesystem)
+	diff, firstDeploy, err := readDiffDeploy(fs)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -40,15 +39,15 @@ func deploy(c Client, appName string, filesystem fs.Fs, executor exec.Executor) 
 			log.Fatal(err)
 		}
 	}
-	yamlData, err = loadTsuruYaml(filesystem)
+	yamlData, err = loadTsuruYaml(fs)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = buildHooks(yamlData, envs, filesystem, executor)
+	err = buildHooks(yamlData, envs, fs, executor)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = loadProcesses(&yamlData, filesystem)
+	err = loadProcesses(&yamlData, fs)
 	if err != nil {
 		log.Fatal(err)
 	}

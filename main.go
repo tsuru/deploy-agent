@@ -8,22 +8,24 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/tsuru/tsuru/exec"
 )
 
 const version = "0.2.8"
 
-var printVersion bool
-
-func init() {
+func main() {
+	var (
+		printVersion bool
+	)
 	flag.BoolVar(&printVersion, "version", false, "Print version and exit")
 	flag.Parse()
-}
 
-func main() {
 	if printVersion {
 		fmt.Printf("deploy-agent version %s\n", version)
 		return
 	}
+
 	c := Client{
 		URL:   os.Args[1],
 		Token: os.Args[2],
@@ -33,15 +35,15 @@ func main() {
 
 	switch command[len(command)-1] {
 	case "build":
-		build(c, appName, command[:len(command)-1], &fs.OsFs{}, &exec.OsExecutor{})
+		build(c, appName, command[:len(command)-1], &localFS{}, &exec.OsExecutor{})
 	case "deploy-only":
-		deploy(c, appName, &fs.OsFs{}, &exec.OsExecutor{})
+		deploy(c, appName, &localFS{}, &exec.OsExecutor{})
 	case "deploy":
 		// backward compatibility with tsuru < 1.4.0
 		command = command[:len(command)-1]
 		fallthrough
 	default:
-		build(c, appName, command, &fs.OsFs{}, &exec.OsExecutor{})
-		deploy(c, appName, &fs.OsFs{}, &exec.OsExecutor{})
+		build(c, appName, command, &localFS{}, &exec.OsExecutor{})
+		deploy(c, appName, &localFS{}, &exec.OsExecutor{})
 	}
 }

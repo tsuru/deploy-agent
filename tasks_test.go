@@ -90,10 +90,10 @@ healthcheck:
   match: .*OK
   allowed_failures: 0`
 	tsuruYmlPath := fmt.Sprintf("%s/%s", defaultWorkingDir, "tsuru.yml")
-	s.fs.FileContent = tsuruYmlData
+	s.testFS().FileContent = tsuruYmlData
 	_, err := s.fs.Create(tsuruYmlPath)
 	c.Assert(err, check.IsNil)
-	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", tsuruYmlPath)), check.Equals, true)
+	c.Assert(s.testFS().HasAction(fmt.Sprintf("create %s", tsuruYmlPath)), check.Equals, true)
 	expected := TsuruYaml{
 		Hooks: Hook{
 			BuildHooks: []string{"test", "another_test"},
@@ -138,10 +138,10 @@ func (s *S) TestHooks(c *check.C) {
 func (s *S) TestLoadProcesses(c *check.C) {
 	procfile := "web: python app.py"
 	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
-	s.fs.FileContent = procfile
+	s.testFS().FileContent = procfile
 	_, err := s.fs.Create(procfilePath)
 	c.Assert(err, check.IsNil)
-	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
+	c.Assert(s.testFS().HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
 	expected := TsuruYaml{
 		Processes: map[string]string{
 			"web": "python app.py",
@@ -160,10 +160,10 @@ another-worker: run-task
 # disabled-worker: run-task
 `
 	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
-	s.fs.FileContent = procfile
+	s.testFS().FileContent = procfile
 	_, err := s.fs.Create(procfilePath)
 	c.Assert(err, check.IsNil)
-	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
+	c.Assert(s.testFS().HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
 	expected := TsuruYaml{
 		Processes: map[string]string{
 			"web":            "python app.py",
@@ -180,10 +180,10 @@ func (s *S) TestDontLoadWrongProcfile(c *check.C) {
 	procfile := `web:
 	@python test.py`
 	procfilePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile")
-	s.fs.FileContent = procfile
+	s.testFS().FileContent = procfile
 	_, err := s.fs.Create(procfilePath)
 	c.Assert(err, check.IsNil)
-	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
+	c.Assert(s.testFS().HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
 	t := TsuruYaml{}
 	err = loadProcesses(&t, s.fs)
 	c.Assert(err, check.NotNil)
@@ -208,10 +208,10 @@ func (s *S) TestDiffDeploy(c *check.C) {
  }
 `
 	diffPath := fmt.Sprintf("%s/%s", defaultWorkingDir, "diff")
-	s.fs.FileContent = diff
+	s.testFS().FileContent = diff
 	_, err := s.fs.Create(diffPath)
 	c.Assert(err, check.IsNil)
-	c.Assert(s.fs.HasAction(fmt.Sprintf("create %s", diffPath)), check.Equals, true)
+	c.Assert(s.testFS().HasAction(fmt.Sprintf("create %s", diffPath)), check.Equals, true)
 	result, first, err := readDiffDeploy(s.fs)
 	c.Assert(err, check.IsNil)
 	c.Assert(result, check.DeepEquals, diff)

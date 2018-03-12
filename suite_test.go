@@ -15,15 +15,19 @@ import (
 func Test(t *testing.T) { check.TestingT(t) }
 
 type S struct {
-	fs   *fstest.RecordingFs
+	fs   *localFS
 	exec *exectest.FakeExecutor
 }
 
 var _ = check.Suite(&S{})
 
 func (s *S) SetUpTest(c *check.C) {
-	s.fs = &fstest.RecordingFs{}
+	s.fs = &localFS{Fs: &fstest.RecordingFs{}}
 	s.exec = &exectest.FakeExecutor{}
 	err := s.fs.Mkdir(defaultWorkingDir, 0777)
 	c.Assert(err, check.IsNil)
+}
+
+func (s *S) testFS() *fstest.RecordingFs {
+	return s.fs.Fs.(*fstest.RecordingFs)
 }
