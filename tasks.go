@@ -16,7 +16,6 @@ import (
 	"github.com/tsuru/deploy-agent/internal/user"
 	"github.com/tsuru/tsuru/app/bind"
 	"github.com/tsuru/tsuru/exec"
-	"github.com/tsuru/tsuru/fs"
 	"gopkg.in/yaml.v2"
 )
 
@@ -26,7 +25,7 @@ var (
 	appEnvsFile       = "/tmp/app_envs"
 )
 
-func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, filesystem fs.Fs, executor exec.Executor) error {
+func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, fs Filesystem, executor exec.Executor) error {
 	if w == nil {
 		w = ioutil.Discard
 	}
@@ -35,12 +34,12 @@ func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, filesystem fs.Fs
 		return err
 	}
 	workingDir := defaultWorkingDir
-	if _, err := filesystem.Stat(defaultWorkingDir); err != nil {
-		if os.IsNotExist(err) {
-			workingDir = "/"
-		} else {
-			return err
-		}
+	exists, err := fs.CheckFile(defaultWorkingDir)
+	if err != nil {
+		return err
+	}
+	if exists == false {
+		workingDir = "/"
 	}
 	formatedEnvs := []string{}
 	for _, env := range envs {
@@ -80,18 +79,13 @@ type Hook struct {
 func (t *TsuruYaml) isEmpty() bool {
 	return len(t.Hooks.BuildHooks) == 0 && t.Processes == nil
 }
-func loadTsuruYaml(filesystem fs.Fs) (TsuruYaml, error) {
+func loadTsuruYaml(fs Filesystem) (TsuruYaml, error) {
 	var tsuruYamlData TsuruYaml
 	for _, yamlFile := range tsuruYamlFiles {
 		filePath := fmt.Sprintf("%s/%s", defaultWorkingDir, yamlFile)
-		f, err := filesystem.Open(filePath)
+		tsuruYaml, err := fs.ReadFile(filePath)
 		if err != nil {
 			continue
-		}
-		defer f.Close()
-		tsuruYaml, err := ioutil.ReadAll(f)
-		if err != nil {
-			return TsuruYaml{}, err
 		}
 		err = yaml.Unmarshal(tsuruYaml, &tsuruYamlData)
 		if err != nil {
@@ -102,19 +96,14 @@ func loadTsuruYaml(filesystem fs.Fs) (TsuruYaml, error) {
 	return tsuruYamlData, nil
 }
 
-func buildHooks(yamlData TsuruYaml, envs []bind.EnvVar, filesystem fs.Fs, executor exec.Executor) error {
+func buildHooks(yamlData TsuruYaml, envs []bind.EnvVar, fs Filesystem, executor exec.Executor) error {
 	cmds := append([]string{}, yamlData.Hooks.BuildHooks...)
 	fmt.Fprintln(os.Stdout, "---- Running build hooks ----")
-	return execScript(cmds, envs, os.Stdout, filesystem, executor)
+	return execScript(cmds, envs, os.Stdout, fs, executor)
 }
 
-func readProcfile(path string, filesystem fs.Fs) (string, error) {
-	f, err := filesystem.Open(fmt.Sprintf("%v/Procfile", path))
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	procfile, err := ioutil.ReadAll(f)
+func readProcfile(path string, fs Filesystem) (string, error) {
+	procfile, err := fs.ReadFile(fmt.Sprintf("%v/Procfile", path))
 	if err != nil {
 		return "", err
 	}
@@ -123,8 +112,8 @@ func readProcfile(path string, filesystem fs.Fs) (string, error) {
 
 var procfileRegex = regexp.MustCompile(`^([\w-]+):\s*(\S.+)$`)
 
-func loadProcesses(t *TsuruYaml, filesystem fs.Fs) error {
-	procfile, err := readProcfile(defaultWorkingDir, filesystem)
+func loadProcesses(t *TsuruYaml, fs Filesystem) error {
+	procfile, err := readProcfile(defaultWorkingDir, fs)
 	if err != nil {
 		return err
 	}
@@ -142,17 +131,12 @@ func loadProcesses(t *TsuruYaml, filesystem fs.Fs) error {
 	return nil
 }
 
-func readDiffDeploy(filesystem fs.Fs) (string, bool, error) {
+func readDiffDeploy(fs Filesystem) (string, bool, error) {
 	filePath := fmt.Sprintf("%s/%s", defaultWorkingDir, "diff")
-	f, err := filesystem.Open(filePath)
-	defer f.Close()
-	defer filesystem.Remove(filePath)
-	if err != nil {
-		return "", true, nil
-	}
-	deployDiff, err := ioutil.ReadAll(f)
+	deployDiff, err := fs.ReadFile(filePath)
 	if err != nil {
 		return "", true, err
 	}
+	defer fs.RemoveFile(filePath)
 	return string(deployDiff), false, nil
 }
