@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"io/ioutil"
 	"os"
+	"strings"
+
+	"github.com/tsuru/tsuru/exec"
 
 	"github.com/tsuru/tsuru/fs"
 )
@@ -35,4 +39,45 @@ func (f *localFS) CheckFile(name string) (bool, error) {
 
 func (f *localFS) RemoveFile(name string) error {
 	return f.Fs.Remove(name)
+}
+
+// executorFS is a filesystem backed by an executor
+type executorFS struct {
+	executor exec.Executor
+}
+
+func (f *executorFS) ReadFile(name string) ([]byte, error) {
+	out := new(bytes.Buffer)
+	errOut := new(bytes.Buffer)
+	opts := exec.ExecuteOptions{
+		Cmd:    "cat",
+		Args:   []string{name},
+		Stdout: out,
+		Stderr: errOut,
+	}
+	if err := f.executor.Execute(opts); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+func (f *executorFS) CheckFile(name string) (bool, error) {
+	opts := exec.ExecuteOptions{
+		Cmd:  "stat",
+		Args: []string{name},
+	}
+	if err := f.executor.Execute(opts); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "no such") {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (f *executorFS) RemoveFile(name string) error {
+	return f.executor.Execute(exec.ExecuteOptions{
+		Cmd:  "rm",
+		Args: []string{name},
+	})
 }
