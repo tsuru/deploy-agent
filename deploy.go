@@ -7,22 +7,23 @@ package main
 import (
 	"log"
 
+	"github.com/tsuru/tsuru/exec"
 	"github.com/tsuru/tsuru/fs"
 )
 
-func build(c Client, appName string, cmd []string, filesystem fs.Fs) {
+func build(c Client, appName string, cmd []string, filesystem fs.Fs, executor exec.Executor) {
 	log.SetFlags(0)
 	envs, err := c.getAppEnvs(appName)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = execScript(cmd, envs, nil, filesystem)
+	err = execScript(cmd, envs, nil, filesystem, executor)
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-func deploy(c Client, appName string, filesystem fs.Fs) {
+func deploy(c Client, appName string, filesystem fs.Fs, executor exec.Executor) {
 	log.SetFlags(0)
 	var yamlData TsuruYaml
 	envs, err := c.registerUnit(appName, yamlData)
@@ -43,7 +44,7 @@ func deploy(c Client, appName string, filesystem fs.Fs) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = buildHooks(yamlData, envs, filesystem)
+	err = buildHooks(yamlData, envs, filesystem, executor)
 	if err != nil {
 		log.Fatal(err)
 	}

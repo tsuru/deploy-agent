@@ -14,7 +14,7 @@ type dockerExecutor struct {
 
 func (d *dockerExecutor) Execute(opts exec.ExecuteOptions) error {
 	if d.executor == nil {
-		d.executor = executor()
+		d.executor = &exec.OsExecutor{}
 	}
 	opts.Args = append([]string{"exec", "-t", d.containerID, opts.Cmd}, opts.Args...)
 	opts.Cmd = dockerBinary

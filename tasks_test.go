@@ -34,7 +34,7 @@ func (s *S) TestExecScript(c *check.C) {
 		Public: true,
 	}}
 	buf := bytes.NewBufferString("")
-	err := execScript(cmds, envs, buf, s.fs)
+	err := execScript(cmds, envs, buf, s.fs, s.exec)
 	c.Assert(err, check.IsNil)
 	executedCmds := s.exec.GetCommands("/bin/bash")
 	c.Assert(len(executedCmds), check.Equals, 2)
@@ -52,8 +52,7 @@ func (s *S) TestExecScript(c *check.C) {
 
 func (s *S) TestExecScriptWithError(c *check.C) {
 	cmds := []string{"not-exists"}
-	osExecutor = &exectest.ErrorExecutor{}
-	err := execScript(cmds, nil, nil, s.fs)
+	err := execScript(cmds, nil, nil, s.fs, &exectest.ErrorExecutor{})
 	c.Assert(err, check.NotNil)
 }
 
@@ -68,7 +67,7 @@ func (s *S) TestExecScriptWorkingDirNotExist(c *check.C) {
 		Value:  "bar",
 		Public: true,
 	}}
-	err = execScript(cmds, envs, nil, s.fs)
+	err = execScript(cmds, envs, nil, s.fs, s.exec)
 	c.Assert(err, check.IsNil)
 	executedCmds := s.exec.GetCommands("/bin/bash")
 	c.Assert(len(executedCmds), check.Equals, 1)
@@ -124,7 +123,7 @@ func (s *S) TestHooks(c *check.C) {
 		Value:  "bar",
 		Public: true,
 	}}
-	err := buildHooks(tsuruYaml, envs, s.fs)
+	err := buildHooks(tsuruYaml, envs, s.fs, s.exec)
 	c.Assert(err, check.IsNil)
 	executedCmds := s.exec.GetCommands("/bin/bash")
 	c.Assert(len(executedCmds), check.Equals, 2)
