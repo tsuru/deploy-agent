@@ -30,18 +30,18 @@ func main() {
 	}
 	appName := os.Args[3]
 	command := os.Args[4:]
-	if command[len(command)-1] == "build" {
+
+	switch command[len(command)-1] {
+	case "build":
 		build(c, appName, command[:len(command)-1])
-		return
-	}
-	if command[len(command)-1] == "deploy-only" {
+	case "deploy-only":
 		deploy(c, appName)
-		return
-	}
-	// backward compatibility with tsuru < 1.4.0
-	if command[len(command)-1] == "deploy" {
+	case "deploy":
+		// backward compatibility with tsuru < 1.4.0
 		command = command[:len(command)-1]
+		fallthrough
+	default:
+		build(c, appName, command)
+		deploy(c, appName)
 	}
-	build(c, appName, command)
-	deploy(c, appName)
 }
