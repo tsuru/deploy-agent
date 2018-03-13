@@ -5,20 +5,46 @@
 package docker
 
 import (
+	"bytes"
+
+	"github.com/fsouza/go-dockerclient"
+
+	"github.com/fsouza/go-dockerclient/testing"
 	"github.com/tsuru/tsuru/exec"
-	"github.com/tsuru/tsuru/exec/exectest"
 	"gopkg.in/check.v1"
 )
 
 func (s *S) TestExecutor(c *check.C) {
-	fake := &exectest.FakeExecutor{}
-	e := Executor{containerID: "dd5e0fbf6d3c", executor: fake}
-	e.Execute(exec.ExecuteOptions{
-		Cmd: "/bin/ps",
+	server, err := testing.NewServer("127.0.0.1:0", nil, nil)
+	c.Assert(err, check.IsNil)
+	defer server.Stop()
+	client, err := NewClient(server.URL())
+	c.Assert(err, check.IsNil)
+
+	err = client.api.PullImage(docker.PullImageOptions{Repository: "my-img"}, docker.AuthConfiguration{})
+	c.Assert(err, check.IsNil)
+	cont, err := client.api.CreateContainer(docker.CreateContainerOptions{
+		Name:   "my-container",
+		Config: &docker.Config{Image: "my-img"},
 	})
-	executedCmds := fake.GetCommands(dockerBinary)
-	c.Assert(len(executedCmds), check.Equals, 1)
-	args := executedCmds[0].GetArgs()
-	expectedArgs := []string{"exec", "-t", "dd5e0fbf6d3c", "/bin/ps"}
-	c.Assert(args, check.DeepEquals, expectedArgs)
+	c.Assert(err, check.IsNil)
+	err = client.api.StartContainer(cont.ID, nil)
+	c.Assert(err, check.IsNil)
+
+	var executed bool
+	server.PrepareExec("*", func() {
+		executed = true
+	})
+
+	e := Executor{ContainerID: cont.ID, Client: client}
+	out := new(bytes.Buffer)
+	err = e.Execute(exec.ExecuteOptions{
+		Dir:    "/home/",
+		Cmd:    "/bin/ps",
+		Args:   []string{"aux"},
+		Envs:   []string{"A=B"},
+		Stdout: out,
+	})
+	c.Assert(err, check.IsNil)
+	c.Assert(executed, check.Equals, true)
 }
