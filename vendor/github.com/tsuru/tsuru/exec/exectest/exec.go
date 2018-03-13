@@ -1,4 +1,4 @@
-// Copyright 2015 tsuru authors. All rights reserved.
+// Copyright 2013 tsuru authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -8,11 +8,11 @@
 package exectest
 
 import (
-	"errors"
 	"reflect"
 	"strings"
 	"sync"
 
+	"github.com/pkg/errors"
 	"github.com/tsuru/tsuru/exec"
 	"github.com/tsuru/tsuru/safe"
 )
@@ -112,10 +112,14 @@ func (e *FakeExecutor) GetCommands(cmdName string) []command {
 
 type ErrorExecutor struct {
 	FakeExecutor
+	Err error
 }
 
 func (e *ErrorExecutor) Execute(opts exec.ExecuteOptions) error {
 	e.FakeExecutor.Execute(opts)
+	if e.Err != nil {
+		return e.Err
+	}
 	return errors.New("")
 }
 
