@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/tsuru/tsuru/exec"
+	"github.com/tsuru/tsuru/fs"
 )
 
 const version = "0.2.8"
@@ -33,17 +34,20 @@ func main() {
 	appName := os.Args[3]
 	command := os.Args[4:]
 
+	filesystem := &localFS{Fs: fs.OsFs{}}
+	executor := &exec.OsExecutor{}
+
 	switch command[len(command)-1] {
 	case "build":
-		build(c, appName, command[:len(command)-1], &localFS{}, &exec.OsExecutor{})
+		build(c, appName, command[:len(command)-1], filesystem, executor)
 	case "deploy-only":
-		deploy(c, appName, &localFS{}, &exec.OsExecutor{})
+		deploy(c, appName, filesystem, executor)
 	case "deploy":
 		// backward compatibility with tsuru < 1.4.0
 		command = command[:len(command)-1]
 		fallthrough
 	default:
-		build(c, appName, command, &localFS{}, &exec.OsExecutor{})
-		deploy(c, appName, &localFS{}, &exec.OsExecutor{})
+		build(c, appName, command, filesystem, executor)
+		deploy(c, appName, filesystem, executor)
 	}
 }
