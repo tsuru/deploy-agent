@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/tsuru/deploy-agent/internal/tsuru"
 	"github.com/tsuru/deploy-agent/internal/user"
 	"github.com/tsuru/tsuru/app/bind"
 	"github.com/tsuru/tsuru/exec"
@@ -65,23 +66,8 @@ func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, fs Filesystem, e
 	return nil
 }
 
-type TsuruYaml struct {
-	Hooks       Hook                   `json:"hooks,omitempty"`
-	Processes   map[string]string      `json:"processes,omitempty"`
-	Healthcheck map[string]interface{} `yaml:"healthcheck" json:"healthcheck,omitempty"`
-}
-
-type Hook struct {
-	BuildHooks []string               `yaml:"build,omitempty" json:"build"`
-	Restart    map[string]interface{} `yaml:"restart" json:"restart"`
-}
-
-func (t *TsuruYaml) isEmpty() bool {
-	return len(t.Hooks.BuildHooks) == 0 && t.Processes == nil
-}
-
-func loadTsuruYaml(fs Filesystem) (TsuruYaml, error) {
-	var tsuruYamlData TsuruYaml
+func loadTsuruYaml(fs Filesystem) (tsuru.TsuruYaml, error) {
+	var tsuruYamlData tsuru.TsuruYaml
 	for _, yamlFile := range tsuruYamlFiles {
 		filePath := fmt.Sprintf("%s/%s", defaultWorkingDir, yamlFile)
 		tsuruYaml, err := fs.ReadFile(filePath)
@@ -90,14 +76,14 @@ func loadTsuruYaml(fs Filesystem) (TsuruYaml, error) {
 		}
 		err = yaml.Unmarshal(tsuruYaml, &tsuruYamlData)
 		if err != nil {
-			return TsuruYaml{}, err
+			return tsuru.TsuruYaml{}, err
 		}
 		break
 	}
 	return tsuruYamlData, nil
 }
 
-func buildHooks(yamlData TsuruYaml, envs []bind.EnvVar, fs Filesystem, executor exec.Executor) error {
+func buildHooks(yamlData tsuru.TsuruYaml, envs []bind.EnvVar, fs Filesystem, executor exec.Executor) error {
 	cmds := append([]string{}, yamlData.Hooks.BuildHooks...)
 	fmt.Fprintln(os.Stdout, "---- Running build hooks ----")
 	return execScript(cmds, envs, os.Stdout, fs, executor)
@@ -113,7 +99,7 @@ func readProcfile(path string, fs Filesystem) (string, error) {
 
 var procfileRegex = regexp.MustCompile(`^([\w-]+):\s*(\S.+)$`)
 
-func loadProcesses(t *TsuruYaml, fs Filesystem) error {
+func loadProcesses(t *tsuru.TsuruYaml, fs Filesystem) error {
 	procfile, err := readProcfile(defaultWorkingDir, fs)
 	if err != nil {
 		return err

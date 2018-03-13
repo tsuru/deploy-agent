@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package main
+package tsuru
 
 import (
 	"encoding/json"
@@ -18,9 +18,25 @@ import (
 	"github.com/tsuru/tsuru/app/bind"
 )
 
+type TsuruYaml struct {
+	Hooks       Hook                   `json:"hooks,omitempty"`
+	Processes   map[string]string      `json:"processes,omitempty"`
+	Healthcheck map[string]interface{} `yaml:"healthcheck" json:"healthcheck,omitempty"`
+}
+
+type Hook struct {
+	BuildHooks []string               `yaml:"build,omitempty" json:"build"`
+	Restart    map[string]interface{} `yaml:"restart" json:"restart"`
+}
+
+func (t *TsuruYaml) IsEmpty() bool {
+	return len(t.Hooks.BuildHooks) == 0 && t.Processes == nil
+}
+
 type Client struct {
-	URL   string
-	Token string
+	URL     string
+	Token   string
+	Version string
 }
 
 var httpClient = &http.Client{
@@ -34,7 +50,7 @@ var httpClient = &http.Client{
 	Timeout: time.Minute,
 }
 
-func (c Client) getAppEnvs(appName string) ([]bind.EnvVar, error) {
+func (c Client) GetAppEnvs(appName string) ([]bind.EnvVar, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -64,10 +80,10 @@ func (c Client) getAppEnvs(appName string) ([]bind.EnvVar, error) {
 	return envs, nil
 }
 
-func (c Client) registerUnit(appName string, customData TsuruYaml) ([]bind.EnvVar, error) {
+func (c Client) RegisterUnit(appName string, customData TsuruYaml) ([]bind.EnvVar, error) {
 	var err error
 	var yamlData []byte
-	if !customData.isEmpty() {
+	if !customData.IsEmpty() {
 		yamlData, err = json.Marshal(customData)
 		if err != nil {
 			return nil, err
@@ -103,7 +119,7 @@ func (c Client) registerUnit(appName string, customData TsuruYaml) ([]bind.EnvVa
 	return envs, nil
 }
 
-func (c Client) sendDiffDeploy(diff, appName string) error {
+func (c Client) SendDiffDeploy(diff, appName string) error {
 	var err error
 	v := url.Values{}
 	v.Set("customdata", diff)
@@ -135,5 +151,5 @@ func (c Client) url(path string) string {
 func (c Client) setHeaders(req *http.Request) {
 	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.Token))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("X-Agent-Version", version)
+	req.Header.Set("X-Agent-Version", c.Version)
 }

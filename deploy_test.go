@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 
+	"github.com/tsuru/deploy-agent/internal/tsuru"
 	"github.com/tsuru/tsuru/app/bind"
 	"gopkg.in/check.v1"
 )
@@ -25,7 +26,7 @@ func (s *S) TestBuild(c *check.C) {
 		e, _ := json.Marshal(envs)
 		w.Write(e)
 	}))
-	client := Client{
+	client := tsuru.Client{
 		URL:   server.URL,
 		Token: "fake-token",
 	}
@@ -67,7 +68,7 @@ func (s *S) TestDeploy(c *check.C) {
 	c.Assert(err, check.IsNil)
 	_, err = p.WriteString(procfileData)
 	c.Assert(err, check.IsNil)
-	client := Client{
+	client := tsuru.Client{
 		URL:   server.URL,
 		Token: "fake-token",
 	}
