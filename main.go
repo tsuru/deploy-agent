@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/tsuru/deploy-agent/internal/tsuru"
 	"github.com/tsuru/tsuru/exec"
 	"github.com/tsuru/tsuru/fs"
 )
@@ -27,9 +28,10 @@ func main() {
 		return
 	}
 
-	c := Client{
-		URL:   os.Args[1],
-		Token: os.Args[2],
+	c := tsuru.Client{
+		URL:     os.Args[1],
+		Token:   os.Args[2],
+		Version: version,
 	}
 	appName := os.Args[3]
 	command := os.Args[4:]

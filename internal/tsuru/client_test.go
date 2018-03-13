@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package main
+package tsuru
 
 import (
 	"encoding/json"
@@ -10,10 +10,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"testing"
 
 	"github.com/tsuru/tsuru/app/bind"
 	"gopkg.in/check.v1"
 )
+
+func Test(t *testing.T) { check.TestingT(t) }
+
+type S struct{}
+
+var _ = check.Suite(&S{})
 
 func (s *S) TestClient(c *check.C) {
 	call := 0
@@ -21,7 +28,7 @@ func (s *S) TestClient(c *check.C) {
 		call++
 		c.Assert(r.Header.Get("Authorization"), check.Not(check.Equals), "")
 		c.Assert(r.Header.Get("Content-Type"), check.Equals, "application/x-www-form-urlencoded")
-		c.Assert(r.Header.Get("X-Agent-Version"), check.Equals, version)
+		c.Assert(r.Header.Get("X-Agent-Version"), check.Equals, "0.2.1")
 		c.Assert(r.URL.Path, check.Equals, "/apps/test/units/register")
 		b, err := ioutil.ReadAll(r.Body)
 		c.Assert(err, check.IsNil)
@@ -45,13 +52,14 @@ func (s *S) TestClient(c *check.C) {
 		w.Write(e)
 	}))
 	cli := Client{
-		URL:   server.URL,
-		Token: "test-token",
+		URL:     server.URL,
+		Token:   "test-token",
+		Version: "0.2.1",
 	}
-	_, err := cli.registerUnit("test", TsuruYaml{})
+	_, err := cli.RegisterUnit("test", TsuruYaml{})
 	c.Assert(err, check.IsNil)
 	t := TsuruYaml{Hooks: Hook{BuildHooks: []string{"ls", "ls"}}, Processes: map[string]string{"web": "test"}}
-	_, err = cli.registerUnit("test", t)
+	_, err = cli.RegisterUnit("test", t)
 	c.Assert(err, check.IsNil)
 }
 
@@ -77,7 +85,7 @@ func (s *S) TestClientSendDiff(c *check.C) {
 		call++
 		c.Assert(r.Header.Get("Authorization"), check.Not(check.Equals), "")
 		c.Assert(r.Header.Get("Content-Type"), check.Equals, "application/x-www-form-urlencoded")
-		c.Assert(r.Header.Get("X-Agent-Version"), check.Equals, version)
+		c.Assert(r.Header.Get("X-Agent-Version"), check.Equals, "0.2.1")
 		c.Assert(r.URL.Path, check.Equals, "/apps/test/diff")
 		b, err := ioutil.ReadAll(r.Body)
 		c.Assert(err, check.IsNil)
@@ -91,12 +99,13 @@ func (s *S) TestClientSendDiff(c *check.C) {
 		}
 	}))
 	cli := Client{
-		URL:   server.URL,
-		Token: "test-token",
+		URL:     server.URL,
+		Token:   "test-token",
+		Version: "0.2.1",
 	}
-	err := cli.sendDiffDeploy("", "test")
+	err := cli.SendDiffDeploy("", "test")
 	c.Assert(err, check.IsNil)
-	err = cli.sendDiffDeploy(diff, "test")
+	err = cli.SendDiffDeploy(diff, "test")
 	c.Assert(err, check.IsNil)
 }
 

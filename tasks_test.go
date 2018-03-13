@@ -10,16 +10,17 @@ import (
 	"os"
 	"syscall"
 
+	"github.com/tsuru/deploy-agent/internal/tsuru"
 	"github.com/tsuru/tsuru/app/bind"
 	"github.com/tsuru/tsuru/exec/exectest"
 	"gopkg.in/check.v1"
 )
 
 func (s *S) TestIsEmpty(c *check.C) {
-	t := TsuruYaml{}
-	c.Assert(t.isEmpty(), check.Equals, true)
+	t := tsuru.TsuruYaml{}
+	c.Assert(t.IsEmpty(), check.Equals, true)
 	t.Processes = map[string]string{"web": "python something.py"}
-	c.Assert(t.isEmpty(), check.Equals, false)
+	c.Assert(t.IsEmpty(), check.Equals, false)
 }
 
 func (s *S) TestExecScript(c *check.C) {
@@ -94,8 +95,8 @@ healthcheck:
 	_, err := s.fs.Create(tsuruYmlPath)
 	c.Assert(err, check.IsNil)
 	c.Assert(s.testFS().HasAction(fmt.Sprintf("create %s", tsuruYmlPath)), check.Equals, true)
-	expected := TsuruYaml{
-		Hooks: Hook{
+	expected := tsuru.TsuruYaml{
+		Hooks: tsuru.Hook{
 			BuildHooks: []string{"test", "another_test"},
 			Restart: map[string]interface{}{
 				"before": []interface{}{"static"},
@@ -115,8 +116,8 @@ healthcheck:
 }
 
 func (s *S) TestHooks(c *check.C) {
-	tsuruYaml := TsuruYaml{
-		Hooks: Hook{BuildHooks: []string{"ls", "cd"}},
+	tsuruYaml := tsuru.TsuruYaml{
+		Hooks: tsuru.Hook{BuildHooks: []string{"ls", "cd"}},
 	}
 	envs := []bind.EnvVar{{
 		Name:   "foo",
@@ -142,12 +143,12 @@ func (s *S) TestLoadProcesses(c *check.C) {
 	_, err := s.fs.Create(procfilePath)
 	c.Assert(err, check.IsNil)
 	c.Assert(s.testFS().HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
-	expected := TsuruYaml{
+	expected := tsuru.TsuruYaml{
 		Processes: map[string]string{
 			"web": "python app.py",
 		},
 	}
-	t := TsuruYaml{}
+	t := tsuru.TsuruYaml{}
 	err = loadProcesses(&t, s.fs)
 	c.Assert(err, check.IsNil)
 	c.Assert(t, check.DeepEquals, expected)
@@ -164,13 +165,13 @@ another-worker: run-task
 	_, err := s.fs.Create(procfilePath)
 	c.Assert(err, check.IsNil)
 	c.Assert(s.testFS().HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
-	expected := TsuruYaml{
+	expected := tsuru.TsuruYaml{
 		Processes: map[string]string{
 			"web":            "python app.py",
 			"another-worker": "run-task",
 		},
 	}
-	t := TsuruYaml{}
+	t := tsuru.TsuruYaml{}
 	err = loadProcesses(&t, s.fs)
 	c.Assert(err, check.IsNil)
 	c.Assert(t, check.DeepEquals, expected)
@@ -184,7 +185,7 @@ func (s *S) TestDontLoadWrongProcfile(c *check.C) {
 	_, err := s.fs.Create(procfilePath)
 	c.Assert(err, check.IsNil)
 	c.Assert(s.testFS().HasAction(fmt.Sprintf("create %s", procfilePath)), check.Equals, true)
-	t := TsuruYaml{}
+	t := tsuru.TsuruYaml{}
 	err = loadProcesses(&t, s.fs)
 	c.Assert(err, check.NotNil)
 	c.Assert(err.Error(), check.Equals, `invalid Procfile, no processes found in "web:\n\t@python test.py"`)
