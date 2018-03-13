@@ -79,6 +79,7 @@ type Hook struct {
 func (t *TsuruYaml) isEmpty() bool {
 	return len(t.Hooks.BuildHooks) == 0 && t.Processes == nil
 }
+
 func loadTsuruYaml(fs Filesystem) (TsuruYaml, error) {
 	var tsuruYamlData TsuruYaml
 	for _, yamlFile := range tsuruYamlFiles {
