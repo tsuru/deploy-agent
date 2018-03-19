@@ -51,12 +51,12 @@ func NewClient(endpoint string) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) ListContainersByLabels(labels map[string]string) ([]Container, error) {
+func (c *Client) ListContainersByLabels(ctx context.Context, labels map[string]string) ([]Container, error) {
 	filters := make(map[string][]string)
 	for k, v := range labels {
 		filters["label"] = append(filters["label"], fmt.Sprintf("%s=%s", k, v))
 	}
-	containers, err := c.api.ListContainers(docker.ListContainersOptions{Filters: filters})
+	containers, err := c.api.ListContainers(docker.ListContainersOptions{Filters: filters, Context: ctx})
 	if err != nil {
 		return nil, err
 	}

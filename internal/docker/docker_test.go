@@ -4,6 +4,7 @@
 package docker
 
 import (
+	"context"
 	"testing"
 
 	"github.com/fsouza/go-dockerclient"
@@ -48,7 +49,7 @@ func (s *S) TestGetContainersByLabel(c *check.C) {
 	err = client.api.StartContainer(cont2.ID, nil)
 	c.Assert(err, check.IsNil)
 
-	containers, err := client.ListContainersByLabels(map[string]string{"A": "VA", "B": "VB"})
+	containers, err := client.ListContainersByLabels(context.Background(), map[string]string{"A": "VA", "B": "VB"})
 	c.Assert(err, check.IsNil)
 	c.Assert(containers, check.DeepEquals, []Container{{ID: cont.ID}})
 }
