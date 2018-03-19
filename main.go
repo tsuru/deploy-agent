@@ -97,18 +97,25 @@ func main() {
 		}()
 	}
 
+	var err error
 	switch command[len(command)-1] {
 	case "build":
-		build(c, appName, command[:len(command)-1], filesystem, executor)
+		err = build(c, appName, command[:len(command)-1], filesystem, executor)
 	case "deploy-only":
-		deploy(c, appName, filesystem, executor)
+		err = deploy(c, appName, filesystem, executor)
 	case "deploy":
 		// backward compatibility with tsuru < 1.4.0
 		command = command[:len(command)-1]
 		fallthrough
 	default:
-		build(c, appName, command, filesystem, executor)
-		deploy(c, appName, filesystem, executor)
+		err = build(c, appName, command, filesystem, executor)
+		if err != nil {
+			break
+		}
+		err = deploy(c, appName, filesystem, executor)
+	}
+	if err != nil {
+		fatal("[deploy-agent] error: %v", err)
 	}
 }
 
