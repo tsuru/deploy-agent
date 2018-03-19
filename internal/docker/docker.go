@@ -19,6 +19,8 @@ const (
 	streamInactivityTimeout = time.Minute
 )
 
+type AuthConfig docker.AuthConfiguration
+
 type Container struct {
 	ID string
 }
@@ -100,7 +102,7 @@ func (c *Client) Tag(ctx context.Context, img Image) error {
 	})
 }
 
-func (c *Client) Push(ctx context.Context, img Image) error {
+func (c *Client) Push(ctx context.Context, authConfig AuthConfig, img Image) error {
 	opts := docker.PushImageOptions{
 		Name:              img.Name(),
 		Tag:               img.tag,
@@ -108,7 +110,7 @@ func (c *Client) Push(ctx context.Context, img Image) error {
 		Context:           ctx,
 		InactivityTimeout: streamInactivityTimeout,
 	}
-	return c.api.PushImage(opts, docker.AuthConfiguration{})
+	return c.api.PushImage(opts, docker.AuthConfiguration(authConfig))
 }
 
 func splitImageName(imageName string) (registry, repo, tag string) {
