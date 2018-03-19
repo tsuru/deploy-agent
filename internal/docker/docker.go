@@ -9,11 +9,15 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/fsouza/go-dockerclient"
 )
 
-const defaultEndpoint = "unix:///var/run/docker.sock"
+const (
+	defaultEndpoint         = "unix:///var/run/docker.sock"
+	streamInactivityTimeout = time.Minute
+)
 
 type Container struct {
 	ID string
@@ -98,11 +102,11 @@ func (c *Client) Tag(ctx context.Context, img Image) error {
 
 func (c *Client) Push(ctx context.Context, img Image) error {
 	opts := docker.PushImageOptions{
-		Name:          img.Name(),
-		Tag:           img.tag,
-		RawJSONStream: true,
-		OutputStream:  os.Stdout,
-		Context:       ctx,
+		Name:              img.Name(),
+		Tag:               img.tag,
+		OutputStream:      os.Stdout,
+		Context:           ctx,
+		InactivityTimeout: streamInactivityTimeout,
 	}
 	return c.api.PushImage(opts, docker.AuthConfiguration{})
 }
