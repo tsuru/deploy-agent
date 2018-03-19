@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/kelseyhightower/envconfig"
 	"github.com/tsuru/deploy-agent/internal/docker"
 	"github.com/tsuru/deploy-agent/internal/tsuru"
 	"github.com/tsuru/tsuru/exec"
@@ -19,6 +20,17 @@ import (
 )
 
 const version = "0.2.8"
+
+type Config struct {
+	DockerHost          string `envconfig:"DOCKER_HOST"`
+	RunAsSidecar        bool
+	DestinationImage    string
+	RegistryPushRetries int `default:"3"`
+	RegistryAuthEmail   string
+	RegistryAuthPass    string
+	RegistryAuthUser    string
+	RegistryAddress     string
+}
 
 func main() {
 	var (
@@ -32,6 +44,12 @@ func main() {
 		return
 	}
 
+	var config Config
+	err := envconfig.Process("deployagent", &config)
+	if err != nil {
+		fatal("error processing environment variables: %v", err)
+	}
+
 	c := tsuru.Client{
 		URL:     os.Args[1],
 		Token:   os.Args[2],
@@ -43,13 +61,10 @@ func main() {
 	var filesystem Filesystem = &localFS{Fs: fs.OsFs{}}
 	var executor exec.Executor = &exec.OsExecutor{}
 
-	sideCar := os.Getenv("DEPLOYAGENT_RUN_AS_SIDECAR") == "true"
-
-	if sideCar {
-		dockerClient, err := docker.NewClient(os.Getenv("DOCKER_HOST"))
+	if config.RunAsSidecar {
+		dockerClient, err := docker.NewClient(config.DockerHost)
 		if err != nil {
 			fatal("failed to create docker client: %v", err)
-
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 		mainContainer, err := getMainContainer(ctx, dockerClient)
@@ -61,24 +76,36 @@ func main() {
 		filesystem = &executorFS{executor: executor}
 		defer func() {
 			fmt.Println("---- Building application image ----")
-			imgName := os.Getenv("DEPLOYAGENT_DST_IMAGE")
-			img, err := dockerClient.Commit(context.Background(), mainContainer.ID, imgName)
+			img, err := dockerClient.Commit(context.Background(), mainContainer.ID, config.DestinationImage)
 			if err != nil {
-				fatal("error commiting image %v: %v", imgName, err)
+				fatal("error commiting image %v: %v", config.DestinationImage, err)
 			}
 			err = dockerClient.Tag(context.Background(), img)
 			if err != nil {
 				fatal("error tagging image %v: %v", img, err)
 			}
 			fmt.Printf(" ---> Sending image to repository (%s)\n", img)
-			err = dockerClient.Push(context.Background(), img)
+			authConfig := docker.AuthConfig{
+				Username:      config.RegistryAuthUser,
+				Password:      config.RegistryAuthPass,
+				Email:         config.RegistryAuthEmail,
+				ServerAddress: config.RegistryAddress,
+			}
+			for i := 0; i < config.RegistryPushRetries; i++ {
+				err = dockerClient.Push(context.Background(), authConfig, img)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Could not send image, trying again. Original error: %v\n", err)
+					time.Sleep(time.Second)
+					continue
+				}
+				break
+			}
 			if err != nil {
-				fatal("error pushing image %v: %v", img, err)
+				fatal("Error pushing image: %v", err)
 			}
 		}()
 	}
 
-	var err error
 	switch command[len(command)-1] {
 	case "build":
 		err = build(c, appName, command[:len(command)-1], filesystem, executor)

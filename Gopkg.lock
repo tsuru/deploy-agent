@@ -100,6 +100,12 @@
   version = "v1.6.1"
 
 [[projects]]
+  name = "github.com/kelseyhightower/envconfig"
+  packages = ["."]
+  revision = "f611eb38b3875cc3bd991ca91c51d06446afa14c"
+  version = "v1.3.0"
+
+[[projects]]
   name = "github.com/opencontainers/go-digest"
   packages = ["."]
   revision = "279bed98673dd5bef374d3b6e4b09e2af76183bf"
@@ -184,6 +190,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "aef02d05fe7765abec3bbeba70e0a88e9d5f72142607aa811e56997b2e57c99a"
+  inputs-digest = "5f1091016a34c2598a83bfc114dc300c984b8f9d3ac652aa287d2f74c61a6332"
   solver-name = "gps-cdcl"
   solver-version = 1
