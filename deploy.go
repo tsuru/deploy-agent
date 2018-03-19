@@ -5,52 +5,43 @@
 package main
 
 import (
-	"log"
-
 	"github.com/tsuru/deploy-agent/internal/tsuru"
 	"github.com/tsuru/tsuru/exec"
 )
 
-func build(c tsuru.Client, appName string, cmd []string, fs Filesystem, executor exec.Executor) {
-	log.SetFlags(0)
+func build(c tsuru.Client, appName string, cmd []string, fs Filesystem, executor exec.Executor) error {
 	envs, err := c.GetAppEnvs(appName)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	err = execScript(cmd, envs, nil, fs, executor)
-	if err != nil {
-		log.Fatal(err)
-	}
+	return execScript(cmd, envs, nil, fs, executor)
 }
 
-func deploy(c tsuru.Client, appName string, fs Filesystem, executor exec.Executor) {
-	log.SetFlags(0)
+func deploy(c tsuru.Client, appName string, fs Filesystem, executor exec.Executor) error {
 	var yamlData tsuru.TsuruYaml
 	envs, err := c.RegisterUnit(appName, yamlData)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	diff, firstDeploy, err := readDiffDeploy(fs)
 	if !firstDeploy || err != nil {
 		err = c.SendDiffDeploy(diff, appName)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
 	yamlData, err = loadTsuruYaml(fs)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	err = buildHooks(yamlData, envs, fs, executor)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	err = loadProcesses(&yamlData, fs)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	_, err = c.RegisterUnit(appName, yamlData)
-	if err != nil {
-		log.Fatal(err)
-	}
+	return err
 }
