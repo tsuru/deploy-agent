@@ -50,7 +50,7 @@ func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, fs Filesystem, e
 	formatedEnvs = append(formatedEnvs, os.Environ()...)
 	for _, cmd := range cmds {
 		execOpts := exec.ExecuteOptions{
-			Cmd:    "/bin/bash",
+			Cmd:    "/bin/sh",
 			Args:   []string{"-lc", cmd},
 			Dir:    workingDir,
 			Envs:   formatedEnvs,
