@@ -51,37 +51,18 @@ func main() {
 			fatal("failed to create docker client: %v", err)
 
 		}
-		hostname, err := os.Hostname()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+		mainContainer, err := getMainContainer(ctx, dockerClient)
+		cancel()
 		if err != nil {
-			fatal("failed to get hostname: %v", err)
+			fatal("failed to get main container: %v", err)
 		}
-		timeout := time.After(time.Second * 30)
-		var containers []docker.Container
-	loop:
-		for {
-			containers, err = dockerClient.ListContainersByLabels(map[string]string{
-				"io.kubernetes.container.name": hostname,
-				"io.kubernetes.pod.name":       hostname,
-			})
-			if err != nil {
-				fatal("failed to get containers: %v", err)
-			}
-			select {
-			case <-timeout:
-				break loop
-			case <-time.After(time.Second * 3):
-				break
-			}
-		}
-		if len(containers) != 1 {
-			fatal("failed to get main container from sidecar, got %v.", containers)
-		}
-		executor = &docker.Executor{Client: dockerClient, ContainerID: containers[0].ID}
+		executor = &docker.Executor{Client: dockerClient, ContainerID: mainContainer.ID}
 		filesystem = &executorFS{executor: executor}
 		defer func() {
 			fmt.Println("---- Building application image ----")
 			imgName := os.Getenv("DEPLOYAGENT_DST_IMAGE")
-			img, err := dockerClient.Commit(context.Background(), containers[0].ID, imgName)
+			img, err := dockerClient.Commit(context.Background(), mainContainer.ID, imgName)
 			if err != nil {
 				fatal("error commiting image %v: %v", imgName, err)
 			}
@@ -116,6 +97,30 @@ func main() {
 	}
 	if err != nil {
 		fatal("[deploy-agent] error: %v", err)
+	}
+}
+
+func getMainContainer(ctx context.Context, dockerClient *docker.Client) (docker.Container, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return docker.Container{}, fmt.Errorf("failed to get hostname: %v", err)
+	}
+	for {
+		containers, err := dockerClient.ListContainersByLabels(ctx, map[string]string{
+			"io.kubernetes.container.name": hostname,
+			"io.kubernetes.pod.name":       hostname,
+		})
+		if err != nil {
+			return docker.Container{}, fmt.Errorf("failed to get containers: %v", err)
+		}
+		if len(containers) == 1 {
+			return containers[0], nil
+		}
+		select {
+		case <-ctx.Done():
+			return docker.Container{}, ctx.Err()
+		case <-time.After(time.Second * 1):
+		}
 	}
 }
 
