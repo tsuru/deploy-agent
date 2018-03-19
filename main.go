@@ -23,13 +23,13 @@ const version = "0.2.8"
 
 type Config struct {
 	DockerHost          string `envconfig:"DOCKER_HOST"`
-	RunAsSidecar        bool
-	DestinationImage    string
-	RegistryPushRetries int `default:"3"`
-	RegistryAuthEmail   string
-	RegistryAuthPass    string
-	RegistryAuthUser    string
-	RegistryAddress     string
+	RunAsSidecar        bool   `split_words:"true"`
+	DestinationImage    string `split_words:"true"`
+	RegistryPushRetries int    `split_words:"true" default:"3"`
+	RegistryAuthEmail   string `split_words:"true"`
+	RegistryAuthPass    string `split_words:"true"`
+	RegistryAuthUser    string `split_words:"true"`
+	RegistryAddress     string `split_words:"true"`
 }
 
 func main() {
