@@ -5,7 +5,10 @@
 package main
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -25,6 +28,7 @@ type Config struct {
 	DockerHost          string `envconfig:"DOCKER_HOST"`
 	RunAsSidecar        bool   `split_words:"true"`
 	DestinationImage    string `split_words:"true"`
+	InputFile           string `split_words:"true"`
 	RegistryPushRetries int    `split_words:"true" default:"3"`
 	RegistryAuthEmail   string `split_words:"true"`
 	RegistryAuthPass    string `split_words:"true"`
@@ -74,6 +78,10 @@ func main() {
 		}
 		executor = &docker.Executor{Client: dockerClient, ContainerID: mainContainer.ID}
 		filesystem = &executorFS{executor: executor}
+		err = uploadFile(context.Background(), dockerClient, mainContainer.ID, config.InputFile)
+		if err != nil {
+			fatal("failed to upload input file: %v", err)
+		}
 		defer func() {
 			fmt.Println("---- Building application image ----")
 			img, err := dockerClient.Commit(context.Background(), mainContainer.ID, config.DestinationImage)
@@ -151,20 +159,51 @@ func getMainContainer(ctx context.Context, dockerClient *docker.Client) (docker.
 	}
 }
 
-func fatal(format string, v ...interface{}) {
-	var w io.Writer = os.Stderr
-	file, err := os.OpenFile("/dev/termination-log", os.O_WRONLY|os.O_CREATE, 0666)
+func uploadFile(ctx context.Context, dockerClient *docker.Client, container, inputFile string) error {
+	file, err := os.Open(inputFile)
 	if err != nil {
-		fmt.Fprint(w, "failed to open termination-log file")
-	} else {
-		w = file
-		defer func() {
-			errClose := file.Close()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to close termination file: %v", errClose)
-			}
-		}()
+		return fmt.Errorf("failed to open input file %q: %v", inputFile, err)
 	}
-	fmt.Fprintf(w, format, v...)
+	defer func() {
+		if file.Close() != nil {
+			fmt.Fprintf(os.Stderr, "error closing file %q: %v", inputFile, err)
+		}
+	}()
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat input file: %v", err)
+	}
+	buf := new(bytes.Buffer)
+	tw := tar.NewWriter(buf)
+	if err := tw.WriteHeader(&tar.Header{
+		Name: file.Name(),
+		Mode: 0777,
+		Size: info.Size(),
+	}); err != nil {
+		return fmt.Errorf("failed to write archive header: %v", err)
+	}
+	n, err := io.Copy(tw, file)
+	if err != nil {
+		return fmt.Errorf("failed to write file to archive: %v", err)
+	}
+	if n != info.Size() {
+		return errors.New("short-write copying to archive")
+	}
+	if err := tw.Close(); err != nil {
+		return fmt.Errorf("failed to close archive: %v", err)
+	}
+	return dockerClient.Upload(ctx, container, "/", buf)
+}
+
+func fatal(format string, v ...interface{}) {
+	file, err := os.OpenFile("/dev/termination-log", os.O_WRONLY|os.O_CREATE, 0666)
+	if err == nil {
+		fmt.Fprintf(file, format, v...)
+		errClose := file.Close()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close termination file: %v", errClose)
+		}
+	}
+	fmt.Fprintf(os.Stderr, format, v...)
 	os.Exit(1)
 }

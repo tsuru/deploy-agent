@@ -55,8 +55,8 @@ func (f *executorFS) ReadFile(name string) ([]byte, error) {
 	out := new(bytes.Buffer)
 	errOut := new(bytes.Buffer)
 	opts := exec.ExecuteOptions{
-		Cmd:    "cat",
-		Args:   []string{name},
+		Cmd:    "/bin/sh",
+		Args:   []string{"-c", fmt.Sprintf("cat %s", name)},
 		Stdout: out,
 		Stderr: errOut,
 	}
@@ -67,22 +67,32 @@ func (f *executorFS) ReadFile(name string) ([]byte, error) {
 }
 
 func (f *executorFS) CheckFile(name string) (bool, error) {
+	outErr := new(bytes.Buffer)
 	opts := exec.ExecuteOptions{
-		Cmd:  "stat",
-		Args: []string{name},
+		Cmd:    "/bin/sh",
+		Args:   []string{"-c", fmt.Sprintf("stat %s", name)},
+		Stderr: outErr,
 	}
 	if err := f.executor.Execute(opts); err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "no such") {
+		errOut := outErr.String()
+		if strings.Contains(strings.ToLower(errOut), "no such") {
 			return false, nil
 		}
-		return false, err
+		return false, fmt.Errorf("error checking file %v: %v. Output: %v", name, err, errOut)
 	}
 	return true, nil
 }
 
 func (f *executorFS) RemoveFile(name string) error {
 	return f.executor.Execute(exec.ExecuteOptions{
-		Cmd:  "rm",
-		Args: []string{name},
+		Cmd:  "/bin/sh",
+		Args: []string{"-c", fmt.Sprintf("rm %s", name)},
+	})
+}
+
+func (f *executorFS) CreateDir(dirname string) error {
+	return f.executor.Execute(exec.ExecuteOptions{
+		Cmd:  "/bin/sh",
+		Args: []string{"-c", fmt.Sprintf("mkdir -p %s", dirname)},
 	})
 }
