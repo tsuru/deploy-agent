@@ -5,6 +5,8 @@
 package main
 
 import (
+	"os"
+
 	"github.com/tsuru/deploy-agent/internal/tsuru"
 	"github.com/tsuru/tsuru/exec"
 )
@@ -14,7 +16,7 @@ func build(c tsuru.Client, appName string, cmd []string, fs Filesystem, executor
 	if err != nil {
 		return err
 	}
-	return execScript(cmd, envs, nil, fs, executor)
+	return execScript(cmd, envs, os.Stdout, fs, executor)
 }
 
 func deploy(c tsuru.Client, appName string, fs Filesystem, executor exec.Executor) error {
@@ -24,7 +26,7 @@ func deploy(c tsuru.Client, appName string, fs Filesystem, executor exec.Executo
 		return err
 	}
 	diff, firstDeploy, err := readDiffDeploy(fs)
-	if !firstDeploy || err != nil {
+	if !firstDeploy && err == nil {
 		err = c.SendDiffDeploy(diff, appName)
 		if err != nil {
 			return err

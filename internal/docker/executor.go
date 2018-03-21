@@ -6,7 +6,7 @@ package docker
 
 import (
 	"fmt"
-	"os"
+	"strings"
 
 	"github.com/fsouza/go-dockerclient"
 	"github.com/tsuru/tsuru/exec"
@@ -19,18 +19,15 @@ type Executor struct {
 }
 
 func (d *Executor) Execute(opts exec.ExecuteOptions) error {
-	if opts.Stdout == nil {
-		opts.Stdout = os.Stdout
-	}
-	if opts.Stderr == nil {
-		opts.Stderr = os.Stderr
-	}
 	cmd := append([]string{opts.Cmd}, opts.Args...)
+	if cmd[0] != "/bin/sh" && (opts.Dir != "" || len(opts.Envs) > 0) {
+		cmd = append([]string{"/bin/sh", "-c"}, strings.Join(cmd, " "))
+	}
 	if opts.Dir != "" {
-		cmd = append([]string{"/bin/sh", "-c", "cd", opts.Dir, "&&"}, cmd...)
+		cmd = append(cmd[:2], fmt.Sprintf("cd %s && %s", opts.Dir, strings.Join(cmd[2:], " ")))
 	}
 	if len(opts.Envs) > 0 {
-		cmd = append([]string{"/bin/sh", "-c", "export"}, append(opts.Envs, cmd...)...)
+		cmd = append(cmd[:2], fmt.Sprintf("env %s && %s", strings.Join(opts.Envs, " "), strings.Join(cmd[2:], " ")))
 	}
 	e, err := d.Client.api.CreateExec(docker.CreateExecOptions{
 		Container:    d.ContainerID,
@@ -46,8 +43,6 @@ func (d *Executor) Execute(opts exec.ExecuteOptions) error {
 		OutputStream: opts.Stdout,
 		InputStream:  opts.Stdin,
 		ErrorStream:  opts.Stderr,
-		Tty:          true,
-		RawTerminal:  true,
 	})
 	if err != nil {
 		return err
@@ -57,7 +52,7 @@ func (d *Executor) Execute(opts exec.ExecuteOptions) error {
 		return err
 	}
 	if execData.ExitCode != 0 {
-		return fmt.Errorf("container exited with error: %v", execData.ExitCode)
+		return fmt.Errorf("unexpected exit code %#+v while running %v", execData.ExitCode, cmd)
 	}
 	return nil
 }

@@ -7,6 +7,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -106,11 +107,20 @@ func (c *Client) Push(ctx context.Context, authConfig AuthConfig, img Image) err
 	opts := docker.PushImageOptions{
 		Name:              img.Name(),
 		Tag:               img.tag,
-		OutputStream:      os.Stdout,
+		OutputStream:      &errorCheckWriter{W: os.Stdout},
 		Context:           ctx,
 		InactivityTimeout: streamInactivityTimeout,
+		RawJSONStream:     true,
 	}
 	return c.api.PushImage(opts, docker.AuthConfiguration(authConfig))
+}
+
+func (c *Client) Upload(ctx context.Context, containerID, path string, inputStream io.Reader) error {
+	opts := docker.UploadToContainerOptions{
+		Path:        path,
+		InputStream: inputStream,
+	}
+	return c.api.UploadToContainer(containerID, opts)
 }
 
 func splitImageName(imageName string) (registry, repo, tag string) {

@@ -37,7 +37,7 @@ func (s *S) TestExecScript(c *check.C) {
 	buf := bytes.NewBufferString("")
 	err := execScript(cmds, envs, buf, s.fs, s.exec)
 	c.Assert(err, check.IsNil)
-	executedCmds := s.exec.GetCommands("/bin/bash")
+	executedCmds := s.exec.GetCommands("/bin/sh")
 	c.Assert(len(executedCmds), check.Equals, 2)
 	dir := executedCmds[0].GetDir()
 	c.Assert(dir, check.Equals, defaultWorkingDir)
@@ -70,7 +70,7 @@ func (s *S) TestExecScriptWorkingDirNotExist(c *check.C) {
 	}}
 	err = execScript(cmds, envs, nil, s.fs, s.exec)
 	c.Assert(err, check.IsNil)
-	executedCmds := s.exec.GetCommands("/bin/bash")
+	executedCmds := s.exec.GetCommands("/bin/sh")
 	c.Assert(len(executedCmds), check.Equals, 1)
 	dir := executedCmds[0].GetDir()
 	c.Assert(dir, check.Equals, "/")
@@ -126,7 +126,7 @@ func (s *S) TestHooks(c *check.C) {
 	}}
 	err := buildHooks(tsuruYaml, envs, s.fs, s.exec)
 	c.Assert(err, check.IsNil)
-	executedCmds := s.exec.GetCommands("/bin/bash")
+	executedCmds := s.exec.GetCommands("/bin/sh")
 	c.Assert(len(executedCmds), check.Equals, 2)
 	args := executedCmds[0].GetArgs()
 	expectedArgs := []string{"-lc", "ls"}
