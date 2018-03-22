@@ -26,6 +26,16 @@ func (s *S) SetUpTest(c *check.C) {
 	s.exec = &exectest.FakeExecutor{}
 }
 
+type fakeAsUserExecutor struct {
+	*exectest.FakeExecutor
+	ranAsUser string
+}
+
+func (f *fakeAsUserExecutor) ExecuteAsUser(user string, opts exec.ExecuteOptions) error {
+	f.ranAsUser = user
+	return f.FakeExecutor.Execute(opts)
+}
+
 func (s *S) TestChangeUserWithAnotherUID(c *check.C) {
 	executor, err := ChangeUser(s.exec, []bind.EnvVar{
 		{Name: "TSURU_OS_UID", Value: "1234"},
@@ -103,4 +113,22 @@ func (s *S) TestUserExecutorExecute(c *check.C) {
 	c.Assert(args, check.DeepEquals, []string{
 		"-u", "#999", "--", "mycmd", "arg1", "arg2",
 	})
+}
+
+func (s *S) TestUserExecutorExecuteAsUser(c *check.C) {
+	base := fakeAsUserExecutor{FakeExecutor: s.exec}
+	exe := userExecutor{
+		baseExecutor: &base,
+		uid:          999,
+	}
+	err := exe.Execute(exec.ExecuteOptions{
+		Cmd:  "mycmd",
+		Args: []string{"arg1", "arg2"},
+	})
+	c.Assert(err, check.IsNil)
+	c.Assert(base.ranAsUser, check.DeepEquals, "999")
+	cmds := s.exec.GetCommands("mycmd")
+	c.Assert(cmds, check.HasLen, 1)
+	args := cmds[0].GetArgs()
+	c.Assert(args, check.DeepEquals, []string{"arg1", "arg2"})
 }

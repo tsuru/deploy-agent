@@ -98,6 +98,10 @@ func (e *userExecutor) Execute(opts exec.ExecuteOptions) error {
 	}); ok {
 		return ue.ExecuteAsUser(strconv.Itoa(e.uid), opts)
 	}
+	return e.ExecuteAsUser(strconv.Itoa(e.uid), opts)
+}
+
+func (e *userExecutor) ExecuteAsUser(user string, opts exec.ExecuteOptions) error {
 	args := []string{
 		"-u", fmt.Sprintf("#%d", e.uid), "--", opts.Cmd,
 	}
