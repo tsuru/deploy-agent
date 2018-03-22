@@ -5,13 +5,9 @@
 package main
 
 import (
-	"archive/tar"
-	"bytes"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -71,27 +67,21 @@ func main() {
 		if err != nil {
 			fatal("failed to create docker client: %v", err)
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
-		mainContainer, err := getMainContainer(ctx, dockerClient)
-		cancel()
+		sideCar := docker.Sidecar{Client: dockerClient}
+		executor, err = sideCar.ExecutorForUser(config.RunAsUser)
 		if err != nil {
-			fatal("failed to get main container: %v", err)
-		}
-		executor = &docker.Executor{
-			Client:      dockerClient,
-			ContainerID: mainContainer.ID,
-			DefaultUser: config.RunAsUser,
+			fatal("failed to obtain executor for sidecar: %v", err)
 		}
 		filesystem = &executorFS{executor: executor}
-		err = uploadFile(context.Background(), dockerClient, mainContainer.ID, config.InputFile)
+		err = sideCar.UploadToMainContainer(context.Background(), config.InputFile)
 		if err != nil {
 			fatal("failed to upload input file: %v", err)
 		}
 		defer func() {
 			fmt.Println("---- Building application image ----")
-			img, err := dockerClient.Commit(context.Background(), mainContainer.ID, config.DestinationImage)
+			img, err := sideCar.CommitMainContainer(context.Background(), config.DestinationImage)
 			if err != nil {
-				fatal("error commiting image %v: %v", config.DestinationImage, err)
+				fatal("failed to commit main container: %v", err)
 			}
 			err = dockerClient.Tag(context.Background(), img)
 			if err != nil {
@@ -138,68 +128,6 @@ func main() {
 	if err != nil {
 		fatal("[deploy-agent] error: %v", err)
 	}
-}
-
-func getMainContainer(ctx context.Context, dockerClient *docker.Client) (docker.Container, error) {
-	hostname, err := os.Hostname()
-	if err != nil {
-		return docker.Container{}, fmt.Errorf("failed to get hostname: %v", err)
-	}
-	for {
-		containers, err := dockerClient.ListContainersByLabels(ctx, map[string]string{
-			"io.kubernetes.container.name": hostname,
-			"io.kubernetes.pod.name":       hostname,
-		})
-		if err != nil {
-			return docker.Container{}, fmt.Errorf("failed to get containers: %v", err)
-		}
-		if len(containers) == 1 {
-			return containers[0], nil
-		}
-		select {
-		case <-ctx.Done():
-			return docker.Container{}, ctx.Err()
-		case <-time.After(time.Second * 1):
-		}
-	}
-}
-
-func uploadFile(ctx context.Context, dockerClient *docker.Client, container, inputFile string) error {
-	file, err := os.Open(inputFile)
-	if err != nil {
-		return fmt.Errorf("failed to open input file %q: %v", inputFile, err)
-	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "error closing file %q: %v", inputFile, err)
-		}
-	}()
-	info, err := file.Stat()
-	if err != nil {
-		return fmt.Errorf("failed to stat input file: %v", err)
-	}
-	buf := new(bytes.Buffer)
-	tw := tar.NewWriter(buf)
-	if err := tw.WriteHeader(&tar.Header{
-		Name: file.Name(),
-		Mode: 0666,
-		Size: info.Size(),
-	}); err != nil {
-		return fmt.Errorf("failed to write archive header: %v", err)
-	}
-	defer func() {
-		if err := tw.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "error closing archive: %v", err)
-		}
-	}()
-	n, err := io.Copy(tw, file)
-	if err != nil {
-		return fmt.Errorf("failed to write file to archive: %v", err)
-	}
-	if n != info.Size() {
-		return errors.New("short-write copying to archive")
-	}
-	return dockerClient.Upload(ctx, container, "/", buf)
 }
 
 func fatal(format string, v ...interface{}) {
