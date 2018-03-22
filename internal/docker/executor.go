@@ -16,13 +16,15 @@ import (
 type Executor struct {
 	ContainerID string
 	Client      *Client
+	DefaultUser string
 }
 
 func (d *Executor) Execute(opts exec.ExecuteOptions) error {
+	return d.ExecuteAsUser(d.DefaultUser, opts)
+}
+
+func (d *Executor) ExecuteAsUser(user string, opts exec.ExecuteOptions) error {
 	cmd := append([]string{opts.Cmd}, opts.Args...)
-	if cmd[0] != "/bin/sh" && (opts.Dir != "" || len(opts.Envs) > 0) {
-		cmd = append([]string{"/bin/sh", "-c"}, strings.Join(cmd, " "))
-	}
 	if opts.Dir != "" {
 		cmd = append(cmd[:2], fmt.Sprintf("cd %s && %s", opts.Dir, strings.Join(cmd[2:], " ")))
 	}
@@ -35,6 +37,7 @@ func (d *Executor) Execute(opts exec.ExecuteOptions) error {
 		AttachStdin:  opts.Stdin != nil,
 		AttachStdout: opts.Stdout != nil,
 		AttachStderr: opts.Stderr != nil,
+		User:         user,
 	})
 	if err != nil {
 		return err

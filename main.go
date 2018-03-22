@@ -34,6 +34,7 @@ type Config struct {
 	RegistryAuthPass    string `split_words:"true"`
 	RegistryAuthUser    string `split_words:"true"`
 	RegistryAddress     string `split_words:"true"`
+	RunAsUser           string `split_words:"true"`
 }
 
 func main() {
@@ -76,7 +77,11 @@ func main() {
 		if err != nil {
 			fatal("failed to get main container: %v", err)
 		}
-		executor = &docker.Executor{Client: dockerClient, ContainerID: mainContainer.ID}
+		executor = &docker.Executor{
+			Client:      dockerClient,
+			ContainerID: mainContainer.ID,
+			DefaultUser: config.RunAsUser,
+		}
 		filesystem = &executorFS{executor: executor}
 		err = uploadFile(context.Background(), dockerClient, mainContainer.ID, config.InputFile)
 		if err != nil {

@@ -93,6 +93,11 @@ type userExecutor struct {
 }
 
 func (e *userExecutor) Execute(opts exec.ExecuteOptions) error {
+	if ue, ok := e.baseExecutor.(interface {
+		ExecuteAsUser(string, exec.ExecuteOptions) error
+	}); ok {
+		return ue.ExecuteAsUser(strconv.Itoa(e.uid), opts)
+	}
 	args := []string{
 		"-u", fmt.Sprintf("#%d", e.uid), "--", opts.Cmd,
 	}
