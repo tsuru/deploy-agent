@@ -165,7 +165,7 @@ func uploadFile(ctx context.Context, dockerClient *docker.Client, container, inp
 		return fmt.Errorf("failed to open input file %q: %v", inputFile, err)
 	}
 	defer func() {
-		if file.Close() != nil {
+		if err := file.Close(); err != nil {
 			fmt.Fprintf(os.Stderr, "error closing file %q: %v", inputFile, err)
 		}
 	}()
@@ -177,20 +177,22 @@ func uploadFile(ctx context.Context, dockerClient *docker.Client, container, inp
 	tw := tar.NewWriter(buf)
 	if err := tw.WriteHeader(&tar.Header{
 		Name: file.Name(),
-		Mode: 0777,
+		Mode: 0666,
 		Size: info.Size(),
 	}); err != nil {
 		return fmt.Errorf("failed to write archive header: %v", err)
 	}
+	defer func() {
+		if err := tw.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "error closing archive: %v", err)
+		}
+	}()
 	n, err := io.Copy(tw, file)
 	if err != nil {
 		return fmt.Errorf("failed to write file to archive: %v", err)
 	}
 	if n != info.Size() {
 		return errors.New("short-write copying to archive")
-	}
-	if err := tw.Close(); err != nil {
-		return fmt.Errorf("failed to close archive: %v", err)
 	}
 	return dockerClient.Upload(ctx, container, "/", buf)
 }
