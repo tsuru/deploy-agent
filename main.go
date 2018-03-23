@@ -67,11 +67,11 @@ func main() {
 		if err != nil {
 			fatal("failed to create docker client: %v", err)
 		}
-		sideCar := docker.Sidecar{Client: dockerClient}
-		executor, err = sideCar.ExecutorForUser(config.RunAsUser)
+		sideCar, err := docker.NewSidecar(dockerClient)
 		if err != nil {
-			fatal("failed to obtain executor for sidecar: %v", err)
+			fatal("failed to create sidecar: %v", err)
 		}
+		executor = sideCar.ExecutorForUser(config.RunAsUser)
 		filesystem = &executorFS{executor: executor}
 		err = sideCar.UploadToMainContainer(context.Background(), config.InputFile)
 		if err != nil {

@@ -20,12 +20,23 @@ type Sidecar struct {
 	mainContainer Container
 }
 
-func (s *Sidecar) CommitMainContainer(ctx context.Context, image string) (Image, error) {
-	if s.mainContainer.ID == "" {
-		if err := s.setup(); err != nil {
-			return Image{}, err
+// NewSidecar initializes a Sidecar
+func NewSidecar(client *Client) (*Sidecar, error) {
+	if client == nil {
+		var err error
+		client, err = NewClient("")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create docker client: %v", err)
 		}
 	}
+	sidecar := Sidecar{Client: client}
+	if err := sidecar.setup(); err != nil {
+		return nil, err
+	}
+	return &sidecar, nil
+}
+
+func (s *Sidecar) CommitMainContainer(ctx context.Context, image string) (Image, error) {
 	img, err := s.Client.Commit(ctx, s.mainContainer.ID, image)
 	if err != nil {
 		return Image{}, fmt.Errorf("error commiting image %v: %v", image, err)
@@ -35,11 +46,6 @@ func (s *Sidecar) CommitMainContainer(ctx context.Context, image string) (Image,
 
 // UploadToMainContainer uploads a file to the main container
 func (s *Sidecar) UploadToMainContainer(ctx context.Context, fileName string) error {
-	if s.mainContainer.ID == "" {
-		if err := s.setup(); err != nil {
-			return err
-		}
-	}
 	file, err := os.Open(fileName)
 	if err != nil {
 		return fmt.Errorf("failed to open input file %q: %v", fileName, err)
@@ -77,27 +83,15 @@ func (s *Sidecar) UploadToMainContainer(ctx context.Context, fileName string) er
 	return s.Client.Upload(ctx, s.mainContainer.ID, "/", buf)
 }
 
-func (s *Sidecar) ExecutorForUser(user string) (exec.Executor, error) {
-	if s.mainContainer.ID == "" {
-		if err := s.setup(); err != nil {
-			return nil, err
-		}
-	}
+func (s *Sidecar) ExecutorForUser(user string) exec.Executor {
 	return &Executor{
 		Client:      s.Client,
 		ContainerID: s.mainContainer.ID,
 		DefaultUser: user,
-	}, nil
+	}
 }
 
 func (s *Sidecar) setup() error {
-	if s.Client == nil {
-		dockerClient, err := NewClient("")
-		if err != nil {
-			return fmt.Errorf("failed to create docker client: %v", err)
-		}
-		s.Client = dockerClient
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	mainContainer, err := getMainContainer(ctx, s.Client)
 	cancel()
