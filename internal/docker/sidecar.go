@@ -21,6 +21,11 @@ type Sidecar struct {
 }
 
 func (s *Sidecar) CommitMainContainer(ctx context.Context, image string) (Image, error) {
+	if s.mainContainer.ID == "" {
+		if err := s.setup(); err != nil {
+			return Image{}, err
+		}
+	}
 	img, err := s.Client.Commit(ctx, s.mainContainer.ID, image)
 	if err != nil {
 		return Image{}, fmt.Errorf("error commiting image %v: %v", image, err)
