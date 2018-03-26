@@ -9,19 +9,20 @@ import (
 	"io"
 	"os"
 	"time"
-
-	"github.com/tsuru/tsuru/exec"
 )
 
 type Sidecar struct {
-	Client *Client
+	// Executor proxies commands to the primary container
+	Executor
 
-	// mainContainer is the main container running alongside this sidecar
-	mainContainer Container
+	client *Client
+
+	// primaryContainer is the container running alongside this sidecar
+	primaryContainer Container
 }
 
 // NewSidecar initializes a Sidecar
-func NewSidecar(client *Client) (*Sidecar, error) {
+func NewSidecar(client *Client, user string) (*Sidecar, error) {
 	if client == nil {
 		var err error
 		client, err = NewClient("")
@@ -29,23 +30,28 @@ func NewSidecar(client *Client) (*Sidecar, error) {
 			return nil, fmt.Errorf("failed to create docker client: %v", err)
 		}
 	}
-	sidecar := Sidecar{Client: client}
+	sidecar := Sidecar{client: client}
 	if err := sidecar.setup(); err != nil {
 		return nil, err
+	}
+	sidecar.Executor = Executor{
+		Client:      sidecar.client,
+		ContainerID: sidecar.primaryContainer.ID,
+		DefaultUser: user,
 	}
 	return &sidecar, nil
 }
 
-func (s *Sidecar) CommitMainContainer(ctx context.Context, image string) (Image, error) {
-	img, err := s.Client.Commit(ctx, s.mainContainer.ID, image)
+func (s *Sidecar) CommitPrimaryContainer(ctx context.Context, image string) (Image, error) {
+	img, err := s.client.Commit(ctx, s.primaryContainer.ID, image)
 	if err != nil {
 		return Image{}, fmt.Errorf("error commiting image %v: %v", image, err)
 	}
 	return img, nil
 }
 
-// UploadToMainContainer uploads a file to the main container
-func (s *Sidecar) UploadToMainContainer(ctx context.Context, fileName string) error {
+// UploadToPrimaryContainer uploads a file to the primary container
+func (s *Sidecar) UploadToPrimaryContainer(ctx context.Context, fileName string) error {
 	file, err := os.Open(fileName)
 	if err != nil {
 		return fmt.Errorf("failed to open input file %q: %v", fileName, err)
@@ -80,29 +86,21 @@ func (s *Sidecar) UploadToMainContainer(ctx context.Context, fileName string) er
 	if n != info.Size() {
 		return errors.New("short-write copying to archive")
 	}
-	return s.Client.Upload(ctx, s.mainContainer.ID, "/", buf)
-}
-
-func (s *Sidecar) ExecutorForUser(user string) exec.Executor {
-	return &Executor{
-		Client:      s.Client,
-		ContainerID: s.mainContainer.ID,
-		DefaultUser: user,
-	}
+	return s.client.Upload(ctx, s.primaryContainer.ID, "/", buf)
 }
 
 func (s *Sidecar) setup() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
-	mainContainer, err := getMainContainer(ctx, s.Client)
+	mainContainer, err := getPrimaryContainer(ctx, s.client)
 	cancel()
 	if err != nil {
 		return fmt.Errorf("failed to get main container: %v", err)
 	}
-	s.mainContainer = mainContainer
+	s.primaryContainer = mainContainer
 	return nil
 }
 
-func getMainContainer(ctx context.Context, dockerClient *Client) (Container, error) {
+func getPrimaryContainer(ctx context.Context, dockerClient *Client) (Container, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return Container{}, fmt.Errorf("failed to get hostname: %v", err)

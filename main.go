@@ -67,19 +67,19 @@ func main() {
 		if err != nil {
 			fatal("failed to create docker client: %v", err)
 		}
-		sideCar, err := docker.NewSidecar(dockerClient)
+		sideCar, err := docker.NewSidecar(dockerClient, config.RunAsUser)
 		if err != nil {
 			fatal("failed to create sidecar: %v", err)
 		}
-		executor = sideCar.ExecutorForUser(config.RunAsUser)
-		filesystem = &executorFS{executor: executor}
-		err = sideCar.UploadToMainContainer(context.Background(), config.InputFile)
+		executor = sideCar
+		filesystem = &executorFS{executor: sideCar}
+		err = sideCar.UploadToPrimaryContainer(context.Background(), config.InputFile)
 		if err != nil {
 			fatal("failed to upload input file: %v", err)
 		}
 		defer func() {
 			fmt.Println("---- Building application image ----")
-			img, err := sideCar.CommitMainContainer(context.Background(), config.DestinationImage)
+			img, err := sideCar.CommitPrimaryContainer(context.Background(), config.DestinationImage)
 			if err != nil {
 				fatal("failed to commit main container: %v", err)
 			}
