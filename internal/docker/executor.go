@@ -29,7 +29,7 @@ func (d *Executor) ExecuteAsUser(user string, opts exec.ExecuteOptions) error {
 		cmd = append(cmd[:2], fmt.Sprintf("cd %s && %s", opts.Dir, strings.Join(cmd[2:], " ")))
 	}
 	if len(opts.Envs) > 0 {
-		cmd = append(cmd[:2], fmt.Sprintf("env %s && %s", strings.Join(opts.Envs, " "), strings.Join(cmd[2:], " ")))
+		cmd = append(cmd[:2], fmt.Sprintf("%s %s", strings.Join(opts.Envs, " "), strings.Join(cmd[2:], " ")))
 	}
 	e, err := d.Client.api.CreateExec(docker.CreateExecOptions{
 		Container:    d.ContainerID,
