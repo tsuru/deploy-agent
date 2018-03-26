@@ -5,11 +5,9 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/kelseyhightower/envconfig"
 	"github.com/tsuru/deploy-agent/internal/docker"
@@ -67,46 +65,16 @@ func main() {
 		if err != nil {
 			fatal("failed to create docker client: %v", err)
 		}
-		sideCar, err := docker.NewSidecar(dockerClient, config.RunAsUser)
+		sideCar, err := setupSidecar(dockerClient, config)
 		if err != nil {
 			fatal("failed to create sidecar: %v", err)
 		}
 		executor = sideCar
 		filesystem = &executorFS{executor: sideCar}
-		err = sideCar.UploadToPrimaryContainer(context.Background(), config.InputFile)
-		if err != nil {
-			fatal("failed to upload input file: %v", err)
-		}
-		defer func() {
-			fmt.Println("---- Building application image ----")
-			img, err := sideCar.CommitPrimaryContainer(context.Background(), config.DestinationImage)
-			if err != nil {
-				fatal("failed to commit main container: %v", err)
-			}
-			err = dockerClient.Tag(context.Background(), img)
-			if err != nil {
-				fatal("error tagging image %v: %v", img, err)
-			}
-			fmt.Printf(" ---> Sending image to repository (%s)\n", img)
-			authConfig := docker.AuthConfig{
-				Username:      config.RegistryAuthUser,
-				Password:      config.RegistryAuthPass,
-				Email:         config.RegistryAuthEmail,
-				ServerAddress: config.RegistryAddress,
-			}
-			for i := 0; i < config.RegistryPushRetries; i++ {
-				err = dockerClient.Push(context.Background(), authConfig, img)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Could not send image, trying again. Original error: %v\n", err)
-					time.Sleep(time.Second)
-					continue
-				}
-				break
-			}
-			if err != nil {
-				fatal("Error pushing image: %v", err)
-			}
-		}()
+		// we defer the call to pushSidecar so the normal build/deploy steps are executed
+		// by the sidecar executor. This will only be executed if those steps finish without
+		// any error the call to fatal() exits.
+		defer pushSidecar(dockerClient, sideCar, config, os.Stdout)
 	}
 
 	switch command[len(command)-1] {
