@@ -31,10 +31,7 @@ func deploy(c tsuru.Client, appName string, fs Filesystem, executor exec.Executo
 		log.Fatal(err)
 	}
 	diff, firstDeploy, err := readDiffDeploy(fs)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if !firstDeploy {
+	if !firstDeploy || err != nil {
 		err = c.SendDiffDeploy(diff, appName)
 		if err != nil {
 			log.Fatal(err)
