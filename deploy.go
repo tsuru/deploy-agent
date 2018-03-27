@@ -82,10 +82,7 @@ func pushSidecar(dockerClient *docker.Client, sideCar *docker.Sidecar, config Co
 		Email:         config.RegistryAuthEmail,
 		ServerAddress: config.RegistryAddress,
 	}
-	if err := tagAndPush(dockerClient, img, authConfig, config.RegistryPushRetries, w); err != nil {
-		return fmt.Errorf("Error pushing image: %v", err)
-	}
-	return nil
+	return tagAndPush(dockerClient, img, authConfig, config.RegistryPushRetries, w)
 }
 
 func tagAndPush(dockerClient *docker.Client, img docker.Image, auth docker.AuthConfig, retries int, w io.Writer) error {
