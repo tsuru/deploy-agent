@@ -71,8 +71,11 @@ func setupSidecar(dockerClient *docker.Client, config Config) (*docker.Sidecar, 
 
 // pushSidecar commits the sidecar primary container, tags and pushes its image
 func pushSidecar(dockerClient *docker.Client, sideCar *docker.Sidecar, config Config, w io.Writer) error {
+	if len(config.DestinationImages) == 0 {
+		return nil
+	}
 	fmt.Fprintln(w, "---- Building application image ----")
-	img, err := sideCar.CommitPrimaryContainer(context.Background(), config.DestinationImage)
+	imgID, err := sideCar.CommitPrimaryContainer(context.Background(), config.DestinationImages[0])
 	if err != nil {
 		return fmt.Errorf("failed to commit main container: %v", err)
 	}
@@ -82,11 +85,16 @@ func pushSidecar(dockerClient *docker.Client, sideCar *docker.Sidecar, config Co
 		Email:         config.RegistryAuthEmail,
 		ServerAddress: config.RegistryAddress,
 	}
-	return tagAndPush(dockerClient, img, authConfig, config.RegistryPushRetries, w)
+	for _, destImg := range config.DestinationImages {
+		if err := tagAndPush(dockerClient, imgID, destImg, authConfig, config.RegistryPushRetries, w); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func tagAndPush(dockerClient *docker.Client, img docker.Image, auth docker.AuthConfig, retries int, w io.Writer) error {
-	err := dockerClient.Tag(context.Background(), img)
+func tagAndPush(dockerClient *docker.Client, imgID, imageName string, auth docker.AuthConfig, retries int, w io.Writer) error {
+	img, err := dockerClient.Tag(context.Background(), imgID, imageName)
 	if err != nil {
 		return fmt.Errorf("error tagging image %v: %v", img, err)
 	}

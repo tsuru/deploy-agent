@@ -129,12 +129,7 @@ func (s *S) TestClientCommit(c *check.C) {
 	c.Assert(err, check.IsNil)
 	dockerImage, err := client.api.InspectImage("admin/app-myapp:v23-builder")
 	c.Assert(err, check.IsNil)
-	c.Assert(img, check.DeepEquals, Image{
-		ID:         dockerImage.ID,
-		registry:   "10.200.10.1:5000",
-		repository: "admin/app-myapp",
-		tag:        "v23-builder",
-	})
+	c.Assert(img, check.DeepEquals, dockerImage.ID)
 }
 
 func (s *S) TestClientTag(c *check.C) {
@@ -142,9 +137,9 @@ func (s *S) TestClientTag(c *check.C) {
 	c.Assert(err, check.IsNil)
 	contID := s.addTestContainer(c, "my-cont", "my-img")
 
-	img, err := client.Commit(context.Background(), contID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
+	imgID, err := client.Commit(context.Background(), contID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
 	c.Assert(err, check.IsNil)
-	err = client.Tag(context.Background(), img)
+	img, err := client.Tag(context.Background(), imgID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
 	c.Assert(err, check.IsNil)
 	dockerImage, err := client.api.InspectImage("10.200.10.1:5000/admin/app-myapp:v23-builder")
 	c.Assert(err, check.IsNil)
@@ -156,9 +151,9 @@ func (s *S) TestClientPush(c *check.C) {
 	c.Assert(err, check.IsNil)
 	contID := s.addTestContainer(c, "my-cont", "my-img")
 
-	img, err := client.Commit(context.Background(), contID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
+	imgID, err := client.Commit(context.Background(), contID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
 	c.Assert(err, check.IsNil)
-	err = client.Tag(context.Background(), img)
+	img, err := client.Tag(context.Background(), imgID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
 	c.Assert(err, check.IsNil)
 	err = client.Push(context.Background(), AuthConfig{}, img)
 	c.Assert(err, check.IsNil)
