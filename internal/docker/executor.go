@@ -6,6 +6,7 @@ package docker
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/fsouza/go-dockerclient"
 	"github.com/tsuru/tsuru/exec"
@@ -18,11 +19,19 @@ type Executor struct {
 }
 
 func (d *Executor) Execute(opts exec.ExecuteOptions) error {
+	if opts.Stdout == nil {
+		opts.Stdout = os.Stdout
+	}
+	if opts.Stderr == nil {
+		opts.Stderr = os.Stderr
+	}
 	cmd := append([]string{opts.Cmd}, opts.Args...)
 	if opts.Dir != "" {
-		cmd = append([]string{"cd", opts.Dir, "&&"}, cmd...)
+		cmd = append([]string{"/bin/sh", "-c", "cd", opts.Dir, "&&"}, cmd...)
 	}
-	// TODO: Envs for API pre v1.25
+	if len(opts.Envs) > 0 {
+		cmd = append([]string{"/bin/sh", "-c", "export"}, append(opts.Envs, cmd...)...)
+	}
 	e, err := d.Client.api.CreateExec(docker.CreateExecOptions{
 		Container:    d.ContainerID,
 		Cmd:          cmd,
