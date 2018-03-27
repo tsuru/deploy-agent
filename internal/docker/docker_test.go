@@ -52,3 +52,25 @@ func (s *S) TestGetContainersByLabel(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(containers, check.DeepEquals, []Container{{ID: cont.ID}})
 }
+
+func (s *S) TestSplitImageName(c *check.C) {
+	tt := []struct {
+		image  string
+		exReg  string
+		exRepo string
+		exTag  string
+	}{
+		{
+			image:  "10.200.10.1:5000/admin/app-myapp:v23-builder",
+			exReg:  "10.200.10.1:5000",
+			exRepo: "admin/app-myapp",
+			exTag:  "v23-builder",
+		},
+	}
+	for _, t := range tt {
+		reg, repo, tag := splitImageName(t.image)
+		c.Assert(reg, check.Equals, t.exReg, check.Commentf("image: %s", t.image))
+		c.Assert(repo, check.Equals, t.exRepo, check.Commentf("image: %s", t.image))
+		c.Assert(tag, check.Equals, t.exTag, check.Commentf("image: %s", t.image))
+	}
+}
