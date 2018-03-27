@@ -28,6 +28,22 @@ jobs:
     script: make test
     env: GOARCH=386
     go: "master"
+  - stage: integration
+    script: make integration
+    env: GOARCH=386
+    go: "1.10.x"
+  - stage: integration
+    script: make integration
+    env: GOARCH=amd64
+    go: "1.10.x"
+  - stage: integration
+    script: make integration
+    env: GOARCH=amd64
+    go: "master"
+  - stage: integration
+    script: make integration
+    env: GOARCH=386
+    go: "master"
   - stage: push to docker
     script:
     - docker login -u $DOCKER_USER -p $DOCKER_PASS
