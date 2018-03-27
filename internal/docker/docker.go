@@ -74,7 +74,7 @@ func (c *Client) ListContainersByLabels(ctx context.Context, labels map[string]s
 	return conts, err
 }
 
-func (c *Client) Commit(ctx context.Context, containerID, image string) (Image, error) {
+func (c *Client) Commit(ctx context.Context, containerID, image string) (string, error) {
 	registry, repo, tag := splitImageName(image)
 	img := Image{
 		registry:   registry,
@@ -88,14 +88,16 @@ func (c *Client) Commit(ctx context.Context, containerID, image string) (Image, 
 		Context:    ctx,
 	})
 	if err != nil {
-		return Image{}, err
+		return "", err
 	}
-	img.ID = commitedImg.ID
-	return img, err
+	return commitedImg.ID, err
 }
 
-func (c *Client) Tag(ctx context.Context, img Image) error {
-	return c.api.TagImage(img.ID, docker.TagImageOptions{
+// Tag tags the image given by imgID with the given imageName
+func (c *Client) Tag(ctx context.Context, imgID, imageName string) (Image, error) {
+	reg, rep, tag := splitImageName(imageName)
+	img := Image{registry: reg, repository: rep, tag: tag, ID: imgID}
+	return img, c.api.TagImage(img.ID, docker.TagImageOptions{
 		Repo:    img.Name(),
 		Tag:     img.tag,
 		Force:   true,

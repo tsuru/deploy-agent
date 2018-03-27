@@ -42,12 +42,12 @@ func NewSidecar(client *Client, user string) (*Sidecar, error) {
 	return &sidecar, nil
 }
 
-func (s *Sidecar) CommitPrimaryContainer(ctx context.Context, image string) (Image, error) {
-	img, err := s.client.Commit(ctx, s.primaryContainer.ID, image)
+func (s *Sidecar) CommitPrimaryContainer(ctx context.Context, image string) (string, error) {
+	id, err := s.client.Commit(ctx, s.primaryContainer.ID, image)
 	if err != nil {
-		return Image{}, fmt.Errorf("error commiting image %v: %v", image, err)
+		return "", fmt.Errorf("error commiting image %v: %v", image, err)
 	}
-	return img, nil
+	return id, nil
 }
 
 // UploadToPrimaryContainer uploads a file to the primary container

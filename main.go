@@ -19,16 +19,16 @@ import (
 const version = "0.2.8"
 
 type Config struct {
-	DockerHost          string `envconfig:"DOCKER_HOST"`
-	RunAsSidecar        bool   `split_words:"true"`
-	DestinationImage    string `split_words:"true"`
-	InputFile           string `split_words:"true"`
-	RegistryPushRetries int    `split_words:"true" default:"3"`
-	RegistryAuthEmail   string `split_words:"true"`
-	RegistryAuthPass    string `split_words:"true"`
-	RegistryAuthUser    string `split_words:"true"`
-	RegistryAddress     string `split_words:"true"`
-	RunAsUser           string `split_words:"true"`
+	DockerHost          string   `envconfig:"DOCKER_HOST"`
+	RunAsSidecar        bool     `split_words:"true"`
+	DestinationImages   []string `split_words:"true"`
+	InputFile           string   `split_words:"true"`
+	RegistryPushRetries int      `split_words:"true" default:"3"`
+	RegistryAuthEmail   string   `split_words:"true"`
+	RegistryAuthPass    string   `split_words:"true"`
+	RegistryAuthUser    string   `split_words:"true"`
+	RegistryAddress     string   `split_words:"true"`
+	RunAsUser           string   `split_words:"true"`
 }
 
 func main() {
