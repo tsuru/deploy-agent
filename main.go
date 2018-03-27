@@ -5,10 +5,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"time"
 
+	"github.com/tsuru/deploy-agent/internal/docker"
 	"github.com/tsuru/deploy-agent/internal/tsuru"
 	"github.com/tsuru/tsuru/exec"
 	"github.com/tsuru/tsuru/fs"
@@ -36,8 +40,62 @@ func main() {
 	appName := os.Args[3]
 	command := os.Args[4:]
 
-	filesystem := &localFS{Fs: fs.OsFs{}}
-	executor := &exec.OsExecutor{}
+	var filesystem Filesystem = &localFS{Fs: fs.OsFs{}}
+	var executor exec.Executor = &exec.OsExecutor{}
+
+	sideCar := os.Getenv("DEPLOYAGENT_RUN_AS_SIDECAR") == "true"
+
+	if sideCar {
+		dockerClient, err := docker.NewClient(os.Getenv("DOCKER_HOST"))
+		if err != nil {
+			fatal("failed to create docker client: %v", err)
+
+		}
+		hostname, err := os.Hostname()
+		if err != nil {
+			fatal("failed to get hostname: %v", err)
+		}
+		timeout := time.After(time.Second * 30)
+		var containers []docker.Container
+	loop:
+		for {
+			containers, err = dockerClient.ListContainersByLabels(map[string]string{
+				"io.kubernetes.container.name": hostname,
+				"io.kubernetes.pod.name":       hostname,
+			})
+			if err != nil {
+				fatal("failed to get containers: %v", err)
+			}
+			select {
+			case <-timeout:
+				break loop
+			case <-time.After(time.Second * 3):
+				break
+			}
+		}
+		if len(containers) != 1 {
+			fatal("failed to get main container from sidecar, got %v.", containers)
+		}
+		executor = &docker.Executor{Client: dockerClient, ContainerID: containers[0].ID}
+		filesystem = &executorFS{executor: executor}
+		defer func() {
+			fmt.Println("---- Building application image ----")
+			imgName := os.Getenv("DEPLOYAGENT_DST_IMAGE")
+			img, err := dockerClient.Commit(context.Background(), containers[0].ID, imgName)
+			if err != nil {
+				fatal("error commiting image %v: %v", imgName, err)
+			}
+			err = dockerClient.Tag(context.Background(), img)
+			if err != nil {
+				fatal("error tagging image %v: %v", img, err)
+			}
+			fmt.Printf(" ---> Sending image to repository (%s)\n", img)
+			err = dockerClient.Push(context.Background(), img)
+			if err != nil {
+				fatal("error pushing image %v: %v", img, err)
+			}
+		}()
+	}
 
 	switch command[len(command)-1] {
 	case "build":
@@ -52,4 +110,22 @@ func main() {
 		build(c, appName, command, filesystem, executor)
 		deploy(c, appName, filesystem, executor)
 	}
+}
+
+func fatal(format string, v ...interface{}) {
+	var w io.Writer = os.Stderr
+	file, err := os.OpenFile("/dev/termination-log", os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		fmt.Fprint(w, "failed to open termination-log file")
+	} else {
+		w = file
+		defer func() {
+			errClose := file.Close()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to close termination file: %v", errClose)
+			}
+		}()
+	}
+	fmt.Fprintf(w, format, v...)
+	os.Exit(1)
 }
