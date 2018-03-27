@@ -6,6 +6,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -60,7 +61,7 @@ func (f *executorFS) ReadFile(name string) ([]byte, error) {
 		Stderr: errOut,
 	}
 	if err := f.executor.Execute(opts); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error reading file %v: %v. output: %v", name, err, errOut.String())
 	}
 	return out.Bytes(), nil
 }
