@@ -54,6 +54,93 @@ func (s *S) TestSidecarUploadToPrimaryContainerIntegration(c *check.C) {
 	c.Assert(errOutput, check.DeepEquals, "")
 }
 
+func (s *S) TestSidecarExecuteIntegration(c *check.C) {
+	checkSkip(c)
+
+	dClient, err := NewClient("")
+	c.Assert(err, check.IsNil)
+
+	pContID, err := setupPrimaryContainer(c, dClient)
+	defer func(id string) {
+		if id != "" {
+			dClient.api.RemoveContainer(docker.RemoveContainerOptions{ID: id, Force: true})
+		}
+	}(pContID)
+	c.Assert(err, check.IsNil)
+
+	sidecar, err := NewSidecar(dClient, "")
+	c.Assert(err, check.IsNil)
+
+	tt := []struct {
+		Name string
+		Cmd  string
+		Args []string
+		Envs []string
+		Dir  string
+
+		expectedOut    string
+		expectedErrOut string
+	}{
+		{
+			Name:        "simple",
+			Cmd:         "/bin/sh",
+			Args:        []string{"-lc", "echo simple"},
+			expectedOut: "simple\n",
+		},
+		{
+			Name:        "simple-non-bash",
+			Cmd:         "echo",
+			Args:        []string{"simple"},
+			expectedOut: "simple\n",
+		},
+		{
+			Name:        "change-dir",
+			Cmd:         "/bin/sh",
+			Args:        []string{"-lc", "pwd"},
+			Dir:         "/home/application",
+			expectedOut: "/home/application\n",
+		},
+		{
+			Name:        "change-dir-non-bash",
+			Cmd:         "pwd",
+			Dir:         "/home/application",
+			expectedOut: "/home/application\n",
+		},
+		{
+			Name:        "env",
+			Cmd:         "/bin/sh",
+			Args:        []string{"-lc", "echo $MYENV"},
+			Envs:        []string{"MYENV=myval", "ANOTHERENV=anotherval"},
+			expectedOut: "myval\n",
+		},
+		{
+			Name:        "env-non-bash",
+			Cmd:         "echo",
+			Args:        []string{"$MYENV"},
+			Envs:        []string{"MYENV=myval", "ANOTHERENV=anotherval"},
+			expectedOut: "myval\n",
+		},
+	}
+
+	for _, t := range tt {
+		outBuff := new(bytes.Buffer)
+		errBuff := new(bytes.Buffer)
+		err = sidecar.Execute(exec.ExecuteOptions{
+			Cmd:    t.Cmd,
+			Args:   t.Args,
+			Envs:   t.Envs,
+			Dir:    t.Dir,
+			Stdout: outBuff,
+			Stderr: errBuff,
+		})
+		out, errOutput := outBuff.String(), errBuff.String()
+		c.Check(err, check.IsNil, check.Commentf("[%v] error checking file uploaded: %v. Output: %v. Err output: %v", t.Name, err, out, errOutput))
+		c.Check(out, check.DeepEquals, t.expectedOut, check.Commentf("[%v] unexpected output. Err output: %v", t.Name, errOutput))
+		c.Check(errOutput, check.DeepEquals, t.expectedErrOut, check.Commentf("[%v] unexpected error output", t.Name))
+	}
+
+}
+
 func setupPrimaryContainer(c *check.C, dClient *Client) (string, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
