@@ -6,6 +6,7 @@ package docker
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/fsouza/go-dockerclient"
@@ -25,11 +26,19 @@ func (d *Executor) Execute(opts exec.ExecuteOptions) error {
 
 func (d *Executor) ExecuteAsUser(user string, opts exec.ExecuteOptions) error {
 	cmd := append([]string{opts.Cmd}, opts.Args...)
+	binary := filepath.Base(cmd[0])
+	if binary != "bash" && binary != "sh" {
+		cmd = append([]string{"/bin/sh", "-lc"}, strings.Join(cmd, " "))
+	}
 	if opts.Dir != "" {
 		cmd = append(cmd[:2], fmt.Sprintf("cd %s && %s", opts.Dir, strings.Join(cmd[2:], " ")))
 	}
 	if len(opts.Envs) > 0 {
-		cmd = append(cmd[:2], fmt.Sprintf("%s %s", strings.Join(opts.Envs, " "), strings.Join(cmd[2:], " ")))
+		var exports []string
+		for _, e := range opts.Envs {
+			exports = append(exports, fmt.Sprintf("export %s && ", e))
+		}
+		cmd = append(cmd[:2], fmt.Sprintf("%s %s", strings.Join(exports, ""), strings.Join(cmd[2:], " ")))
 	}
 	e, err := d.Client.api.CreateExec(docker.CreateExecOptions{
 		Container:    d.ContainerID,

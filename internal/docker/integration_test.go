@@ -120,6 +120,22 @@ func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 			Envs:        []string{"MYENV=myval", "ANOTHERENV=anotherval"},
 			expectedOut: "myval\n",
 		},
+		{
+			Name:        "dir-env",
+			Cmd:         "/bin/sh",
+			Args:        []string{"-lc", "pwd"},
+			Envs:        []string{"MYDIR=/etc"},
+			Dir:         "$MYDIR",
+			expectedOut: "/etc\n",
+		},
+
+		{
+			Name:        "dir-env-non-bash",
+			Cmd:         "pwd",
+			Envs:        []string{"MYDIR=/etc"},
+			Dir:         "$MYDIR",
+			expectedOut: "/etc\n",
+		},
 	}
 
 	for _, t := range tt {
