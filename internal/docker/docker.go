@@ -8,6 +8,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -18,6 +20,9 @@ import (
 const (
 	defaultEndpoint         = "unix:///var/run/docker.sock"
 	streamInactivityTimeout = time.Minute
+
+	dialTimeout = 10 * time.Second
+	fullTimeout = 1 * time.Minute
 )
 
 type AuthConfig docker.AuthConfiguration
@@ -53,6 +58,17 @@ func NewClient(endpoint string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	dialer := &net.Dialer{
+		Timeout:   dialTimeout,
+		KeepAlive: 30 * time.Second,
+	}
+	cli.WithTransport(func() *http.Transport {
+		return &http.Transport{
+			Dial:                dialer.Dial,
+			TLSHandshakeTimeout: dialTimeout,
+		}
+	})
+	cli.SetTimeout(fullTimeout)
 	return &Client{
 		api: cli,
 	}, nil
