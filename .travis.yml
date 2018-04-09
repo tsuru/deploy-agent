@@ -49,13 +49,13 @@ jobs:
     - docker login -u $DOCKER_USER -p $DOCKER_PASS
     - if [ -n "$TRAVIS_TAG" ]; then make TAG=$TRAVIS_TAG push; else make push; fi
     go: "1.10.x"
-    if: branch = master AND NOT type = pull_request
+    if: (NOT type IN (pull_request)) AND (branch = master)
   - stage: push to packagecloud
-    script: 
+    script:
     - if [ -n "$TRAVIS_TAG" ]; then curl -sL https://raw.githubusercontent.com/tsuru/push-to-packagecloud/master/push.sh | PACKAGE_NAME=deploy-agent bash; fi
     go: "1.10.x"
-    env: 
-      - GOARCH=amd64 
+    env:
+      - GOARCH=amd64
       - GO_FOR_RELEASE=1.10
     if: tag IS present
 matrix:
