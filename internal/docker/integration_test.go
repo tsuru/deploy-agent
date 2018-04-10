@@ -3,16 +3,12 @@ package docker
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os"
-	"time"
 
-	"github.com/fsouza/go-dockerclient"
+	"github.com/tsuru/deploy-agent/internal/docker/testing"
 	"github.com/tsuru/tsuru/exec"
 	"gopkg.in/check.v1"
 )
-
-const primaryImage = "tsuru/base-platform"
 
 func checkSkip(c *check.C) {
 	if os.Getenv("DEPLOYAGENT_INTEGRATION") == "" {
@@ -26,12 +22,8 @@ func (s *S) TestSidecarUploadToPrimaryContainerIntegration(c *check.C) {
 	dClient, err := NewClient("")
 	c.Assert(err, check.IsNil)
 
-	pContID, err := setupPrimaryContainer(c, dClient)
-	defer func(id string) {
-		if id != "" {
-			dClient.api.RemoveContainer(docker.RemoveContainerOptions{ID: id, Force: true})
-		}
-	}(pContID)
+	_, cleanup, err := testing.SetupPrimaryContainer(c)
+	defer cleanup()
 	c.Assert(err, check.IsNil)
 
 	sidecar, err := NewSidecar(dClient, "")
@@ -60,12 +52,8 @@ func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 	dClient, err := NewClient("")
 	c.Assert(err, check.IsNil)
 
-	pContID, err := setupPrimaryContainer(c, dClient)
-	defer func(id string) {
-		if id != "" {
-			dClient.api.RemoveContainer(docker.RemoveContainerOptions{ID: id, Force: true})
-		}
-	}(pContID)
+	_, cleanup, err := testing.SetupPrimaryContainer(c)
+	defer cleanup()
 	c.Assert(err, check.IsNil)
 
 	sidecar, err := NewSidecar(dClient, "")
@@ -162,12 +150,8 @@ func (s *S) TestSidecarExecuteAsUserIntegration(c *check.C) {
 	dClient, err := NewClient("")
 	c.Assert(err, check.IsNil)
 
-	pContID, err := setupPrimaryContainer(c, dClient)
-	defer func(id string) {
-		if id != "" {
-			dClient.api.RemoveContainer(docker.RemoveContainerOptions{ID: id, Force: true})
-		}
-	}(pContID)
+	_, cleanup, err := testing.SetupPrimaryContainer(c)
+	defer cleanup()
 	c.Assert(err, check.IsNil)
 
 	sidecar, err := NewSidecar(dClient, "")
@@ -196,54 +180,4 @@ func (s *S) TestSidecarExecuteAsUserIntegration(c *check.C) {
 		c.Check(err, check.IsNil, check.Commentf("[%v] error running as user: %v", t.user, err))
 		c.Check(out, check.DeepEquals, t.expectedOutput, check.Commentf("[%v] unexpected output. Err output: %v", t.user, errOutput))
 	}
-}
-
-func setupPrimaryContainer(c *check.C, dClient *Client) (string, error) {
-	hostname, err := os.Hostname()
-	if err != nil {
-		return "", fmt.Errorf("error getting hostname: %v", err)
-	}
-
-	err = dClient.api.PullImage(docker.PullImageOptions{Repository: primaryImage}, docker.AuthConfiguration{})
-	if err != nil {
-		return "", fmt.Errorf("error pulling image %v: %v", primaryImage, err)
-	}
-
-	pCont, err := dClient.api.CreateContainer(docker.CreateContainerOptions{
-		Config: &docker.Config{
-			Image: primaryImage,
-			Cmd:   []string{"/bin/sh", "-lc", "while true; do sleep 10; done"},
-			Labels: map[string]string{
-				"io.kubernetes.container.name": hostname,
-				"io.kubernetes.pod.name":       hostname,
-			},
-		},
-	})
-
-	if err != nil {
-		return "", fmt.Errorf("error creating primary container: %v", err)
-	}
-
-	err = dClient.api.StartContainer(pCont.ID, nil)
-	if err != nil {
-		return pCont.ID, fmt.Errorf("error starting primary container: %v", err)
-	}
-
-	timeout := time.After(time.Second * 15)
-	for {
-		c, err := dClient.api.InspectContainer(pCont.ID)
-		if err != nil {
-			return pCont.ID, fmt.Errorf("error inspecting primary container: %v", err)
-		}
-		if c.State.Running {
-			break
-		}
-		select {
-		case <-time.After(time.Second):
-		case <-timeout:
-			return pCont.ID, fmt.Errorf("timeout waiting for primary container to run")
-		}
-	}
-
-	return pCont.ID, nil
 }

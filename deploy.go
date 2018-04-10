@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -64,7 +65,7 @@ func setupSidecar(dockerClient *docker.Client, config Config) (*docker.Sidecar, 
 	}
 	err = sideCar.UploadToPrimaryContainer(context.Background(), config.InputFile)
 	if err != nil {
-		fatal("failed to upload input file: %v", err)
+		fatalf("failed to upload input file: %v", err)
 	}
 	return sideCar, nil
 }
@@ -79,6 +80,10 @@ func pushSidecar(dockerClient *docker.Client, sideCar *docker.Sidecar, config Co
 	if err != nil {
 		return fmt.Errorf("failed to commit main container: %v", err)
 	}
+	return tagAndPushDestinations(dockerClient, imgID, config, w)
+}
+
+func tagAndPushDestinations(dockerClient *docker.Client, srcImgID string, config Config, w io.Writer) error {
 	authConfig := docker.AuthConfig{
 		Username:      config.RegistryAuthUser,
 		Password:      config.RegistryAuthPass,
@@ -86,7 +91,7 @@ func pushSidecar(dockerClient *docker.Client, sideCar *docker.Sidecar, config Co
 		ServerAddress: config.RegistryAddress,
 	}
 	for _, destImg := range config.DestinationImages {
-		if err := tagAndPush(dockerClient, imgID, destImg, authConfig, config.RegistryPushRetries, w); err != nil {
+		if err := tagAndPush(dockerClient, srcImgID, destImg, authConfig, config.RegistryPushRetries, w); err != nil {
 			return err
 		}
 	}
@@ -110,6 +115,38 @@ func tagAndPush(dockerClient *docker.Client, imgID, imageName string, auth docke
 	}
 	if err != nil {
 		return fmt.Errorf("Error pushing image: %v", err)
+	}
+	return nil
+}
+
+func inspect(dockerClient *docker.Client, image string, filesystem Filesystem, w io.Writer, errW io.Writer) error {
+	imgInspect, err := dockerClient.Inspect(context.Background(), image)
+	if err != nil {
+		return fmt.Errorf("failed to inspect image %q: %v", image, err)
+	}
+	tsuruYaml, err := loadTsuruYaml(filesystem)
+	if err != nil {
+		return fmt.Errorf("failed to load tsuru yaml: %v", err)
+	}
+	procfileDirs := []string{defaultWorkingDir, "/app/user", ""}
+	var procfile string
+	for _, d := range procfileDirs {
+		procfile, err = readProcfile(d, filesystem)
+		if err != nil {
+			// we can safely ignore this error since tsuru may use the image CMD/Entrypoint
+			fmt.Fprintf(errW, "Unable to read procfile in %v: %v", d, err)
+			continue
+		}
+		break
+	}
+	m := map[string]interface{}{
+		"image":     imgInspect,
+		"tsuruYaml": tsuruYaml,
+		"procfile":  procfile,
+	}
+	err = json.NewEncoder(w).Encode(m)
+	if err != nil {
+		return fmt.Errorf("failed to encode inspected data: %v", err)
 	}
 	return nil
 }
