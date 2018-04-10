@@ -183,3 +183,15 @@ func (s *S) TestClientUpload(c *check.C) {
 	err = client.api.DownloadFromContainer(contID, docker.DownloadFromContainerOptions{Path: "/myfile.txt"})
 	c.Assert(err, check.IsNil)
 }
+
+func (s *S) TestInspect(c *check.C) {
+	client, err := NewClient(s.dockerserver.URL())
+	c.Assert(err, check.IsNil)
+
+	err = client.api.PullImage(docker.PullImageOptions{Repository: "image"}, docker.AuthConfiguration{})
+	c.Assert(err, check.IsNil)
+
+	img, err := client.Inspect(context.Background(), "image")
+	c.Assert(err, check.IsNil)
+	c.Assert(img.ID, check.Not(check.DeepEquals), "")
+}

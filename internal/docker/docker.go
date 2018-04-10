@@ -38,6 +38,8 @@ type Image struct {
 	tag        string
 }
 
+type ImageInspect docker.Image
+
 func (i Image) Name() string {
 	return i.registry + "/" + i.repository
 }
@@ -139,6 +141,14 @@ func (c *Client) Upload(ctx context.Context, containerID, path string, inputStre
 		InputStream: inputStream,
 	}
 	return c.api.UploadToContainer(containerID, opts)
+}
+
+func (c *Client) Inspect(ctx context.Context, img string) (ImageInspect, error) {
+	inspect, err := c.api.InspectImage(img)
+	if err != nil {
+		return ImageInspect{}, err
+	}
+	return ImageInspect(*inspect), err
 }
 
 func splitImageName(imageName string) (registry, repo, tag string) {

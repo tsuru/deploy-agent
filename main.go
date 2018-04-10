@@ -22,6 +22,7 @@ type Config struct {
 	DockerHost          string   `envconfig:"DOCKER_HOST"`
 	RunAsSidecar        bool     `split_words:"true"`
 	DestinationImages   []string `split_words:"true"`
+	SourceImage         string   `split_words:"true"`
 	InputFile           string   `split_words:"true"`
 	RegistryPushRetries int      `split_words:"true" default:"3"`
 	RegistryAuthEmail   string   `split_words:"true"`
@@ -46,7 +47,38 @@ func main() {
 	var config Config
 	err := envconfig.Process("deployagent", &config)
 	if err != nil {
-		fatal("error processing environment variables: %v", err)
+		fatalf("error processing environment variables: %v", err)
+	}
+
+	var filesystem Filesystem = &localFS{Fs: fs.OsFs{}}
+	var executor exec.Executor = &exec.OsExecutor{}
+
+	if config.RunAsSidecar {
+		dockerClient, err := docker.NewClient(config.DockerHost)
+		if err != nil {
+			fatalf("failed to create docker client: %v", err)
+		}
+		sideCar, err := setupSidecar(dockerClient, config)
+		if err != nil {
+			fatalf("failed to create sidecar: %v", err)
+		}
+		executor = sideCar
+		filesystem = &executorFS{executor: sideCar}
+
+		// we defer the call to pushSidecar so the normal build/deploy steps are executed
+		// by the sidecar executor. This will only be executed if those steps finish without
+		// any error since the call to fatal() exits.
+		defer pushSidecar(dockerClient, sideCar, config, os.Stdout)
+
+		if config.SourceImage != "" {
+			// build/deploy/deploy-only is not required since this is an image deploy
+			// all we need to do is return the inspected files and image and push the
+			// destination images based on the sidecar container.
+			if err := inspect(dockerClient, config.SourceImage, filesystem, os.Stdout, os.Stderr); err != nil {
+				fatalf("error inspecting sidecar: %v", err)
+			}
+			return
+		}
 	}
 
 	c := tsuru.Client{
@@ -56,26 +88,6 @@ func main() {
 	}
 	appName := os.Args[3]
 	command := os.Args[4:]
-
-	var filesystem Filesystem = &localFS{Fs: fs.OsFs{}}
-	var executor exec.Executor = &exec.OsExecutor{}
-
-	if config.RunAsSidecar {
-		dockerClient, err := docker.NewClient(config.DockerHost)
-		if err != nil {
-			fatal("failed to create docker client: %v", err)
-		}
-		sideCar, err := setupSidecar(dockerClient, config)
-		if err != nil {
-			fatal("failed to create sidecar: %v", err)
-		}
-		executor = sideCar
-		filesystem = &executorFS{executor: sideCar}
-		// we defer the call to pushSidecar so the normal build/deploy steps are executed
-		// by the sidecar executor. This will only be executed if those steps finish without
-		// any error the call to fatal() exits.
-		defer pushSidecar(dockerClient, sideCar, config, os.Stdout)
-	}
 
 	switch command[len(command)-1] {
 	case "build":
@@ -94,11 +106,11 @@ func main() {
 		err = deploy(c, appName, filesystem, executor)
 	}
 	if err != nil {
-		fatal("[deploy-agent] error: %v", err)
+		fatalf("[deploy-agent] error: %v", err)
 	}
 }
 
-func fatal(format string, v ...interface{}) {
+func fatalf(format string, v ...interface{}) {
 	file, err := os.OpenFile("/dev/termination-log", os.O_WRONLY|os.O_CREATE, 0666)
 	if err == nil {
 		fmt.Fprintf(file, format, v...)
