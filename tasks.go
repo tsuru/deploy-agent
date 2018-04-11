@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/tsuru/deploy-agent/internal/docker"
 	"github.com/tsuru/deploy-agent/internal/tsuru"
 	"github.com/tsuru/deploy-agent/internal/user"
 	"github.com/tsuru/tsuru/app/bind"
@@ -47,7 +48,11 @@ func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, fs Filesystem, e
 		formatedEnv := fmt.Sprintf("%s=%s", env.Name, env.Value)
 		formatedEnvs = append(formatedEnvs, formatedEnv)
 	}
-	formatedEnvs = append(formatedEnvs, os.Environ()...)
+	if _, ok := executor.(*docker.Sidecar); !ok {
+		// local environment variables do not make sense on a docker executor
+		// since it runs commands in a different container
+		formatedEnvs = append(formatedEnvs, os.Environ()...)
+	}
 	for _, cmd := range cmds {
 		execOpts := exec.ExecuteOptions{
 			Cmd:    "/bin/sh",
