@@ -154,7 +154,47 @@ func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 		c.Check(out, check.DeepEquals, t.expectedOut, check.Commentf("[%v] unexpected output. Err output: %v", t.Name, errOutput))
 		c.Check(errOutput, check.DeepEquals, t.expectedErrOut, check.Commentf("[%v] unexpected error output", t.Name))
 	}
+}
 
+func (s *S) TestSidecarExecuteAsUserIntegration(c *check.C) {
+	checkSkip(c)
+
+	dClient, err := NewClient("")
+	c.Assert(err, check.IsNil)
+
+	pContID, err := setupPrimaryContainer(c, dClient)
+	defer func(id string) {
+		if id != "" {
+			dClient.api.RemoveContainer(docker.RemoveContainerOptions{ID: id, Force: true})
+		}
+	}(pContID)
+	c.Assert(err, check.IsNil)
+
+	sidecar, err := NewSidecar(dClient, "")
+	c.Assert(err, check.IsNil)
+
+	tt := []struct {
+		user           string
+		expectedOutput string
+	}{
+		{user: "ubuntu", expectedOutput: "ubuntu\n"},
+		{user: "", expectedOutput: "ubuntu\n"},
+		{user: "root", expectedOutput: "root\n"},
+	}
+
+	for _, t := range tt {
+		outBuff := new(bytes.Buffer)
+		errBuff := new(bytes.Buffer)
+		err := sidecar.ExecuteAsUser(t.user, exec.ExecuteOptions{
+			Cmd:    "whoami",
+			Stdout: outBuff,
+			Stderr: errBuff,
+		})
+
+		out, errOutput := outBuff.String(), errBuff.String()
+		c.Check(err, check.IsNil, check.Commentf("[%v] error running as user: %v", t.user, err))
+		c.Check(out, check.DeepEquals, t.expectedOutput, check.Commentf("[%v] unexpected output. Err output: %v", t.user, errOutput))
+	}
 }
 
 func setupPrimaryContainer(c *check.C, dClient *Client) (string, error) {
