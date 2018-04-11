@@ -180,6 +180,7 @@ func (s *S) TestSidecarExecuteAsUserIntegration(c *check.C) {
 		{user: "ubuntu", expectedOutput: "ubuntu\n"},
 		{user: "", expectedOutput: "ubuntu\n"},
 		{user: "root", expectedOutput: "root\n"},
+		{user: "1000", expectedOutput: "ubuntu\n"},
 	}
 
 	for _, t := range tt {
