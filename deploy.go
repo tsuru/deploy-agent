@@ -65,7 +65,7 @@ func setupSidecar(dockerClient *docker.Client, config Config) (*docker.Sidecar, 
 	}
 	err = sideCar.UploadToPrimaryContainer(context.Background(), config.InputFile)
 	if err != nil {
-		fatalf("failed to upload input file: %v", err)
+		return nil, fmt.Errorf("failed to upload input file: %v", err)
 	}
 	return sideCar, nil
 }
