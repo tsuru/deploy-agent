@@ -139,14 +139,14 @@ func inspect(dockerClient *docker.Client, image string, filesystem Filesystem, w
 		}
 		break
 	}
-	m := map[string]interface{}{
-		"image":     imgInspect,
-		"tsuruYaml": tsuruYaml,
-		"procfile":  procfile,
+	m := tsuru.InspectData{
+		TsuruYaml: tsuruYaml,
+		Image:     imgInspect,
+		Procfile:  procfile,
 	}
 	err = json.NewEncoder(w).Encode(m)
 	if err != nil {
-		return fmt.Errorf("failed to encode inspected data: %v", err)
+		return fmt.Errorf("failed to encode inspected data %v: %v", m, err)
 	}
 	return nil
 }

@@ -15,8 +15,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tsuru/deploy-agent/internal/docker"
 	"github.com/tsuru/tsuru/app/bind"
 )
+
+type InspectData struct {
+	Image     docker.ImageInspect
+	TsuruYaml interface{}
+	Procfile  string
+}
 
 type TsuruYaml struct {
 	Hooks       Hook                   `json:"hooks,omitempty"`

@@ -64,12 +64,6 @@ func main() {
 		}
 		executor = sideCar
 		filesystem = &executorFS{executor: sideCar}
-
-		// we defer the call to pushSidecar so the normal build/deploy steps are executed
-		// by the sidecar executor. This will only be executed if those steps finish without
-		// any error since the call to fatal() exits.
-		defer pushSidecar(dockerClient, sideCar, config, os.Stdout)
-
 		if config.SourceImage != "" {
 			// build/deploy/deploy-only is not required since this is an image deploy
 			// all we need to do is return the inspected files and image and push the
@@ -77,8 +71,17 @@ func main() {
 			if err := inspect(dockerClient, config.SourceImage, filesystem, os.Stdout, os.Stderr); err != nil {
 				fatalf("error inspecting sidecar: %v", err)
 			}
+
+			if err := tagAndPushDestinations(dockerClient, config.SourceImage, config, os.Stdout); err != nil {
+				fatalf("error pushing images: %v", err)
+			}
 			return
 		}
+
+		// we defer the call to pushSidecar so the normal build/deploy steps are executed
+		// by the sidecar executor. This will only be executed if those steps finish without
+		// any error since the call to fatal() exits.
+		defer pushSidecar(dockerClient, sideCar, config, os.Stdout)
 	}
 
 	c := tsuru.Client{
