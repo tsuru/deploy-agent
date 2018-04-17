@@ -90,7 +90,7 @@ func (s *Sidecar) UploadToPrimaryContainer(ctx context.Context, fileName string)
 }
 
 func (s *Sidecar) setup() error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
 	mainContainer, err := getPrimaryContainer(ctx, s.client)
 	cancel()
 	if err != nil {
