@@ -150,3 +150,36 @@ func inspect(dockerClient *docker.Client, image string, filesystem Filesystem, w
 	}
 	return nil
 }
+
+func buildAndPush(dockerClient *docker.Client, imageName string, fileName string, config Config, w io.Writer) error {
+	auth := docker.AuthConfig{
+		Username:      config.RegistryAuthUser,
+		Password:      config.RegistryAuthPass,
+		Email:         config.RegistryAuthEmail,
+		ServerAddress: config.RegistryAddress,
+	}
+	file, err := os.Open(fileName)
+	if err != nil {
+		return fmt.Errorf("failed to open input file %q: %v", fileName, err)
+	}
+	defer file.Close()
+	err = dockerClient.BuildImage(context.Background(), imageName, file)
+	if err != nil {
+		return fmt.Errorf("error building image %v: %v", imageName, err)
+	}
+	fmt.Fprintf(w, " ---> Sending image to repository (%s)\n", imageName)
+	img := docker.ParseImageName(imageName)
+	for i := 0; i < config.RegistryPushRetries; i++ {
+		err = dockerClient.Push(context.Background(), auth, img)
+		if err != nil {
+			fmt.Fprintf(w, "Could not send image, trying again. Original error: %v\n", err)
+			time.Sleep(time.Second)
+			continue
+		}
+		break
+	}
+	if err != nil {
+		return fmt.Errorf("Error pushing image: %v", err)
+	}
+	return nil
+}

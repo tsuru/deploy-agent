@@ -93,12 +93,7 @@ func (c *Client) ListContainersByLabels(ctx context.Context, labels map[string]s
 }
 
 func (c *Client) Commit(ctx context.Context, containerID, image string) (string, error) {
-	registry, repo, tag := splitImageName(image)
-	img := Image{
-		registry:   registry,
-		repository: repo,
-		tag:        tag,
-	}
+	img := ParseImageName(image)
 	commitedImg, err := c.api.CommitContainer(docker.CommitContainerOptions{
 		Container:  containerID,
 		Repository: img.repository,
@@ -113,8 +108,8 @@ func (c *Client) Commit(ctx context.Context, containerID, image string) (string,
 
 // Tag tags the image given by imgID with the given imageName
 func (c *Client) Tag(ctx context.Context, imgID, imageName string) (Image, error) {
-	reg, rep, tag := splitImageName(imageName)
-	img := Image{registry: reg, repository: rep, tag: tag, ID: imgID}
+	img := ParseImageName(imageName)
+	img.ID = imgID
 	return img, c.api.TagImage(img.ID, docker.TagImageOptions{
 		Repo:    img.Name(),
 		Tag:     img.tag,
@@ -149,6 +144,30 @@ func (c *Client) Inspect(ctx context.Context, img string) (ImageInspect, error) 
 		return ImageInspect{}, err
 	}
 	return ImageInspect(*inspect), err
+}
+
+func (c *Client) BuildImage(ctx context.Context, imageName string, inputFile io.Reader) error {
+	buildOptions := docker.BuildImageOptions{
+		Name:              imageName,
+		Pull:              true,
+		NoCache:           true,
+		RmTmpContainer:    true,
+		InputStream:       inputFile,
+		OutputStream:      &errorCheckWriter{W: os.Stdout},
+		Context:           ctx,
+		InactivityTimeout: streamInactivityTimeout,
+		RawJSONStream:     true,
+	}
+	return c.api.BuildImage(buildOptions)
+}
+
+func ParseImageName(imageName string) Image {
+	registry, repo, tag := splitImageName(imageName)
+	return Image{
+		registry:   registry,
+		repository: repo,
+		tag:        tag,
+	}
 }
 
 func splitImageName(imageName string) (registry, repo, tag string) {

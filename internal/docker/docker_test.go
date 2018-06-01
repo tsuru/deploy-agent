@@ -195,3 +195,25 @@ func (s *S) TestInspect(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(img.ID, check.Not(check.DeepEquals), "")
 }
+
+func (s *S) TestClientBuildImage(c *check.C) {
+	client, err := NewClient(s.dockerserver.URL())
+	c.Assert(err, check.IsNil)
+
+	data := bytes.NewBuffer([]byte("FROM tsuru/go"))
+	dataSize := int64(data.Len())
+	buf := new(bytes.Buffer)
+	tw := tar.NewWriter(buf)
+	err = tw.WriteHeader(&tar.Header{
+		Name: "Dockerfile",
+		Mode: 0666,
+		Size: dataSize,
+	})
+	c.Assert(err, check.IsNil)
+	defer tw.Close()
+	n, err := io.Copy(tw, data)
+	c.Assert(err, check.IsNil)
+	c.Assert(n, check.Equals, dataSize)
+	err = client.BuildImage(context.Background(), "tsuru/teste-go", buf)
+	c.Assert(err, check.IsNil)
+}
