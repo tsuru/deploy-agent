@@ -124,6 +124,34 @@ func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 			Dir:         "$MYDIR",
 			expectedOut: "/etc\n",
 		},
+		{
+			Name:        "env-with-quotes-non-bash",
+			Cmd:         "echo",
+			Args:        []string{"$MYENV"},
+			Envs:        []string{"MYENV={\"a\": \"b\", \"a2\": \"b2\"}"},
+			expectedOut: "{\"a\": \"b\", \"a2\": \"b2\"}\n",
+		},
+		{
+			Name:        "env-with-quotes",
+			Cmd:         "/bin/sh",
+			Args:        []string{"-lc", "echo $MYENV"},
+			Envs:        []string{"MYENV={\"a\": \"b\", \"a2\": \"b2\"}"},
+			expectedOut: "{\"a\": \"b\", \"a2\": \"b2\"}\n",
+		},
+		{
+			Name:        "env-with-quotes-non-bash",
+			Cmd:         "echo",
+			Args:        []string{"$MYENV"},
+			Envs:        []string{"MYENV={'a': 'b', 'a2': 'b2'}"},
+			expectedOut: "{'a': 'b', 'a2': 'b2'}\n",
+		},
+		{
+			Name:        "env-with-quotes",
+			Cmd:         "/bin/sh",
+			Args:        []string{"-lc", "echo $MYENV"},
+			Envs:        []string{"MYENV={'a': 'b', 'a2': 'b2'}"},
+			expectedOut: "{'a': 'b', 'a2': 'b2'}\n",
+		},
 	}
 
 	for _, t := range tt {
