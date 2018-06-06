@@ -102,13 +102,6 @@ func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 			expectedOut: "myval\n",
 		},
 		{
-			Name:        "env-non-bash",
-			Cmd:         "echo",
-			Args:        []string{"$MYENV"},
-			Envs:        []string{"MYENV=myval", "ANOTHERENV=anotherval"},
-			expectedOut: "myval\n",
-		},
-		{
 			Name:        "dir-env",
 			Cmd:         "/bin/sh",
 			Args:        []string{"-lc", "pwd"},
@@ -125,25 +118,11 @@ func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 			expectedOut: "/etc\n",
 		},
 		{
-			Name:        "env-with-quotes-non-bash",
-			Cmd:         "echo",
-			Args:        []string{"$MYENV"},
-			Envs:        []string{"MYENV={\"a\": \"b\", \"a2\": \"b2\"}"},
-			expectedOut: "{\"a\": \"b\", \"a2\": \"b2\"}\n",
-		},
-		{
 			Name:        "env-with-quotes",
 			Cmd:         "/bin/sh",
 			Args:        []string{"-lc", "echo $MYENV"},
 			Envs:        []string{"MYENV={\"a\": \"b\", \"a2\": \"b2\"}"},
 			expectedOut: "{\"a\": \"b\", \"a2\": \"b2\"}\n",
-		},
-		{
-			Name:        "env-with-quotes-non-bash",
-			Cmd:         "echo",
-			Args:        []string{"$MYENV"},
-			Envs:        []string{"MYENV={'a': 'b', 'a2': 'b2'}"},
-			expectedOut: "{'a': 'b', 'a2': 'b2'}\n",
 		},
 		{
 			Name:        "env-with-quotes",
