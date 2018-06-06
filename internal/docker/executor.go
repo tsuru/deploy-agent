@@ -36,7 +36,7 @@ func (d *Executor) ExecuteAsUser(user string, opts exec.ExecuteOptions) error {
 	if len(opts.Envs) > 0 {
 		var exports []string
 		for _, e := range opts.Envs {
-			exports = append(exports, fmt.Sprintf("export %s && ", e))
+			exports = append(exports, fmt.Sprintf("export %q && ", e))
 		}
 		cmd = append(cmd[:2], fmt.Sprintf("%s %s", strings.Join(exports, ""), strings.Join(cmd[2:], " ")))
 	}
