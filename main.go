@@ -24,7 +24,7 @@ type Config struct {
 	DestinationImages   []string `split_words:"true"`
 	SourceImage         string   `split_words:"true"`
 	InputFile           string   `split_words:"true"`
-	IsFileBuild         bool     `split_words:"true"`
+	DockerfileBuild     bool     `split_words:"true"`
 	RegistryPushRetries int      `split_words:"true" default:"3"`
 	RegistryAuthEmail   string   `split_words:"true"`
 	RegistryAuthPass    string   `split_words:"true"`
@@ -59,7 +59,7 @@ func main() {
 		if err != nil {
 			fatalf("failed to create docker client: %v", err)
 		}
-		if config.IsFileBuild {
+		if config.DockerfileBuild {
 			if err := buildAndPush(dockerClient, config.DestinationImages[0], config.InputFile, config, os.Stdout); err != nil {
 				fatalf("failed to build and push image: %v", err)
 			}
