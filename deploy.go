@@ -103,20 +103,7 @@ func tagAndPush(dockerClient *docker.Client, imgID, imageName string, auth docke
 	if err != nil {
 		return fmt.Errorf("error tagging image %v: %v", img, err)
 	}
-	fmt.Fprintf(w, " ---> Sending image to repository (%s)\n", img)
-	for i := 0; i < retries; i++ {
-		err = dockerClient.Push(context.Background(), auth, img)
-		if err != nil {
-			fmt.Fprintf(w, "Could not send image, trying again. Original error: %v\n", err)
-			time.Sleep(time.Second)
-			continue
-		}
-		break
-	}
-	if err != nil {
-		return fmt.Errorf("Error pushing image: %v", err)
-	}
-	return nil
+	return pushImage(dockerClient, img, auth, retries, w)
 }
 
 func inspect(dockerClient *docker.Client, image string, filesystem Filesystem, w io.Writer, errW io.Writer) error {
@@ -167,9 +154,14 @@ func buildAndPush(dockerClient *docker.Client, imageName string, fileName string
 	if err != nil {
 		return fmt.Errorf("error building image %v: %v", imageName, err)
 	}
-	fmt.Fprintf(w, " ---> Sending image to repository (%s)\n", imageName)
 	img := docker.ParseImageName(imageName)
-	for i := 0; i < config.RegistryPushRetries; i++ {
+	return pushImage(dockerClient, img, auth, config.RegistryPushRetries, w)
+}
+
+func pushImage(dockerClient *docker.Client, img docker.Image, auth docker.AuthConfig, retries int, w io.Writer) error {
+	fmt.Fprintf(w, " ---> Sending image to repository (%s)\n", img)
+	var err error
+	for i := 0; i < retries; i++ {
 		err = dockerClient.Push(context.Background(), auth, img)
 		if err != nil {
 			fmt.Fprintf(w, "Could not send image, trying again. Original error: %v\n", err)
