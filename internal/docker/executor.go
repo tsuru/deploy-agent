@@ -5,10 +5,16 @@
 package docker
 
 import (
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/fsouza/go-dockerclient"
 	"github.com/tsuru/tsuru/exec"
+)
+
+const (
+	timeoutExecWait = time.Minute
 )
 
 // Executor uses docker exec to execute a command in a running docker container
@@ -56,12 +62,30 @@ func (d *Executor) ExecuteAsUser(user string, opts exec.ExecuteOptions) error {
 	if err != nil {
 		return err
 	}
-	execData, err := d.Client.api.InspectExec(e.ID)
+	exitCode, err := waitExecStatus(d.Client.api, e.ID)
 	if err != nil {
 		return err
 	}
-	if execData.ExitCode != 0 {
-		return fmt.Errorf("unexpected exit code %#+v while running %v", execData.ExitCode, cmd)
+	if exitCode != 0 {
+		return fmt.Errorf("unexpected exit code %#+v while running %v", exitCode, cmd)
 	}
 	return nil
+}
+
+func waitExecStatus(client *docker.Client, execID string) (int, error) {
+	timeout := time.After(timeoutExecWait)
+	for {
+		execData, err := client.InspectExec(execID)
+		if err != nil {
+			return 0, err
+		}
+		if !execData.Running {
+			return execData.ExitCode, nil
+		}
+		select {
+		case <-timeout:
+			return 0, errors.New("timeout waiting for exec to finish")
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
 }
