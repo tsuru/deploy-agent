@@ -59,6 +59,13 @@ func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 	sidecar, err := NewSidecar(dClient, "")
 	c.Assert(err, check.IsNil)
 
+	err = sidecar.Execute(exec.ExecuteOptions{
+		Dir:  "/",
+		Cmd:  "/bin/sh",
+		Args: []string{"-c", `echo '#!/bin/bash -el' >/tmp/myscript; echo 'echo hey; exit 0; echo done' >>/tmp/myscript; chmod +x /tmp/myscript`},
+	})
+	c.Assert(err, check.IsNil)
+
 	tt := []struct {
 		Name string
 		Cmd  string
@@ -68,6 +75,7 @@ func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 
 		expectedOut    string
 		expectedErrOut string
+		expectedErr    string
 	}{
 		{
 			Name:        "simple",
@@ -131,6 +139,21 @@ func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 			Envs:        []string{"MYENV={'a': 'b', 'a2': 'b2'}"},
 			expectedOut: "{'a': 'b', 'a2': 'b2'}\n",
 		},
+		{
+			Name:        "exit-with-error",
+			Cmd:         "/bin/sh",
+			Dir:         "/",
+			Args:        []string{"-lc", "exit 99"},
+			expectedErr: `unexpected exit code 99 while running.*`,
+		},
+		{
+			Name:        "env-and-exit",
+			Cmd:         "/bin/sh",
+			Dir:         "/",
+			Args:        []string{"-lc", "/tmp/myscript xxx"},
+			Envs:        []string{"MYENV={}", "OTHERENV=x"},
+			expectedOut: "hey\n",
+		},
 	}
 
 	for _, t := range tt {
@@ -145,7 +168,11 @@ func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 			Stderr: errBuff,
 		})
 		out, errOutput := outBuff.String(), errBuff.String()
-		c.Check(err, check.IsNil, check.Commentf("[%v] error checking file uploaded: %v. Output: %v. Err output: %v", t.Name, err, out, errOutput))
+		if t.expectedErr != "" {
+			c.Check(err, check.ErrorMatches, t.expectedErr)
+		} else {
+			c.Check(err, check.IsNil, check.Commentf("[%v] error checking file uploaded: %v. Output: %v. Err output: %v", t.Name, err, out, errOutput))
+		}
 		c.Check(out, check.DeepEquals, t.expectedOut, check.Commentf("[%v] unexpected output. Err output: %v", t.Name, errOutput))
 		c.Check(errOutput, check.DeepEquals, t.expectedErrOut, check.Commentf("[%v] unexpected error output", t.Name))
 	}
