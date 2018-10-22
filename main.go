@@ -33,6 +33,11 @@ type Config struct {
 	RunAsUser           string   `split_words:"true"`
 }
 
+type sidecarContext struct {
+	docker  *docker.Client
+	sidecar *docker.Sidecar
+}
+
 func main() {
 	var (
 		printVersion bool
@@ -45,50 +50,54 @@ func main() {
 		return
 	}
 
+	err := runAgent()
+	if err != nil {
+		fatalf("[deploy-agent] error: %v", err)
+	}
+}
+
+func runAgent() error {
 	var config Config
 	err := envconfig.Process("deployagent", &config)
 	if err != nil {
-		fatalf("error processing environment variables: %v", err)
+		return fmt.Errorf("error processing environment variables: %v", err)
 	}
 
 	var filesystem Filesystem = &localFS{Fs: fs.OsFs{}}
 	var executor exec.Executor = &exec.OsExecutor{}
 
+	var sidecarCtx *sidecarContext
 	if config.RunAsSidecar {
-		dockerClient, err := docker.NewClient(config.DockerHost)
+		sidecarCtx = &sidecarContext{}
+		sidecarCtx.docker, err = docker.NewClient(config.DockerHost)
 		if err != nil {
-			fatalf("failed to create docker client: %v", err)
+			return fmt.Errorf("failed to create docker client: %v", err)
 		}
 		if config.DockerfileBuild {
-			if err := buildAndPush(dockerClient, config.DestinationImages[0], config.InputFile, config, os.Stdout); err != nil {
-				fatalf("failed to build and push image: %v", err)
+			if err = buildAndPush(sidecarCtx.docker, config.DestinationImages[0], config.InputFile, config, os.Stdout); err != nil {
+				return fmt.Errorf("failed to build and push image: %v", err)
 			}
-			return
+			return nil
 		}
-		sideCar, err := setupSidecar(dockerClient, config)
+		sidecarCtx.sidecar, err = setupSidecar(sidecarCtx.docker, config)
 		if err != nil {
-			fatalf("failed to create sidecar: %v", err)
+			return fmt.Errorf("failed to create sidecar: %v", err)
 		}
-		executor = sideCar
-		filesystem = &executorFS{executor: sideCar}
+		executor = sidecarCtx.sidecar
+		filesystem = &executorFS{executor: sidecarCtx.sidecar}
 		if config.SourceImage != "" {
 			// build/deploy/deploy-only is not required since this is an image deploy
 			// all we need to do is return the inspected files and image and push the
 			// destination images based on the sidecar container.
-			if err := inspect(dockerClient, config.SourceImage, filesystem, os.Stdout, os.Stderr); err != nil {
-				fatalf("error inspecting sidecar: %v", err)
+			if err = inspect(sidecarCtx.docker, config.SourceImage, filesystem, os.Stdout, os.Stderr); err != nil {
+				return fmt.Errorf("error inspecting sidecar: %v", err)
 			}
 
-			if err := tagAndPushDestinations(dockerClient, config.SourceImage, config, os.Stdout); err != nil {
-				fatalf("error pushing images: %v", err)
+			if err = tagAndPushDestinations(sidecarCtx.docker, config.SourceImage, config, os.Stdout); err != nil {
+				return fmt.Errorf("error pushing images: %v", err)
 			}
-			return
+			return nil
 		}
-
-		// we defer the call to pushSidecar so the normal build/deploy steps are executed
-		// by the sidecar executor. This will only be executed if those steps finish without
-		// any error since the call to fatal() exits.
-		defer pushSidecar(dockerClient, sideCar, config, os.Stdout)
 	}
 
 	c := tsuru.Client{
@@ -116,8 +125,16 @@ func main() {
 		err = deploy(c, appName, filesystem, executor)
 	}
 	if err != nil {
-		fatalf("[deploy-agent] error: %v", err)
+		return err
 	}
+
+	if sidecarCtx != nil {
+		err = pushSidecar(sidecarCtx.docker, sidecarCtx.sidecar, config, os.Stdout)
+		if err != nil {
+			return fmt.Errorf("error in commit and push: %v", err)
+		}
+	}
+	return nil
 }
 
 func fatalf(format string, v ...interface{}) {
