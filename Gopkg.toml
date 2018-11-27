@@ -29,6 +29,10 @@
   name = "github.com/fsouza/go-dockerclient"
   branch = "master"
 
+[[constraint]]
+  name = "github.com/ghodss/yaml"
+  branch = "master"
+
 [prune]
   go-tests = true
   unused-packages = true

@@ -13,12 +13,12 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/ghodss/yaml"
 	"github.com/tsuru/deploy-agent/internal/docker"
 	"github.com/tsuru/deploy-agent/internal/tsuru"
 	"github.com/tsuru/deploy-agent/internal/user"
 	"github.com/tsuru/tsuru/app/bind"
 	"github.com/tsuru/tsuru/exec"
-	"gopkg.in/yaml.v2"
 )
 
 var (
