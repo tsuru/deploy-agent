@@ -82,6 +82,12 @@
   revision = "ad1213cc21543085ce0c97f4291994e02b95e459"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/ghodss/yaml"
+  packages = ["."]
+  revision = "c7ce16629ff4cd059ed96ed06419dd3856fd3577"
+
+[[projects]]
   name = "github.com/gogo/protobuf"
   packages = ["proto"]
   revision = "1adfc126b41513cc696b209667c8656ea7aac67c"
@@ -182,14 +188,14 @@
   revision = "20d25e2804050c1cd24a7eea1e7a6447dd0e74ec"
 
 [[projects]]
+  branch = "master"
   name = "gopkg.in/yaml.v2"
   packages = ["."]
-  revision = "7f97868eec74b32b0982dd158a51a446d1da7eb5"
-  version = "v2.1.1"
+  revision = "bec87e4332aede01fb63a4ab299d8af28480cd96"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "5f1091016a34c2598a83bfc114dc300c984b8f9d3ac652aa287d2f74c61a6332"
+  inputs-digest = "04b6310dd2e2f9c66e2755b12302359957a3077e28adf3fb633cda6dbd7f9ad0"
   solver-name = "gps-cdcl"
   solver-version = 1
