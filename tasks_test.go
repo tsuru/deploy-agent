@@ -16,13 +16,6 @@ import (
 	"gopkg.in/check.v1"
 )
 
-func (s *S) TestIsEmpty(c *check.C) {
-	t := tsuru.TsuruYaml{}
-	c.Assert(t.IsEmpty(), check.Equals, true)
-	t.Processes = map[string]string{"web": "python something.py"}
-	c.Assert(t.IsEmpty(), check.Equals, false)
-}
-
 func (s *S) TestExecScript(c *check.C) {
 	cmds := []string{"ls", "ls"}
 	envs := []bind.EnvVar{{
