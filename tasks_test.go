@@ -105,9 +105,9 @@ healthcheck:
 		Healthcheck: map[string]interface{}{
 			"path":             "/test",
 			"method":           "GET",
-			"status":           200,
+			"status":           float64(200),
 			"match":            ".*OK",
-			"allowed_failures": 0,
+			"allowed_failures": float64(0),
 		},
 	}
 	t, err := loadTsuruYaml(s.fs)

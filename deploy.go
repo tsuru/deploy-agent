@@ -26,8 +26,7 @@ func build(c tsuru.Client, appName string, cmd []string, fs Filesystem, executor
 }
 
 func deploy(c tsuru.Client, appName string, fs Filesystem, executor exec.Executor) error {
-	var yamlData tsuru.TsuruYaml
-	envs, err := c.RegisterUnit(appName, yamlData)
+	envs, err := c.RegisterUnit(appName, nil)
 	if err != nil {
 		return err
 	}
@@ -38,7 +37,7 @@ func deploy(c tsuru.Client, appName string, fs Filesystem, executor exec.Executo
 			return err
 		}
 	}
-	yamlData, err = loadTsuruYaml(fs)
+	yamlData, err := loadTsuruYaml(fs)
 	if err != nil {
 		return err
 	}
@@ -50,7 +49,12 @@ func deploy(c tsuru.Client, appName string, fs Filesystem, executor exec.Executo
 	if err != nil {
 		return err
 	}
-	_, err = c.RegisterUnit(appName, yamlData)
+	fullYamlData, err := loadAllTsuruYaml(fs)
+	if err != nil {
+		return err
+	}
+	fullYamlData["processes"] = yamlData.Processes
+	_, err = c.RegisterUnit(appName, fullYamlData)
 	return err
 }
 
@@ -111,7 +115,7 @@ func inspect(dockerClient *docker.Client, image string, filesystem Filesystem, w
 	if err != nil {
 		return fmt.Errorf("failed to inspect image %q: %v", image, err)
 	}
-	tsuruYaml, err := loadTsuruYaml(filesystem)
+	tsuruYaml, err := loadAllTsuruYaml(filesystem)
 	if err != nil {
 		return fmt.Errorf("failed to load tsuru yaml: %v", err)
 	}

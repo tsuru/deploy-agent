@@ -87,10 +87,10 @@ func (c Client) GetAppEnvs(appName string) ([]bind.EnvVar, error) {
 	return envs, nil
 }
 
-func (c Client) RegisterUnit(appName string, customData TsuruYaml) ([]bind.EnvVar, error) {
+func (c Client) RegisterUnit(appName string, customData map[string]interface{}) ([]bind.EnvVar, error) {
 	var err error
 	var yamlData []byte
-	if !customData.IsEmpty() {
+	if len(customData) != 0 {
 		yamlData, err = json.Marshal(customData)
 		if err != nil {
 			return nil, err

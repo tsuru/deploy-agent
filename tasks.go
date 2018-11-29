@@ -88,6 +88,23 @@ func loadTsuruYaml(fs Filesystem) (tsuru.TsuruYaml, error) {
 	return tsuruYamlData, nil
 }
 
+func loadAllTsuruYaml(fs Filesystem) (map[string]interface{}, error) {
+	var tsuruYamlData map[string]interface{}
+	for _, yamlFile := range tsuruYamlFiles {
+		filePath := fmt.Sprintf("%s/%s", defaultWorkingDir, yamlFile)
+		tsuruYaml, err := fs.ReadFile(filePath)
+		if err != nil {
+			continue
+		}
+		err = yaml.Unmarshal(tsuruYaml, &tsuruYamlData)
+		if err != nil {
+			return map[string]interface{}{}, err
+		}
+		break
+	}
+	return tsuruYamlData, nil
+}
+
 func buildHooks(yamlData tsuru.TsuruYaml, envs []bind.EnvVar, fs Filesystem, executor exec.Executor) error {
 	cmds := append([]string{}, yamlData.Hooks.BuildHooks...)
 	fmt.Fprintln(os.Stdout, "---- Running build hooks ----")
