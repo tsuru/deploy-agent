@@ -36,10 +36,6 @@ type Hook struct {
 	Restart    map[string]interface{} `yaml:"restart" json:"restart"`
 }
 
-func (t *TsuruYaml) IsEmpty() bool {
-	return len(t.Hooks.BuildHooks) == 0 && t.Processes == nil
-}
-
 type Client struct {
 	URL     string
 	Token   string
