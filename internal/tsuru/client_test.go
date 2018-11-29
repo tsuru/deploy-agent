@@ -40,7 +40,7 @@ func (s *S) TestClient(c *check.C) {
 			c.Assert(val.Get("customdata"), check.Equals, "")
 		} else {
 			customdata := val.Get("customdata")
-			expected := "{\"hooks\":{\"build\":[\"ls\",\"ls\"],\"restart\":null},\"processes\":{\"web\":\"test\"}}"
+			expected := "{\"hooks\":{\"build\":[\"ls\",\"ls\"]},\"processes\":{\"web\":\"test\"}}"
 			c.Assert(customdata, check.Equals, expected)
 		}
 		envs := []bind.EnvVar{{
@@ -56,9 +56,14 @@ func (s *S) TestClient(c *check.C) {
 		Token:   "test-token",
 		Version: "0.2.1",
 	}
-	_, err := cli.RegisterUnit("test", TsuruYaml{})
+	_, err := cli.RegisterUnit("test", nil)
 	c.Assert(err, check.IsNil)
-	t := TsuruYaml{Hooks: Hook{BuildHooks: []string{"ls", "ls"}}, Processes: map[string]string{"web": "test"}}
+	t := map[string]interface{}{
+		"hooks": map[string]interface{}{
+			"build": []string{"ls", "ls"},
+		},
+		"processes": map[string]string{"web": "test"},
+	}
 	_, err = cli.RegisterUnit("test", t)
 	c.Assert(err, check.IsNil)
 }
