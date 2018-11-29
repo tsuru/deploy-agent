@@ -71,38 +71,27 @@ func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, fs Filesystem, e
 	return nil
 }
 
-func loadTsuruYaml(fs Filesystem) (tsuru.TsuruYaml, error) {
-	var tsuruYamlData tsuru.TsuruYaml
+func loadTsuruYamlRaw(fs Filesystem) ([]byte, error) {
 	for _, yamlFile := range tsuruYamlFiles {
 		filePath := fmt.Sprintf("%s/%s", defaultWorkingDir, yamlFile)
 		tsuruYaml, err := fs.ReadFile(filePath)
-		if err != nil {
-			continue
+		if err == nil {
+			return tsuruYaml, nil
 		}
-		err = yaml.Unmarshal(tsuruYaml, &tsuruYamlData)
-		if err != nil {
-			return tsuru.TsuruYaml{}, err
-		}
-		break
 	}
-	return tsuruYamlData, nil
+	return nil, fmt.Errorf("error loading tsuru yaml file")
 }
 
-func loadAllTsuruYaml(fs Filesystem) (map[string]interface{}, error) {
+func parseTsuruYaml(data []byte) (tsuru.TsuruYaml, error) {
+	var tsuruYamlData tsuru.TsuruYaml
+	err := yaml.Unmarshal(data, &tsuruYamlData)
+	return tsuruYamlData, err
+}
+
+func parseAllTsuruYaml(data []byte) (map[string]interface{}, error) {
 	var tsuruYamlData map[string]interface{}
-	for _, yamlFile := range tsuruYamlFiles {
-		filePath := fmt.Sprintf("%s/%s", defaultWorkingDir, yamlFile)
-		tsuruYaml, err := fs.ReadFile(filePath)
-		if err != nil {
-			continue
-		}
-		err = yaml.Unmarshal(tsuruYaml, &tsuruYamlData)
-		if err != nil {
-			return map[string]interface{}{}, err
-		}
-		break
-	}
-	return tsuruYamlData, nil
+	err := yaml.Unmarshal(data, &tsuruYamlData)
+	return tsuruYamlData, err
 }
 
 func buildHooks(yamlData tsuru.TsuruYaml, envs []bind.EnvVar, fs Filesystem, executor exec.Executor) error {

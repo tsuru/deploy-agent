@@ -69,7 +69,7 @@ func (s *S) TestExecScriptWorkingDirNotExist(c *check.C) {
 	c.Assert(dir, check.Equals, "/")
 }
 
-func (s *S) TestLoadAppYaml(c *check.C) {
+func (s *S) TestLoadTsuruYamlRaw(c *check.C) {
 	tsuruYmlData := `hooks:
   build:
     - test
@@ -82,12 +82,33 @@ healthcheck:
   method: GET
   status: 200
   match: .*OK
-  allowed_failures: 0`
+  allowed_failures: 0
+unknown: ok`
 	tsuruYmlPath := fmt.Sprintf("%s/%s", defaultWorkingDir, "tsuru.yml")
 	s.testFS().FileContent = tsuruYmlData
 	_, err := s.fs.Create(tsuruYmlPath)
 	c.Assert(err, check.IsNil)
 	c.Assert(s.testFS().HasAction(fmt.Sprintf("create %s", tsuruYmlPath)), check.Equals, true)
+	raw, err := loadTsuruYamlRaw(s.fs)
+	c.Assert(err, check.IsNil)
+	c.Assert(string(raw), check.DeepEquals, tsuruYmlData)
+}
+
+func (s *S) TestParseAppYaml(c *check.C) {
+	tsuruYmlData := `hooks:
+  build:
+    - test
+    - another_test
+  restart:
+    before:
+      - static
+healthcheck:
+  path: /test
+  method: GET
+  status: 200
+  match: .*OK
+  allowed_failures: 0
+unknown_field: ignored`
 	expected := tsuru.TsuruYaml{
 		Hooks: tsuru.Hook{
 			BuildHooks: []string{"test", "another_test"},
@@ -103,7 +124,43 @@ healthcheck:
 			"allowed_failures": float64(0),
 		},
 	}
-	t, err := loadTsuruYaml(s.fs)
+	t, err := parseTsuruYaml([]byte(tsuruYmlData))
+	c.Assert(err, check.IsNil)
+	c.Assert(t, check.DeepEquals, expected)
+}
+
+func (s *S) TestParseAllAppYaml(c *check.C) {
+	tsuruYmlData := `hooks:
+  build:
+    - test
+    - another_test
+  restart:
+    before:
+      - static
+healthcheck:
+  path: /test
+  method: GET
+  status: 200
+  match: .*OK
+  allowed_failures: 0
+unknown_field: mapped`
+	expected := map[string]interface{}{
+		"hooks": map[string]interface{}{
+			"build": []interface{}{"test", "another_test"},
+			"restart": map[string]interface{}{
+				"before": []interface{}{"static"},
+			},
+		},
+		"healthcheck": map[string]interface{}{
+			"path":             "/test",
+			"method":           "GET",
+			"status":           float64(200),
+			"match":            ".*OK",
+			"allowed_failures": float64(0),
+		},
+		"unknown_field": "mapped",
+	}
+	t, err := parseAllTsuruYaml([]byte(tsuruYmlData))
 	c.Assert(err, check.IsNil)
 	c.Assert(t, check.DeepEquals, expected)
 }
