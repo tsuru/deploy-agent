@@ -15,36 +15,28 @@ jobs:
   - stage: test
     script: make test
     env: GOARCH=amd64
-    go: "1.10.x"
-  - stage: test
-    script: make test
-    env: GOARCH=386
-    go: "1.10.x"
+    go: "1.11.x"
   - stage: test
     script: make test
     env: GOARCH=amd64
-    go: "master"
-  - stage: test
-    script: make test
-    env: GOARCH=386
     go: "master"
   - stage: integration
     script: make integration
     env: GOARCH=amd64
-    go: "1.10.x"
+    go: "1.11.x"
   - stage: push to docker
     script:
     - echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
     - if [ -n "$TRAVIS_TAG" ]; then make TAG=$TRAVIS_TAG push; else make push; fi
-    go: "1.10.x"
+    go: "1.11.x"
     if: (NOT type IN (pull_request)) AND (branch = master) OR (tag IS present)
   - stage: push to packagecloud
     script:
     - if [ -n "$TRAVIS_TAG" ]; then curl -sL https://raw.githubusercontent.com/tsuru/push-to-packagecloud/master/push.sh | PACKAGE_NAME=deploy-agent bash; fi
-    go: "1.10.x"
+    go: "1.11.x"
     env:
       - GOARCH=amd64
-      - GO_FOR_RELEASE=1.10
+      - GO_FOR_RELEASE=1.11
     if: tag IS present
 matrix:
   allow_failures:
