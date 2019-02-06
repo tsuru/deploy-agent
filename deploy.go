@@ -37,10 +37,7 @@ func deploy(c tsuru.Client, appName string, fs Filesystem, executor exec.Executo
 			return err
 		}
 	}
-	rawYamlData, err := loadTsuruYamlRaw(fs)
-	if err != nil {
-		return err
-	}
+	rawYamlData := loadTsuruYamlRaw(fs)
 	yamlData, err := parseTsuruYaml(rawYamlData)
 	if err != nil {
 		return err
@@ -119,7 +116,7 @@ func inspect(dockerClient *docker.Client, image string, filesystem Filesystem, w
 	if err != nil {
 		return fmt.Errorf("failed to inspect image %q: %v", image, err)
 	}
-	rawYamlData, err := loadTsuruYamlRaw(filesystem)
+	rawYamlData := loadTsuruYamlRaw(filesystem)
 	if err != nil {
 		return err
 	}

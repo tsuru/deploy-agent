@@ -71,15 +71,15 @@ func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, fs Filesystem, e
 	return nil
 }
 
-func loadTsuruYamlRaw(fs Filesystem) ([]byte, error) {
+func loadTsuruYamlRaw(fs Filesystem) []byte {
 	for _, yamlFile := range tsuruYamlFiles {
 		filePath := fmt.Sprintf("%s/%s", defaultWorkingDir, yamlFile)
 		tsuruYaml, err := fs.ReadFile(filePath)
 		if err == nil {
-			return tsuruYaml, nil
+			return tsuruYaml
 		}
 	}
-	return nil, fmt.Errorf("error loading tsuru yaml file")
+	return nil
 }
 
 func parseTsuruYaml(data []byte) (tsuru.TsuruYaml, error) {

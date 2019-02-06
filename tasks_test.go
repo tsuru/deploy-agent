@@ -89,9 +89,13 @@ unknown: ok`
 	_, err := s.fs.Create(tsuruYmlPath)
 	c.Assert(err, check.IsNil)
 	c.Assert(s.testFS().HasAction(fmt.Sprintf("create %s", tsuruYmlPath)), check.Equals, true)
-	raw, err := loadTsuruYamlRaw(s.fs)
-	c.Assert(err, check.IsNil)
+	raw := loadTsuruYamlRaw(s.fs)
 	c.Assert(string(raw), check.DeepEquals, tsuruYmlData)
+}
+
+func (s *S) TestLoadTsuruYamlRawNotFound(c *check.C) {
+	raw := loadTsuruYamlRaw(s.fs)
+	c.Assert(raw, check.IsNil)
 }
 
 func (s *S) TestParseAppYaml(c *check.C) {
@@ -301,4 +305,16 @@ func (s *S) TestReadProcfileNormalizeCRLFToLF(c *check.C) {
 	result, err := readProcfile(procfilePath, s.fs)
 	c.Assert(err, check.IsNil)
 	c.Assert(result, check.Equals, expected)
+}
+
+func (s *S) TestParseTsuruYamlEmpty(c *check.C) {
+	t, err := parseTsuruYaml(nil)
+	c.Assert(err, check.IsNil)
+	c.Assert(t, check.DeepEquals, tsuru.TsuruYaml{})
+}
+
+func (s *S) TestParseAllTsuruYamlEmpty(c *check.C) {
+	t, err := parseAllTsuruYaml(nil)
+	c.Assert(err, check.IsNil)
+	c.Assert(t, check.IsNil)
 }
