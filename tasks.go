@@ -91,6 +91,9 @@ func parseTsuruYaml(data []byte) (tsuru.TsuruYaml, error) {
 func parseAllTsuruYaml(data []byte) (map[string]interface{}, error) {
 	var tsuruYamlData map[string]interface{}
 	err := yaml.Unmarshal(data, &tsuruYamlData)
+	if tsuruYamlData == nil {
+		tsuruYamlData = map[string]interface{}{}
+	}
 	return tsuruYamlData, err
 }
 

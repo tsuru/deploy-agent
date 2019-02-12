@@ -316,5 +316,5 @@ func (s *S) TestParseTsuruYamlEmpty(c *check.C) {
 func (s *S) TestParseAllTsuruYamlEmpty(c *check.C) {
 	t, err := parseAllTsuruYaml(nil)
 	c.Assert(err, check.IsNil)
-	c.Assert(t, check.IsNil)
+	c.Assert(t, check.DeepEquals, map[string]interface{}{})
 }
