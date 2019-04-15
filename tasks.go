@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -24,6 +25,7 @@ import (
 var (
 	defaultWorkingDir = "/home/application/current"
 	tsuruYamlFiles    = []string{"tsuru.yml", "tsuru.yaml", "app.yml", "app.yaml"}
+	configDirs        = []string{defaultWorkingDir, "/app/user", "/"}
 	appEnvsFile       = "/tmp/app_envs"
 )
 
@@ -73,10 +75,12 @@ func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, fs Filesystem, e
 
 func loadTsuruYamlRaw(fs Filesystem) []byte {
 	for _, yamlFile := range tsuruYamlFiles {
-		filePath := fmt.Sprintf("%s/%s", defaultWorkingDir, yamlFile)
-		tsuruYaml, err := fs.ReadFile(filePath)
-		if err == nil {
-			return tsuruYaml
+		for _, dir := range configDirs {
+			path := filepath.Join(dir, yamlFile)
+			tsuruYaml, err := fs.ReadFile(path)
+			if err == nil {
+				return tsuruYaml
+			}
 		}
 	}
 	return nil
@@ -103,18 +107,23 @@ func buildHooks(yamlData tsuru.TsuruYaml, envs []bind.EnvVar, fs Filesystem, exe
 	return execScript(cmds, envs, os.Stdout, fs, executor)
 }
 
-func readProcfile(path string, fs Filesystem) (string, error) {
-	procfile, err := fs.ReadFile(fmt.Sprintf("%v/Procfile", path))
-	if err != nil {
-		return "", err
+func readProcfile(fs Filesystem) (string, error) {
+	var err error
+	for _, dir := range configDirs {
+		path := filepath.Join(dir, "Procfile")
+		var procfile []byte
+		procfile, err = fs.ReadFile(path)
+		if err == nil {
+			return string(bytes.Replace(procfile, []byte("\r\n"), []byte("\n"), -1)), nil
+		}
 	}
-	return string(bytes.Replace(procfile, []byte("\r\n"), []byte("\n"), -1)), nil
+	return "", err
 }
 
 var procfileRegex = regexp.MustCompile(`^([\w-]+):\s*(\S.+)$`)
 
 func loadProcesses(t *tsuru.TsuruYaml, fs Filesystem) error {
-	procfile, err := readProcfile(defaultWorkingDir, fs)
+	procfile, err := readProcfile(fs)
 	if err != nil {
 		return err
 	}

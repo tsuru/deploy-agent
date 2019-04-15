@@ -274,35 +274,59 @@ func (s *S) TestDiffDeploy(c *check.C) {
 }
 
 func (s *S) TestReadProcfileNotFound(c *check.C) {
-	_, err := readProcfile("./fake-path", s.fs)
+	_, err := readProcfile(s.fs)
 	_, ok := err.(syscall.Errno)
 	c.Assert(ok, check.Equals, true)
 }
 
+func (s *S) TestReadProcfileMultiplePaths(c *check.C) {
+	tests := []struct {
+		path string
+	}{
+		{
+			path: "/Procfile",
+		},
+		{
+			path: "/app/user/Procfile",
+		},
+		{
+			path: "/home/application/current/Procfile",
+		},
+	}
+	for i, tt := range tests {
+		c.Log("test", i)
+		procfile, err := s.fs.Create(tt.path)
+		c.Assert(err, check.IsNil)
+		_, err = procfile.Write([]byte(fmt.Sprintf("web: a-%d", i)))
+		c.Assert(err, check.IsNil)
+		result, err := readProcfile(s.fs)
+		c.Assert(err, check.IsNil)
+		c.Assert(result, check.Equals, fmt.Sprintf("web: a-%d", i))
+	}
+}
+
 func (s *S) TestReadProcfileFound(c *check.C) {
 	expected := "web: ls\naxl: \"echo Guns N' Roses\""
-	procfilePath := "."
 	procfileContent := expected
-	procfile, err := s.fs.Create(fmt.Sprintf("%v/Procfile", procfilePath))
+	procfile, err := s.fs.Create("/Procfile")
 	c.Assert(err, check.IsNil)
 	_, err = procfile.Write([]byte(procfileContent))
 	c.Assert(err, check.IsNil)
 	c.Assert(procfile.Close(), check.IsNil)
-	result, err := readProcfile(procfilePath, s.fs)
+	result, err := readProcfile(s.fs)
 	c.Assert(err, check.IsNil)
 	c.Assert(result, check.Equals, expected)
 }
 
 func (s *S) TestReadProcfileNormalizeCRLFToLF(c *check.C) {
-	procfilePath := "."
 	procfileContent := "web: ls\r\nslash: \"echo Guns N' Roses\""
 	expected := "web: ls\nslash: \"echo Guns N' Roses\""
-	procfile, err := s.fs.Create(fmt.Sprintf("%v/Procfile", procfilePath))
+	procfile, err := s.fs.Create("/Procfile")
 	c.Assert(err, check.IsNil)
 	_, err = procfile.Write([]byte(procfileContent))
 	c.Assert(err, check.IsNil)
 	c.Assert(procfile.Close(), check.IsNil)
-	result, err := readProcfile(procfilePath, s.fs)
+	result, err := readProcfile(s.fs)
 	c.Assert(err, check.IsNil)
 	c.Assert(result, check.Equals, expected)
 }
@@ -317,4 +341,56 @@ func (s *S) TestParseAllTsuruYamlEmpty(c *check.C) {
 	t, err := parseAllTsuruYaml(nil)
 	c.Assert(err, check.IsNil)
 	c.Assert(t, check.DeepEquals, map[string]interface{}{})
+}
+
+func (s *S) TestLoadTsuruYamlRawMultiplePaths(c *check.C) {
+	tests := []struct {
+		path string
+	}{
+		{
+			path: "/app.yaml",
+		},
+		{
+			path: "/app/user/app.yaml",
+		},
+		{
+			path: "/home/application/current/app.yaml",
+		},
+		{
+			path: "/app.yml",
+		},
+		{
+			path: "/app/user/app.yml",
+		},
+		{
+			path: "/home/application/current/app.yml",
+		},
+		{
+			path: "/tsuru.yaml",
+		},
+		{
+			path: "/app/user/tsuru.yaml",
+		},
+		{
+			path: "/home/application/current/tsuru.yaml",
+		},
+		{
+			path: "/tsuru.yml",
+		},
+		{
+			path: "/app/user/tsuru.yml",
+		},
+		{
+			path: "/home/application/current/tsuru.yml",
+		},
+	}
+	for i, tt := range tests {
+		c.Log("test", i)
+		config, err := s.fs.Create(tt.path)
+		c.Assert(err, check.IsNil)
+		_, err = config.Write([]byte(fmt.Sprintf("test: a-%d", i)))
+		c.Assert(err, check.IsNil)
+		result := loadTsuruYamlRaw(s.fs)
+		c.Assert(string(result), check.Equals, fmt.Sprintf("test: a-%d", i))
+	}
 }
