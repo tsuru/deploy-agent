@@ -124,16 +124,10 @@ func inspect(dockerClient *docker.Client, image string, filesystem Filesystem, w
 	if err != nil {
 		return fmt.Errorf("failed to load tsuru yaml: %v", err)
 	}
-	procfileDirs := []string{defaultWorkingDir, "/app/user", ""}
-	var procfile string
-	for _, d := range procfileDirs {
-		procfile, err = readProcfile(d, filesystem)
-		if err != nil {
-			// we can safely ignore this error since tsuru may use the image CMD/Entrypoint
-			fmt.Fprintf(errW, "Unable to read procfile in %v: %v", d, err)
-			continue
-		}
-		break
+	procfile, err := readProcfile(filesystem)
+	if err != nil {
+		// we can safely ignore this error since tsuru may use the image CMD/Entrypoint
+		fmt.Fprintf(errW, "Unable to read procfile: %v", err)
 	}
 	m := tsuru.InspectData{
 		TsuruYaml: tsuruYaml,
