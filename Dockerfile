@@ -1,10 +1,10 @@
-FROM golang:1.12.1-alpine as builder
+FROM golang:1.13.1-alpine as builder
 RUN apk add gcc libc-dev --update
 COPY . /go/src/github.com/tsuru/deploy-agent/
 WORKDIR /go/src/github.com/tsuru/deploy-agent/
 RUN go build
 
-FROM docker:1.12.2
+FROM docker:1.11.2
 
 WORKDIR /
 COPY --from=builder /go/src/github.com/tsuru/deploy-agent/deploy-agent /bin/
