@@ -73,12 +73,14 @@ func runAgent() error {
 		if err != nil {
 			return fmt.Errorf("failed to create docker client: %v", err)
 		}
+		// Used mainly for platform build
 		if config.DockerfileBuild {
-			if err = buildAndPush(sidecarCtx.docker, config.DestinationImages[0], config.InputFile, config, os.Stdout); err != nil {
-				return fmt.Errorf("failed to build and push image: %v", err)
+			if err := buildImage(sidecarCtx.docker, config.DestinationImages[0], config.InputFile); err != nil {
+				return fmt.Errorf("failed to build image: %v", err)
 			}
-			return nil
+			return tagAndPushDestinations(sidecarCtx.docker, config.DestinationImages[0], config, os.Stdout)
 		}
+
 		sidecarCtx.sidecar, err = setupSidecar(sidecarCtx.docker, config)
 		if err != nil {
 			return fmt.Errorf("failed to create sidecar: %v", err)
