@@ -141,24 +141,13 @@ func inspect(dockerClient *docker.Client, image string, filesystem Filesystem, w
 	return nil
 }
 
-func buildAndPush(dockerClient *docker.Client, imageName string, fileName string, config Config, w io.Writer) error {
-	auth := docker.AuthConfig{
-		Username:      config.RegistryAuthUser,
-		Password:      config.RegistryAuthPass,
-		Email:         config.RegistryAuthEmail,
-		ServerAddress: config.RegistryAddress,
-	}
+func buildImage(dockerClient *docker.Client, imageName string, fileName string) error {
 	file, err := os.Open(fileName)
 	if err != nil {
 		return fmt.Errorf("failed to open input file %q: %v", fileName, err)
 	}
 	defer file.Close()
-	err = dockerClient.BuildImage(context.Background(), imageName, file)
-	if err != nil {
-		return fmt.Errorf("error building image %v: %v", imageName, err)
-	}
-	img := docker.ParseImageName(imageName)
-	return pushImage(dockerClient, img, auth, config.RegistryPushRetries, w)
+	return dockerClient.BuildImage(context.Background(), imageName, file)
 }
 
 func pushImage(dockerClient *docker.Client, img docker.Image, auth docker.AuthConfig, retries int, w io.Writer) error {
