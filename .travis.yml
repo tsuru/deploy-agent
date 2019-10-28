@@ -9,34 +9,46 @@ env:
   global:
     - secure: "riJQtXxb4BcRRvPW8DRuDZHo37WWedoL/Byx0O211AxIKEaGpnAYPPEu6GK9g6J/J1QOWhMSEKRdas3SlXfH2qc+w02YiX1TS9wlycWc/R4mdz6e3WJ4IkhM9m/WBMTmL4w+IHLN0Sf+V2P6Nl24vdSMSTaS4ygSOKB6GeqqinKk21Zg7f+Wq2Npm3yIiDCE9nwLzKIoY4J004yEHl5dbvR8GkgkGJGZiywF3L7gAJKGvIslLNvgYAJmGgj/LfaC8ds9n4oXmqTW8mIaAFiykZ2XqzzgXAofbQPwIErqhUxsy7y8ZQFViSMbSKCziLV03f1h8Prj5YvL237DgENBerpOZybgftkDwso0nN36ytJBSPFEpd3seMZqvpxNW8eEIi+hs1zpdV+NLhrjuEJfGDWy51yfovt5V+j0wbqsaeTnjE/ysNhJXHtJaW7aNP+hxCSvwLXOP2RyKCpMEJbIGY97OsSV0EHgsFfSU/KjDxOPxdhg5ctUmGAixA+0Ccjv4ov1HmEi+Egg6Vu2FFXcABJOtRhLinm+smYyRNfcVY91tg5ejLm+olQfuiuHqX72oMW5j3C0sZ9qkIqbUHwNcEBjSpKG7vt9T8m62yoaOJ7NzTLKPYmN1m1EZRNerv08h9EUPFygBDl+gLq837Utw8pCIeanmZLUWsqq33mSN3c="
     - secure: "DY13jMRyr5lCrqqlS5fSFLrjJ+uyv0GrXFQJvctGBXi018BE2N3bPUHaLkNapHNbSSstH9bzciMXsvHxADyHJzGF3wIMTSmf91eqxq8F3J2hZaTo+QbPK0I8uYEQPqhpIlLVuP4BViMG8QJ8/44h8rX+kWb+oGwagXncoK/cgxqJ6jnkMkHU3BCAj1neTDEDwzYqFssbndB9rhi6viSI6SM/yebKqkByMK7YoBibXIMjCtGSz0rxB04rWb2tGvu9yslacs9diJeD/wQjyFNz/2iuFQEsWRCaV1HY5SGEm6qCOvRpCgHj7tgwvmt+DLZLIeVwMmAQ+e7dTZoTOWXVDfnFrb74axgl+sPvd1We2QGFOjy/8JIcA9LoggiVAt4WZHOH/gQ/cx8n2y2HPmHRiBvk6COSQEdSWNG0AsTnqO6ml7Osb+SIIyItNsEZ+O2RZNMRsmsHKDTlqw6hBgk7WFjmg3U4M2hNbYX1C/rSvEJRKed4DMgNVDV3mlLvoL6NIO3rKa6zf0Xb2UXKschZRy8CN+sk0ChoalOk3ENSfz4/PIOMN8rR3Nho/GwYRwllG9m+8+57r2N/Y3/cxzFRcxPuhBVqEjvx7khoxUrJy7tPfVXbh1lyVQ+ncgz1xxN/3lcS2+lXAigaZ0t0uH72Lmt8nQuzYfFZCl/LXBE2xRQ="
+
 jobs:
   fast_finish: true
   include:
   - stage: test
     script: make test
-    env: GOARCH=amd64
-    go: "1.11.x"
+    env:
+      - GOARCH=amd64
+      - GO111MODULE=on
+      - GOPROXY=https://proxy.golang.org
+    go: "1.12.x"
   - stage: test
     script: make test
-    env: GOARCH=amd64
+    env:
+      - GOARCH=amd64
+      - GO111MODULE=on
+      - GOPROXY=https://proxy.golang.org
     go: "master"
   - stage: integration
     script: make integration
-    env: GOARCH=amd64
-    go: "1.11.x"
+    env:
+      - GOARCH=amd64
+      - GO111MODULE=on
+      - GOPROXY=https://proxy.golang.org
+    go: "1.12.x"
   - stage: push to docker
     script:
     - echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
     - if [ -n "$TRAVIS_TAG" ]; then make TAG=$TRAVIS_TAG push; else make push; fi
-    go: "1.11.x"
+    go: "1.12.x"
     if: (NOT type IN (pull_request)) AND (branch = master) OR (tag IS present)
   - stage: push to packagecloud
     script:
     - if [ -n "$TRAVIS_TAG" ]; then curl -sL https://raw.githubusercontent.com/tsuru/push-to-packagecloud/master/push.sh | PACKAGE_NAME=deploy-agent bash; fi
-    go: "1.11.x"
+    go: "1.12.x"
     env:
       - GOARCH=amd64
-      - GO_FOR_RELEASE=1.11
+      - GO_FOR_RELEASE=1.12
+      - GO111MODULE=on
+      - GOPROXY=https://proxy.golang.org
     if: tag IS present
 matrix:
   allow_failures:
