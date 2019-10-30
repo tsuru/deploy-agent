@@ -43,7 +43,7 @@ jobs:
       run: make TAG=${{ steps.get_tag.outputs.TAG }} push
 
     - name: push latest to docker
-      if: contains(github.ref, 'refs/head/master')
+      if: contains(github.ref, 'refs/heads/master')
       run: make push
 
     - name: release
