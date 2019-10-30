@@ -16,7 +16,7 @@ import (
 	"github.com/tsuru/tsuru/fs"
 )
 
-const version = "0.8.3"
+const version = "0.8.4"
 
 type Config struct {
 	DockerHost          string   `envconfig:"DOCKER_HOST"`
