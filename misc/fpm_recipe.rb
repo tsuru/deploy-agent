@@ -21,6 +21,7 @@ end
 package = FPM::Package::Dir.new
 
 # Set some attributes
+package.attributes[:workdir] = Dir.tmpdir
 package.name = 'deploy-agent'
 package.version = ENV['PACKAGE_VERSION']
 package.maintainer = 'tsuru@corp.globo.com'
