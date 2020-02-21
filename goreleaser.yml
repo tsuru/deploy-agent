@@ -1,6 +1,7 @@
 # goreleaser.yml
 # Build customization
-build:
+builds:
+- id: "default"
   main: .
   binary: tsuru_unit_agent
   goos:
@@ -9,7 +10,9 @@ build:
     - amd64
 
 # Archive customization
-archive:
+archives:
+- builds:
+  - default
   name_template: "{{.Binary}}_{{.Version}}_{{.Os}}_{{.Arch}}"
   format: tar.gz
   replacements:
