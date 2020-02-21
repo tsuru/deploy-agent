@@ -14,6 +14,7 @@ import (
 
 	"github.com/tsuru/deploy-agent/internal/docker"
 	"github.com/tsuru/deploy-agent/internal/tsuru"
+	"github.com/tsuru/deploy-agent/internal/user"
 	"github.com/tsuru/tsuru/exec"
 )
 
@@ -22,7 +23,12 @@ func build(c tsuru.Client, appName string, cmd []string, fs Filesystem, executor
 	if err != nil {
 		return err
 	}
-	return execScript(cmd, envs, os.Stdout, fs, executor)
+	newExecutor, err := user.ChangeUser(executor, envs)
+	if err != nil {
+		return err
+	}
+	updateFSExecutor(fs, newExecutor)
+	return execScript(cmd, envs, os.Stdout, fs, newExecutor)
 }
 
 func deploy(c tsuru.Client, appName string, fs Filesystem, executor exec.Executor) error {

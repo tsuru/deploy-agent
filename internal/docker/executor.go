@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fsouza/go-dockerclient"
+	docker "github.com/fsouza/go-dockerclient"
 	"github.com/tsuru/tsuru/exec"
 )
 
@@ -26,6 +26,10 @@ type Executor struct {
 
 func (d *Executor) Execute(opts exec.ExecuteOptions) error {
 	return d.ExecuteAsUser(d.DefaultUser, opts)
+}
+
+func (e *Executor) IsRemote() bool {
+	return true
 }
 
 func (d *Executor) ExecuteAsUser(user string, opts exec.ExecuteOptions) error {

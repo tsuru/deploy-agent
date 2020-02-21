@@ -15,9 +15,7 @@ import (
 	"strings"
 
 	"github.com/ghodss/yaml"
-	"github.com/tsuru/deploy-agent/internal/docker"
 	"github.com/tsuru/deploy-agent/internal/tsuru"
-	"github.com/tsuru/deploy-agent/internal/user"
 	"github.com/tsuru/tsuru/app/bind"
 	"github.com/tsuru/tsuru/exec"
 )
@@ -33,10 +31,6 @@ func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, fs Filesystem, e
 	if w == nil {
 		w = ioutil.Discard
 	}
-	currentExecutor, err := user.ChangeUser(executor, envs)
-	if err != nil {
-		return err
-	}
 	workingDir := defaultWorkingDir
 	exists, err := fs.CheckFile(defaultWorkingDir)
 	if err != nil {
@@ -50,8 +44,10 @@ func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, fs Filesystem, e
 		formatedEnv := fmt.Sprintf("%s=%s", env.Name, env.Value)
 		formatedEnvs = append(formatedEnvs, formatedEnv)
 	}
-	if _, ok := executor.(*docker.Sidecar); !ok {
-		// local environment variables do not make sense on a docker executor
+	if isR, ok := executor.(interface {
+		IsRemote() bool
+	}); !ok || !isR.IsRemote() {
+		// local environment variables do not make sense on a remote executor
 		// since it runs commands in a different container
 		formatedEnvs = append(formatedEnvs, os.Environ()...)
 	}
@@ -65,7 +61,7 @@ func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, fs Filesystem, e
 			Stderr: os.Stderr,
 		}
 		fmt.Fprintf(w, " ---> Running %q\n", cmd)
-		err := currentExecutor.Execute(execOpts)
+		err := executor.Execute(execOpts)
 		if err != nil {
 			return fmt.Errorf("error running %q: %s\n", cmd, err)
 		}

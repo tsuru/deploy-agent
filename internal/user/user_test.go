@@ -5,7 +5,6 @@
 package user
 
 import (
-	"os/user"
 	"testing"
 
 	"github.com/tsuru/tsuru/app/bind"
@@ -37,6 +36,14 @@ func (f *fakeAsUserExecutor) ExecuteAsUser(user string, opts exec.ExecuteOptions
 }
 
 func (s *S) TestChangeUserWithAnotherUID(c *check.C) {
+	s.exec.Output = map[string][][]byte{
+		"-un": {
+			[]byte("myubuntu"),
+		},
+		"-u": {
+			[]byte("1009"),
+		},
+	}
 	executor, err := ChangeUser(s.exec, []bind.EnvVar{
 		{Name: "TSURU_OS_UID", Value: "1234"},
 	})
@@ -51,11 +58,11 @@ func (s *S) TestChangeUserWithAnotherUID(c *check.C) {
 	c.Assert(args, check.HasLen, 4)
 	c.Assert(args[:3], check.DeepEquals, []string{"--", "sh", "-c"})
 	c.Assert(args[3], check.Matches, `(?s)
-usermod -u 1234 .+?;
-groupmod -g 1234 .+?;
-useradd -M -U -u \d+ tsuru\.old\..+?;
-echo "tsuru\.old\..+? ALL=\(#1234\) NOPASSWD:ALL" >>/etc/sudoers;
-find / -mount -user \d+ -exec chown -h 1234:1234 \{\} \+;
+usermod -u 1234 myubuntu;
+groupmod -g 1234 myubuntu;
+useradd -M -U -u 1009 tsuru\.old\.myubuntu;
+echo "tsuru\.old\.myubuntu ALL=\(#1234\) NOPASSWD:ALL" >>/etc/sudoers;
+find / -mount -user 1009 -exec chown -h 1234:1234 \{\} \+;
 `)
 }
 
@@ -68,10 +75,16 @@ func (s *S) TestChangeUserNoEnvs(c *check.C) {
 }
 
 func (s *S) TestChangeUserSameUser(c *check.C) {
-	u, err := user.Current()
-	c.Assert(err, check.IsNil)
+	s.exec.Output = map[string][][]byte{
+		"-un": {
+			[]byte("ubuntu"),
+		},
+		"-u": {
+			[]byte("1009"),
+		},
+	}
 	executor, err := ChangeUser(s.exec, []bind.EnvVar{
-		{Name: "TSURU_OS_UID", Value: u.Uid},
+		{Name: "TSURU_OS_UID", Value: "1009"},
 	})
 	c.Assert(err, check.IsNil)
 	c.Assert(executor, check.Equals, s.exec)
@@ -80,11 +93,14 @@ func (s *S) TestChangeUserSameUser(c *check.C) {
 }
 
 func (s *S) TestChangeUserWithOldUser(c *check.C) {
-	testProcessCurrentUser = func(u *user.User) {
-		u.Name = "tsuru.old.myuser"
-		u.Username = u.Name
+	s.exec.Output = map[string][][]byte{
+		"-un": {
+			[]byte("tsuru.old.ubuntu"),
+		},
+		"-u": {
+			[]byte("1009"),
+		},
 	}
-	defer func() { testProcessCurrentUser = nil }()
 	executor, err := ChangeUser(s.exec, []bind.EnvVar{
 		{Name: "TSURU_OS_UID", Value: "9998"},
 	})
@@ -111,7 +127,7 @@ func (s *S) TestUserExecutorExecute(c *check.C) {
 	c.Assert(cmds, check.HasLen, 1)
 	args := cmds[0].GetArgs()
 	c.Assert(args, check.DeepEquals, []string{
-		"-u", "#999", "--", "mycmd", "arg1", "arg2",
+		"-u", "#999", "-g", "#999", "--", "mycmd", "arg1", "arg2",
 	})
 }
 
@@ -126,7 +142,7 @@ func (s *S) TestUserExecutorExecuteAsUser(c *check.C) {
 		Args: []string{"arg1", "arg2"},
 	})
 	c.Assert(err, check.IsNil)
-	c.Assert(base.ranAsUser, check.DeepEquals, "999")
+	c.Assert(base.ranAsUser, check.DeepEquals, "999:999")
 	cmds := s.exec.GetCommands("mycmd")
 	c.Assert(cmds, check.HasLen, 1)
 	args := cmds[0].GetArgs()

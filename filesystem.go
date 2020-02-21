@@ -51,6 +51,12 @@ type executorFS struct {
 	executor exec.Executor
 }
 
+func updateFSExecutor(fs Filesystem, exec exec.Executor) {
+	if execFS, ok := fs.(*executorFS); ok {
+		execFS.executor = exec
+	}
+}
+
 func (f *executorFS) ReadFile(name string) ([]byte, error) {
 	out := new(bytes.Buffer)
 	errOut := new(bytes.Buffer)
