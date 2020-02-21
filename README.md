@@ -1,6 +1,6 @@
 Deploy Agent
 ----------
 
-[![Build Status](https://travis-ci.org/tsuru/deploy-agent.svg)](https://travis-ci.org/tsuru/deploy-agent)
+[![Actions Status](https://github.com/tsuru/deploy-agent/workflows/Go/badge.svg)](https://github.com/tsuru/deploy-agent/actions)
 
 Pure go agent to manage deploys in containers.
