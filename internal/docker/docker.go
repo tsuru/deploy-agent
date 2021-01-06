@@ -22,7 +22,7 @@ const (
 	streamInactivityTimeout = time.Minute
 
 	dialTimeout = 10 * time.Second
-	fullTimeout = 5 * time.Minute
+	fullTimeout = 10 * time.Minute
 )
 
 type AuthConfig docker.AuthConfiguration
