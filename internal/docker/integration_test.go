@@ -31,7 +31,7 @@ func (s *S) TestSidecarUploadToPrimaryContainerIntegration(c *check.C) {
 
 	outBuff := new(bytes.Buffer)
 	errBuff := new(bytes.Buffer)
-	err = sidecar.Executor().Execute(exec.ExecuteOptions{
+	err = sidecar.Executor(context.Background()).Execute(exec.ExecuteOptions{
 		Cmd:    "/bin/sh",
 		Args:   []string{"-lc", "cat /testdata/file.txt"},
 		Stdout: outBuff,
@@ -53,7 +53,7 @@ func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 	sidecar, err := NewSidecar("", "")
 	c.Assert(err, check.IsNil)
 
-	err = sidecar.Executor().Execute(exec.ExecuteOptions{
+	err = sidecar.Executor(context.Background()).Execute(exec.ExecuteOptions{
 		Dir:  "/",
 		Cmd:  "/bin/sh",
 		Args: []string{"-c", `echo '#!/bin/bash -el' >/tmp/myscript; echo 'echo hey; exit 0; echo done' >>/tmp/myscript; chmod +x /tmp/myscript`},
@@ -153,7 +153,7 @@ func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 	for _, t := range tt {
 		outBuff := new(bytes.Buffer)
 		errBuff := new(bytes.Buffer)
-		err = sidecar.Executor().Execute(exec.ExecuteOptions{
+		err = sidecar.Executor(context.Background()).Execute(exec.ExecuteOptions{
 			Cmd:    t.Cmd,
 			Args:   t.Args,
 			Envs:   t.Envs,
@@ -196,7 +196,7 @@ func (s *S) TestSidecarExecuteAsUserIntegration(c *check.C) {
 		outBuff := new(bytes.Buffer)
 		errBuff := new(bytes.Buffer)
 
-		executor := sidecar.Executor()
+		executor := sidecar.Executor(context.Background())
 		asUserExec, ok := executor.(interface {
 			ExecuteAsUser(string, exec.ExecuteOptions) error
 		})

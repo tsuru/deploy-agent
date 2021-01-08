@@ -41,7 +41,7 @@ hooks:
     - ps
 `
 
-	executor := sc.Executor()
+	executor := sc.Executor(context.Background())
 
 	err = executor.Execute(exec.ExecuteOptions{
 		Cmd:    "/bin/sh",

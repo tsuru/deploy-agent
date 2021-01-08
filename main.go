@@ -11,6 +11,7 @@ import (
 	"os"
 
 	"github.com/kelseyhightower/envconfig"
+	"github.com/tsuru/deploy-agent/internal/containerd"
 	"github.com/tsuru/deploy-agent/internal/docker"
 	"github.com/tsuru/deploy-agent/internal/sidecar"
 	"github.com/tsuru/deploy-agent/internal/tsuru"
@@ -22,6 +23,7 @@ const version = "0.8.4"
 
 type Config struct {
 	DockerHost          string   `envconfig:"DOCKER_HOST"`
+	ContainerdAddress   string   `envconfig:"CONTAINERD_ADDRESS"`
 	RunAsSidecar        bool     `split_words:"true"`
 	DestinationImages   []string `split_words:"true"`
 	SourceImage         string   `split_words:"true"`
@@ -76,7 +78,11 @@ func runAgent() error {
 	if config.RunAsSidecar {
 		sc, err = docker.NewSidecar(config.DockerHost, config.RunAsUser)
 		if err != nil {
-			return fmt.Errorf("failed to setup sidecar: %v", err)
+			var containerdErr error
+			sc, containerdErr = containerd.NewSidecar(ctx, config.ContainerdAddress, config.RunAsUser)
+			if containerdErr != nil {
+				return fmt.Errorf("failed to initialize both docker and containerd: docker error: %v, containerd error: %v", err, containerdErr)
+			}
 		}
 
 		if config.DockerfileBuild {
@@ -92,7 +98,7 @@ func runAgent() error {
 			}
 		}
 
-		executor = sc.Executor()
+		executor = sc.Executor(ctx)
 		filesystem = &executorFS{executor: executor}
 
 		if config.SourceImage != "" {
