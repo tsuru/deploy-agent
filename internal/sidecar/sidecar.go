@@ -29,5 +29,5 @@ type Sidecar interface {
 	BuildImage(ctx context.Context, fileName, image string) error
 	TagAndPush(ctx context.Context, baseImage string, destinationImages []string, reg RegistryConfig, w io.Writer) error
 	Inspect(ctx context.Context, image string) (*ImageInspect, error)
-	Executor() exec.Executor
+	Executor(ctx context.Context) exec.Executor
 }

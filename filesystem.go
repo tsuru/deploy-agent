@@ -83,6 +83,9 @@ func (f *executorFS) CheckFile(name string) (bool, error) {
 		if strings.Contains(strings.ToLower(errOut), "no such") {
 			return false, nil
 		}
+		if strings.Contains(strings.ToLower(err.Error()), "no such file") {
+			return false, nil
+		}
 		return false, fmt.Errorf("error checking file %v: %v. Output: %v", name, err, errOut)
 	}
 	return true, nil

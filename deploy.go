@@ -70,11 +70,12 @@ func pushSidecar(ctx context.Context, sc sidecar.Sidecar, config Config, regConf
 		return nil
 	}
 	fmt.Fprintln(w, "---- Building application image ----")
-	imgID, err := sc.Commit(ctx, config.DestinationImages[0])
+	_, err := sc.Commit(ctx, config.DestinationImages[0])
 	if err != nil {
 		return fmt.Errorf("failed to commit main container: %v", err)
 	}
-	return sc.TagAndPush(ctx, imgID, config.DestinationImages, regConfig, w)
+	fmt.Fprintln(w, "---- Pushing application image ----")
+	return sc.TagAndPush(ctx, config.DestinationImages[0], config.DestinationImages, regConfig, w)
 }
 
 func inspect(ctx context.Context, sc sidecar.Sidecar, image string, filesystem Filesystem, w io.Writer, errW io.Writer) error {

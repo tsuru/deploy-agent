@@ -46,7 +46,7 @@ func NewSidecar(dockerHost string, user string) (sidecar.Sidecar, error) {
 	return &sc, nil
 }
 
-func (s *dockerSidecar) Executor() exec.Executor {
+func (s *dockerSidecar) Executor(ctx context.Context) exec.Executor {
 	return &s.executor
 }
 
