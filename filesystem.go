@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/tsuru/tsuru/exec"
-
 	"github.com/tsuru/tsuru/fs"
 )
 

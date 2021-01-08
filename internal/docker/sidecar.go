@@ -9,41 +9,49 @@ import (
 	"io"
 	"os"
 	"time"
+
+	docker "github.com/fsouza/go-dockerclient"
+	"github.com/tsuru/deploy-agent/internal/sidecar"
+	"github.com/tsuru/tsuru/exec"
 )
 
-type Sidecar struct {
-	// Executor proxies commands to the primary container
-	Executor
+type dockerSidecar struct {
+	// executor proxies commands to the primary container
+	executor executor
 
-	client *Client
+	// primaryContainerID is the container ID running alongside this sidecar
+	primaryContainerID string
 
-	// primaryContainer is the container running alongside this sidecar
-	primaryContainer Container
+	// client is a client to the docker daemon
+	client *client
 }
 
 // NewSidecar initializes a Sidecar
-func NewSidecar(client *Client, user string) (*Sidecar, error) {
-	if client == nil {
-		var err error
-		client, err = NewClient("")
-		if err != nil {
-			return nil, fmt.Errorf("failed to create docker client: %v", err)
-		}
+func NewSidecar(dockerHost string, user string) (sidecar.Sidecar, error) {
+	client, err := newClient(dockerHost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create docker client: %v", err)
 	}
-	sidecar := Sidecar{client: client}
-	if err := sidecar.setup(); err != nil {
+	sc := dockerSidecar{
+		client: client,
+	}
+	if err = sc.setup(); err != nil {
 		return nil, err
 	}
-	sidecar.Executor = Executor{
-		Client:      sidecar.client,
-		ContainerID: sidecar.primaryContainer.ID,
-		DefaultUser: user,
+	sc.executor = executor{
+		client:      sc.client,
+		containerID: sc.primaryContainerID,
+		defaultUser: user,
 	}
-	return &sidecar, nil
+	return &sc, nil
 }
 
-func (s *Sidecar) CommitPrimaryContainer(ctx context.Context, image string) (string, error) {
-	id, err := s.client.Commit(ctx, s.primaryContainer.ID, image)
+func (s *dockerSidecar) Executor() exec.Executor {
+	return &s.executor
+}
+
+func (s *dockerSidecar) Commit(ctx context.Context, image string) (string, error) {
+	id, err := s.client.commit(ctx, s.primaryContainerID, image)
 	if err != nil {
 		return "", fmt.Errorf("error commiting image %v: %v", image, err)
 	}
@@ -51,7 +59,7 @@ func (s *Sidecar) CommitPrimaryContainer(ctx context.Context, image string) (str
 }
 
 // UploadToPrimaryContainer uploads a file to the primary container
-func (s *Sidecar) UploadToPrimaryContainer(ctx context.Context, fileName string) error {
+func (s *dockerSidecar) Upload(ctx context.Context, fileName string) error {
 	file, err := os.Open(fileName)
 	if err != nil {
 		return fmt.Errorf("failed to open input file %q: %v", fileName, err)
@@ -86,39 +94,93 @@ func (s *Sidecar) UploadToPrimaryContainer(ctx context.Context, fileName string)
 	if n != info.Size() {
 		return errors.New("short-write copying to archive")
 	}
-	return s.client.Upload(ctx, s.primaryContainer.ID, "/", buf)
+	return s.client.upload(ctx, s.primaryContainerID, "/", buf)
 }
 
-func (s *Sidecar) setup() error {
+func (s *dockerSidecar) BuildImage(ctx context.Context, fileName, image string) error {
+	file, err := os.Open(fileName)
+	if err != nil {
+		return fmt.Errorf("failed to open input file %q: %v", fileName, err)
+	}
+	defer file.Close()
+	return s.client.buildImage(ctx, image, file)
+}
+
+func (s *dockerSidecar) TagAndPush(ctx context.Context, baseImage string, destinationImages []string, reg sidecar.RegistryConfig, w io.Writer) error {
+	authConfig := docker.AuthConfiguration{
+		Username:      reg.RegistryAuthUser,
+		Password:      reg.RegistryAuthPass,
+		ServerAddress: reg.RegistryAddress,
+	}
+	for _, destImg := range destinationImages {
+		img, err := s.client.tag(ctx, baseImage, destImg)
+		if err != nil {
+			return fmt.Errorf("error tagging image %v: %v", img, err)
+		}
+		err = s.pushImage(ctx, img, authConfig, reg.RegistryPushRetries, w)
+		if err != nil {
+			return fmt.Errorf("error pushing image %v: %v", img, err)
+		}
+	}
+	return nil
+}
+
+func (s *dockerSidecar) Inspect(ctx context.Context, image string) (*sidecar.ImageInspect, error) {
+	imgInspect, err := s.client.inspect(context.Background(), image)
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect image %q: %v", image, err)
+	}
+	return (*sidecar.ImageInspect)(imgInspect), nil
+}
+
+func (s *dockerSidecar) pushImage(ctx context.Context, img image, auth docker.AuthConfiguration, retries int, w io.Writer) error {
+	fmt.Fprintf(w, " ---> Sending image to repository (%s)\n", img)
+	var err error
+	for i := 0; i < retries; i++ {
+		err = s.client.push(ctx, auth, img)
+		if err != nil {
+			fmt.Fprintf(w, "Could not send image, trying again. Original error: %v\n", err)
+			time.Sleep(time.Second)
+			continue
+		}
+		break
+	}
+	if err != nil {
+		return fmt.Errorf("Error pushing image: %v", err)
+	}
+	return nil
+}
+
+func (s *dockerSidecar) setup() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
-	mainContainer, err := getPrimaryContainer(ctx, s.client)
+	id, err := getPrimaryContainerID(ctx, s.client)
 	cancel()
 	if err != nil {
 		return fmt.Errorf("failed to get main container: %v", err)
 	}
-	s.primaryContainer = mainContainer
+	s.primaryContainerID = id
 	return nil
 }
 
-func getPrimaryContainer(ctx context.Context, dockerClient *Client) (Container, error) {
+func getPrimaryContainerID(ctx context.Context, dockerClient *client) (string, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
-		return Container{}, fmt.Errorf("failed to get hostname: %v", err)
+		return "", fmt.Errorf("failed to get hostname: %v", err)
 	}
 	for {
-		containers, err := dockerClient.ListContainersByLabels(ctx, map[string]string{
+		containers, err := dockerClient.listContainersByLabels(ctx, map[string]string{
 			"io.kubernetes.container.name": hostname,
 			"io.kubernetes.pod.name":       hostname,
 		})
 		if err != nil {
-			return Container{}, fmt.Errorf("failed to get containers: %v", err)
+			return "", fmt.Errorf("failed to get containers: %v", err)
 		}
 		if len(containers) == 1 {
-			return containers[0], nil
+			return containers[0].ID, nil
 		}
 		select {
 		case <-ctx.Done():
-			return Container{}, ctx.Err()
+			return "", ctx.Err()
 		case <-time.After(time.Second * 1):
 		}
 	}

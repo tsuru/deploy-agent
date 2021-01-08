@@ -7,8 +7,7 @@ package docker
 import (
 	"bytes"
 
-	"github.com/fsouza/go-dockerclient"
-
+	docker "github.com/fsouza/go-dockerclient"
 	"github.com/fsouza/go-dockerclient/testing"
 	"github.com/tsuru/tsuru/exec"
 	"gopkg.in/check.v1"
@@ -18,7 +17,7 @@ func (s *S) TestExecutor(c *check.C) {
 	server, err := testing.NewServer("127.0.0.1:0", nil, nil)
 	c.Assert(err, check.IsNil)
 	defer server.Stop()
-	client, err := NewClient(server.URL())
+	client, err := newClient(server.URL())
 	c.Assert(err, check.IsNil)
 
 	err = client.api.PullImage(docker.PullImageOptions{Repository: "my-img"}, docker.AuthConfiguration{})
@@ -36,7 +35,7 @@ func (s *S) TestExecutor(c *check.C) {
 		executed = true
 	})
 
-	e := Executor{ContainerID: cont.ID, Client: client}
+	e := executor{containerID: cont.ID, client: client}
 	out := new(bytes.Buffer)
 	err = e.Execute(exec.ExecuteOptions{
 		Dir:    "/home/",

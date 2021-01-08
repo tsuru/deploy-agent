@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fsouza/go-dockerclient"
+	docker "github.com/fsouza/go-dockerclient"
 )
 
 const (
@@ -25,34 +25,26 @@ const (
 	fullTimeout = 10 * time.Minute
 )
 
-type AuthConfig docker.AuthConfiguration
-
-type Container struct {
-	ID string
-}
-
-type Image struct {
-	ID         string
+type image struct {
+	id         string
 	registry   string
 	repository string
 	tag        string
 }
 
-type ImageInspect docker.Image
-
-func (i Image) Name() string {
+func (i image) name() string {
 	return i.registry + "/" + i.repository
 }
 
-func (i Image) String() string {
+func (i image) String() string {
 	return i.registry + "/" + i.repository + ":" + i.tag
 }
 
-type Client struct {
+type client struct {
 	api *docker.Client
 }
 
-func NewClient(endpoint string) (*Client, error) {
+func newClient(endpoint string) (*client, error) {
 	if endpoint == "" {
 		endpoint = defaultEndpoint
 	}
@@ -71,29 +63,21 @@ func NewClient(endpoint string) (*Client, error) {
 		}
 	})
 	cli.SetTimeout(fullTimeout)
-	return &Client{
+	return &client{
 		api: cli,
 	}, nil
 }
 
-func (c *Client) ListContainersByLabels(ctx context.Context, labels map[string]string) ([]Container, error) {
+func (c *client) listContainersByLabels(ctx context.Context, labels map[string]string) ([]docker.APIContainers, error) {
 	filters := make(map[string][]string)
 	for k, v := range labels {
 		filters["label"] = append(filters["label"], fmt.Sprintf("%s=%s", k, v))
 	}
-	containers, err := c.api.ListContainers(docker.ListContainersOptions{Filters: filters, Context: ctx})
-	if err != nil {
-		return nil, err
-	}
-	var conts []Container
-	for _, c := range containers {
-		conts = append(conts, Container{ID: c.ID})
-	}
-	return conts, err
+	return c.api.ListContainers(docker.ListContainersOptions{Filters: filters, Context: ctx})
 }
 
-func (c *Client) Commit(ctx context.Context, containerID, image string) (string, error) {
-	img := ParseImageName(image)
+func (c *client) commit(ctx context.Context, containerID, image string) (string, error) {
+	img := parseImageName(image)
 	commitedImg, err := c.api.CommitContainer(docker.CommitContainerOptions{
 		Container:  containerID,
 		Repository: img.repository,
@@ -106,31 +90,31 @@ func (c *Client) Commit(ctx context.Context, containerID, image string) (string,
 	return commitedImg.ID, err
 }
 
-// Tag tags the image given by imgID with the given imageName
-func (c *Client) Tag(ctx context.Context, imgID, imageName string) (Image, error) {
-	img := ParseImageName(imageName)
-	img.ID = imgID
-	return img, c.api.TagImage(img.ID, docker.TagImageOptions{
-		Repo:    img.Name(),
+// tag tags the image given by imgID with the given imageName
+func (c *client) tag(ctx context.Context, imgID, imageName string) (image, error) {
+	img := parseImageName(imageName)
+	img.id = imgID
+	return img, c.api.TagImage(img.id, docker.TagImageOptions{
+		Repo:    img.name(),
 		Tag:     img.tag,
 		Force:   true,
 		Context: ctx,
 	})
 }
 
-func (c *Client) Push(ctx context.Context, authConfig AuthConfig, img Image) error {
+func (c *client) push(ctx context.Context, authConfig docker.AuthConfiguration, img image) error {
 	opts := docker.PushImageOptions{
-		Name:              img.Name(),
+		Name:              img.name(),
 		Tag:               img.tag,
 		OutputStream:      &errorCheckWriter{W: os.Stdout},
 		Context:           ctx,
 		InactivityTimeout: streamInactivityTimeout,
 		RawJSONStream:     true,
 	}
-	return c.api.PushImage(opts, docker.AuthConfiguration(authConfig))
+	return c.api.PushImage(opts, authConfig)
 }
 
-func (c *Client) Upload(ctx context.Context, containerID, path string, inputStream io.Reader) error {
+func (c *client) upload(ctx context.Context, containerID, path string, inputStream io.Reader) error {
 	opts := docker.UploadToContainerOptions{
 		Path:        path,
 		InputStream: inputStream,
@@ -138,15 +122,11 @@ func (c *Client) Upload(ctx context.Context, containerID, path string, inputStre
 	return c.api.UploadToContainer(containerID, opts)
 }
 
-func (c *Client) Inspect(ctx context.Context, img string) (ImageInspect, error) {
-	inspect, err := c.api.InspectImage(img)
-	if err != nil {
-		return ImageInspect{}, err
-	}
-	return ImageInspect(*inspect), err
+func (c *client) inspect(ctx context.Context, img string) (*docker.Image, error) {
+	return c.api.InspectImage(img)
 }
 
-func (c *Client) BuildImage(ctx context.Context, imageName string, inputFile io.Reader) error {
+func (c *client) buildImage(ctx context.Context, imageName string, inputFile io.Reader) error {
 	buildOptions := docker.BuildImageOptions{
 		Name:              imageName,
 		Pull:              true,
@@ -161,9 +141,9 @@ func (c *Client) BuildImage(ctx context.Context, imageName string, inputFile io.
 	return c.api.BuildImage(buildOptions)
 }
 
-func ParseImageName(imageName string) Image {
+func parseImageName(imageName string) image {
 	registry, repo, tag := splitImageName(imageName)
-	return Image{
+	return image{
 		registry:   registry,
 		repository: repo,
 		tag:        tag,

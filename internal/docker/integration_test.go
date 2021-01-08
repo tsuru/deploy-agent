@@ -19,22 +19,19 @@ func checkSkip(c *check.C) {
 func (s *S) TestSidecarUploadToPrimaryContainerIntegration(c *check.C) {
 	checkSkip(c)
 
-	dClient, err := NewClient("")
-	c.Assert(err, check.IsNil)
-
 	_, cleanup, err := testing.SetupPrimaryContainer(c)
 	defer cleanup()
 	c.Assert(err, check.IsNil)
 
-	sidecar, err := NewSidecar(dClient, "")
+	sidecar, err := NewSidecar("", "")
 	c.Assert(err, check.IsNil)
 
-	err = sidecar.UploadToPrimaryContainer(context.Background(), "testdata/file.txt")
+	err = sidecar.Upload(context.Background(), "testdata/file.txt")
 	c.Assert(err, check.IsNil)
 
 	outBuff := new(bytes.Buffer)
 	errBuff := new(bytes.Buffer)
-	err = sidecar.Execute(exec.ExecuteOptions{
+	err = sidecar.Executor().Execute(exec.ExecuteOptions{
 		Cmd:    "/bin/sh",
 		Args:   []string{"-lc", "cat /testdata/file.txt"},
 		Stdout: outBuff,
@@ -49,17 +46,14 @@ func (s *S) TestSidecarUploadToPrimaryContainerIntegration(c *check.C) {
 func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 	checkSkip(c)
 
-	dClient, err := NewClient("")
-	c.Assert(err, check.IsNil)
-
 	_, cleanup, err := testing.SetupPrimaryContainer(c)
 	defer cleanup()
 	c.Assert(err, check.IsNil)
 
-	sidecar, err := NewSidecar(dClient, "")
+	sidecar, err := NewSidecar("", "")
 	c.Assert(err, check.IsNil)
 
-	err = sidecar.Execute(exec.ExecuteOptions{
+	err = sidecar.Executor().Execute(exec.ExecuteOptions{
 		Dir:  "/",
 		Cmd:  "/bin/sh",
 		Args: []string{"-c", `echo '#!/bin/bash -el' >/tmp/myscript; echo 'echo hey; exit 0; echo done' >>/tmp/myscript; chmod +x /tmp/myscript`},
@@ -159,7 +153,7 @@ func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 	for _, t := range tt {
 		outBuff := new(bytes.Buffer)
 		errBuff := new(bytes.Buffer)
-		err = sidecar.Execute(exec.ExecuteOptions{
+		err = sidecar.Executor().Execute(exec.ExecuteOptions{
 			Cmd:    t.Cmd,
 			Args:   t.Args,
 			Envs:   t.Envs,
@@ -181,14 +175,11 @@ func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 func (s *S) TestSidecarExecuteAsUserIntegration(c *check.C) {
 	checkSkip(c)
 
-	dClient, err := NewClient("")
-	c.Assert(err, check.IsNil)
-
 	_, cleanup, err := testing.SetupPrimaryContainer(c)
 	defer cleanup()
 	c.Assert(err, check.IsNil)
 
-	sidecar, err := NewSidecar(dClient, "")
+	sidecar, err := NewSidecar("", "")
 	c.Assert(err, check.IsNil)
 
 	tt := []struct {
@@ -204,7 +195,14 @@ func (s *S) TestSidecarExecuteAsUserIntegration(c *check.C) {
 	for _, t := range tt {
 		outBuff := new(bytes.Buffer)
 		errBuff := new(bytes.Buffer)
-		err := sidecar.ExecuteAsUser(t.user, exec.ExecuteOptions{
+
+		executor := sidecar.Executor()
+		asUserExec, ok := executor.(interface {
+			ExecuteAsUser(string, exec.ExecuteOptions) error
+		})
+		c.Assert(ok, check.Equals, true)
+
+		err := asUserExec.ExecuteAsUser(t.user, exec.ExecuteOptions{
 			Cmd:    "whoami",
 			Stdout: outBuff,
 			Stderr: errBuff,
