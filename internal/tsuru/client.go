@@ -15,12 +15,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tsuru/deploy-agent/internal/docker"
+	"github.com/tsuru/deploy-agent/internal/sidecar"
 	"github.com/tsuru/tsuru/app/bind"
 )
 
 type InspectData struct {
-	Image     docker.ImageInspect
+	Image     sidecar.ImageInspect
 	TsuruYaml interface{}
 	Procfile  string
 }

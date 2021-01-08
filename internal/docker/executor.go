@@ -17,22 +17,22 @@ const (
 	timeoutExecWait = time.Minute
 )
 
-// Executor uses docker exec to execute a command in a running docker container
-type Executor struct {
-	ContainerID string
-	Client      *Client
-	DefaultUser string
+// executor uses docker exec to execute a command in a running docker container
+type executor struct {
+	containerID string
+	client      *client
+	defaultUser string
 }
 
-func (d *Executor) Execute(opts exec.ExecuteOptions) error {
-	return d.ExecuteAsUser(d.DefaultUser, opts)
+func (d *executor) Execute(opts exec.ExecuteOptions) error {
+	return d.ExecuteAsUser(d.defaultUser, opts)
 }
 
-func (e *Executor) IsRemote() bool {
+func (e *executor) IsRemote() bool {
 	return true
 }
 
-func (d *Executor) ExecuteAsUser(user string, opts exec.ExecuteOptions) error {
+func (d *executor) ExecuteAsUser(user string, opts exec.ExecuteOptions) error {
 	cmd := append([]string{opts.Cmd}, opts.Args...)
 	if opts.Dir != "" {
 		cmd = append([]string{
@@ -47,8 +47,8 @@ func (d *Executor) ExecuteAsUser(user string, opts exec.ExecuteOptions) error {
 		}
 		cmd = append(envCmd, cmd...)
 	}
-	e, err := d.Client.api.CreateExec(docker.CreateExecOptions{
-		Container:    d.ContainerID,
+	e, err := d.client.api.CreateExec(docker.CreateExecOptions{
+		Container:    d.containerID,
 		Cmd:          cmd,
 		AttachStdin:  opts.Stdin != nil,
 		AttachStdout: opts.Stdout != nil,
@@ -58,7 +58,7 @@ func (d *Executor) ExecuteAsUser(user string, opts exec.ExecuteOptions) error {
 	if err != nil {
 		return err
 	}
-	err = d.Client.api.StartExec(e.ID, docker.StartExecOptions{
+	err = d.client.api.StartExec(e.ID, docker.StartExecOptions{
 		OutputStream: opts.Stdout,
 		InputStream:  opts.Stdin,
 		ErrorStream:  opts.Stderr,
@@ -66,7 +66,7 @@ func (d *Executor) ExecuteAsUser(user string, opts exec.ExecuteOptions) error {
 	if err != nil {
 		return err
 	}
-	exitCode, err := waitExecStatus(d.Client.api, e.ID)
+	exitCode, err := waitExecStatus(d.client.api, e.ID)
 	if err != nil {
 		return err
 	}

@@ -10,7 +10,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/fsouza/go-dockerclient"
+	docker "github.com/fsouza/go-dockerclient"
 
 	dockertest "github.com/fsouza/go-dockerclient/testing"
 	"gopkg.in/check.v1"
@@ -35,7 +35,7 @@ func (s *S) TeardownTest(c *check.C) {
 }
 
 func (s *S) addTestContainer(c *check.C, name, image string) string {
-	client, err := NewClient(s.dockerserver.URL())
+	client, err := newClient(s.dockerserver.URL())
 	c.Assert(err, check.IsNil)
 	err = client.api.PullImage(docker.PullImageOptions{Repository: image}, docker.AuthConfiguration{})
 	c.Assert(err, check.IsNil)
@@ -56,7 +56,7 @@ func (s *S) addTestContainer(c *check.C, name, image string) string {
 }
 
 func (s *S) TestGetContainersByLabel(c *check.C) {
-	client, err := NewClient(s.dockerserver.URL())
+	client, err := newClient(s.dockerserver.URL())
 	c.Assert(err, check.IsNil)
 	err = client.api.PullImage(docker.PullImageOptions{Repository: "my-img"}, docker.AuthConfiguration{})
 	c.Assert(err, check.IsNil)
@@ -81,9 +81,10 @@ func (s *S) TestGetContainersByLabel(c *check.C) {
 	err = client.api.StartContainer(cont2.ID, nil)
 	c.Assert(err, check.IsNil)
 
-	containers, err := client.ListContainersByLabels(context.Background(), map[string]string{"A": "VA", "B": "VB"})
+	containers, err := client.listContainersByLabels(context.Background(), map[string]string{"A": "VA", "B": "VB"})
 	c.Assert(err, check.IsNil)
-	c.Assert(containers, check.DeepEquals, []Container{{ID: cont.ID}})
+	c.Assert(containers, check.HasLen, 1)
+	c.Assert(containers[0].ID, check.Equals, cont.ID)
 }
 
 func (s *S) TestSplitImageName(c *check.C) {
@@ -121,11 +122,11 @@ func (s *S) TestSplitImageName(c *check.C) {
 }
 
 func (s *S) TestClientCommit(c *check.C) {
-	client, err := NewClient(s.dockerserver.URL())
+	client, err := newClient(s.dockerserver.URL())
 	c.Assert(err, check.IsNil)
 	contID := s.addTestContainer(c, "my-cont", "my-img")
 
-	img, err := client.Commit(context.Background(), contID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
+	img, err := client.commit(context.Background(), contID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
 	c.Assert(err, check.IsNil)
 	dockerImage, err := client.api.InspectImage("admin/app-myapp:v23-builder")
 	c.Assert(err, check.IsNil)
@@ -133,34 +134,34 @@ func (s *S) TestClientCommit(c *check.C) {
 }
 
 func (s *S) TestClientTag(c *check.C) {
-	client, err := NewClient(s.dockerserver.URL())
+	client, err := newClient(s.dockerserver.URL())
 	c.Assert(err, check.IsNil)
 	contID := s.addTestContainer(c, "my-cont", "my-img")
 
-	imgID, err := client.Commit(context.Background(), contID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
+	imgID, err := client.commit(context.Background(), contID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
 	c.Assert(err, check.IsNil)
-	img, err := client.Tag(context.Background(), imgID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
+	img, err := client.tag(context.Background(), imgID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
 	c.Assert(err, check.IsNil)
 	dockerImage, err := client.api.InspectImage("10.200.10.1:5000/admin/app-myapp:v23-builder")
 	c.Assert(err, check.IsNil)
-	c.Assert(dockerImage.ID, check.DeepEquals, img.ID)
+	c.Assert(dockerImage.ID, check.DeepEquals, img.id)
 }
 
 func (s *S) TestClientPush(c *check.C) {
-	client, err := NewClient(s.dockerserver.URL())
+	client, err := newClient(s.dockerserver.URL())
 	c.Assert(err, check.IsNil)
 	contID := s.addTestContainer(c, "my-cont", "my-img")
 
-	imgID, err := client.Commit(context.Background(), contID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
+	imgID, err := client.commit(context.Background(), contID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
 	c.Assert(err, check.IsNil)
-	img, err := client.Tag(context.Background(), imgID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
+	img, err := client.tag(context.Background(), imgID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
 	c.Assert(err, check.IsNil)
-	err = client.Push(context.Background(), AuthConfig{}, img)
+	err = client.push(context.Background(), docker.AuthConfiguration{}, img)
 	c.Assert(err, check.IsNil)
 }
 
 func (s *S) TestClientUpload(c *check.C) {
-	client, err := NewClient(s.dockerserver.URL())
+	client, err := newClient(s.dockerserver.URL())
 	c.Assert(err, check.IsNil)
 	contID := s.addTestContainer(c, "my-cont", "my-img")
 
@@ -178,26 +179,26 @@ func (s *S) TestClientUpload(c *check.C) {
 	n, err := io.Copy(tw, data)
 	c.Assert(err, check.IsNil)
 	c.Assert(n, check.Equals, dataSize)
-	err = client.Upload(context.Background(), contID, "/", buf)
+	err = client.upload(context.Background(), contID, "/", buf)
 	c.Assert(err, check.IsNil)
 	err = client.api.DownloadFromContainer(contID, docker.DownloadFromContainerOptions{Path: "/myfile.txt"})
 	c.Assert(err, check.IsNil)
 }
 
 func (s *S) TestInspect(c *check.C) {
-	client, err := NewClient(s.dockerserver.URL())
+	client, err := newClient(s.dockerserver.URL())
 	c.Assert(err, check.IsNil)
 
 	err = client.api.PullImage(docker.PullImageOptions{Repository: "image"}, docker.AuthConfiguration{})
 	c.Assert(err, check.IsNil)
 
-	img, err := client.Inspect(context.Background(), "image")
+	img, err := client.inspect(context.Background(), "image")
 	c.Assert(err, check.IsNil)
 	c.Assert(img.ID, check.Not(check.DeepEquals), "")
 }
 
 func (s *S) TestClientBuildImage(c *check.C) {
-	client, err := NewClient(s.dockerserver.URL())
+	client, err := newClient(s.dockerserver.URL())
 	c.Assert(err, check.IsNil)
 
 	data := bytes.NewBuffer([]byte("FROM tsuru/go"))
@@ -214,6 +215,6 @@ func (s *S) TestClientBuildImage(c *check.C) {
 	n, err := io.Copy(tw, data)
 	c.Assert(err, check.IsNil)
 	c.Assert(n, check.Equals, dataSize)
-	err = client.BuildImage(context.Background(), "tsuru/teste-go", buf)
+	err = client.buildImage(context.Background(), "tsuru/teste-go", buf)
 	c.Assert(err, check.IsNil)
 }

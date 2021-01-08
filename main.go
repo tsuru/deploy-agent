@@ -5,12 +5,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 
 	"github.com/kelseyhightower/envconfig"
 	"github.com/tsuru/deploy-agent/internal/docker"
+	"github.com/tsuru/deploy-agent/internal/sidecar"
 	"github.com/tsuru/deploy-agent/internal/tsuru"
 	"github.com/tsuru/tsuru/exec"
 	"github.com/tsuru/tsuru/fs"
@@ -31,11 +33,6 @@ type Config struct {
 	RegistryAuthUser    string   `split_words:"true"`
 	RegistryAddress     string   `split_words:"true"`
 	RunAsUser           string   `split_words:"true"`
-}
-
-type sidecarContext struct {
-	docker  *docker.Client
-	sidecar *docker.Sidecar
 }
 
 func main() {
@@ -66,38 +63,51 @@ func runAgent() error {
 	var filesystem Filesystem = &localFS{Fs: fs.OsFs{}}
 	var executor exec.Executor = &exec.OsExecutor{}
 
-	var sidecarCtx *sidecarContext
+	ctx := context.TODO()
+	regConfig := sidecar.RegistryConfig{
+		RegistryAuthUser:    config.RegistryAuthUser,
+		RegistryAuthPass:    config.RegistryAuthPass,
+		RegistryAddress:     config.RegistryAddress,
+		RegistryPushRetries: config.RegistryPushRetries,
+	}
+
+	var sc sidecar.Sidecar
+
 	if config.RunAsSidecar {
-		sidecarCtx = &sidecarContext{}
-		sidecarCtx.docker, err = docker.NewClient(config.DockerHost)
+		sc, err = docker.NewSidecar(config.DockerHost, config.RunAsUser)
 		if err != nil {
-			return fmt.Errorf("failed to create docker client: %v", err)
-		}
-		// Used mainly for platform build
-		if config.DockerfileBuild {
-			if err := buildImage(sidecarCtx.docker, config.DestinationImages[0], config.InputFile); err != nil {
-				return fmt.Errorf("failed to build image: %v", err)
-			}
-			return tagAndPushDestinations(sidecarCtx.docker, config.DestinationImages[0], config, os.Stdout)
+			return fmt.Errorf("failed to setup sidecar: %v", err)
 		}
 
-		sidecarCtx.sidecar, err = setupSidecar(sidecarCtx.docker, config)
-		if err != nil {
-			return fmt.Errorf("failed to create sidecar: %v", err)
+		if config.DockerfileBuild {
+			if err = sc.BuildImage(ctx, config.InputFile, config.DestinationImages[0]); err != nil {
+				return fmt.Errorf("failed to build image: %v", err)
+			}
+			return sc.TagAndPush(ctx, config.DestinationImages[0], config.DestinationImages, regConfig, os.Stdout)
 		}
-		executor = sidecarCtx.sidecar
-		filesystem = &executorFS{executor: sidecarCtx.sidecar}
+
+		if config.InputFile != "" {
+			if err = sc.Upload(ctx, config.InputFile); err != nil {
+				return err
+			}
+		}
+
+		executor = sc.Executor()
+		filesystem = &executorFS{executor: executor}
+
 		if config.SourceImage != "" {
 			// build/deploy/deploy-only is not required since this is an image deploy
 			// all we need to do is return the inspected files and image and push the
 			// destination images based on the sidecar container.
-			if err = inspect(sidecarCtx.docker, config.SourceImage, filesystem, os.Stdout, os.Stderr); err != nil {
+
+			if err = inspect(ctx, sc, config.SourceImage, filesystem, os.Stdout, os.Stderr); err != nil {
 				return fmt.Errorf("error inspecting sidecar: %v", err)
 			}
 
-			if err = tagAndPushDestinations(sidecarCtx.docker, config.SourceImage, config, os.Stdout); err != nil {
+			if err = sc.TagAndPush(ctx, config.SourceImage, config.DestinationImages, regConfig, os.Stdout); err != nil {
 				return fmt.Errorf("error pushing images: %v", err)
 			}
+
 			return nil
 		}
 	}
@@ -130,8 +140,8 @@ func runAgent() error {
 		return err
 	}
 
-	if sidecarCtx != nil {
-		err = pushSidecar(sidecarCtx.docker, sidecarCtx.sidecar, config, os.Stdout)
+	if sc != nil {
+		err = pushSidecar(ctx, sc, config, regConfig, os.Stdout)
 		if err != nil {
 			return fmt.Errorf("error in commit and push: %v", err)
 		}
