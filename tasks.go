@@ -24,7 +24,6 @@ var (
 	defaultWorkingDir = "/home/application/current"
 	tsuruYamlFiles    = []string{"tsuru.yml", "tsuru.yaml", "app.yml", "app.yaml"}
 	configDirs        = []string{defaultWorkingDir, "/app/user", "/"}
-	appEnvsFile       = "/tmp/app_envs"
 )
 
 func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, fs Filesystem, executor exec.Executor) error {
@@ -36,7 +35,7 @@ func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, fs Filesystem, e
 	if err != nil {
 		return err
 	}
-	if exists == false {
+	if !exists {
 		workingDir = "/"
 	}
 	formatedEnvs := []string{}

@@ -15,8 +15,6 @@ import (
 	"gopkg.in/check.v1"
 )
 
-const primaryImage = "tsuru/base-platform"
-
 func checkSkip(c *check.C) {
 	if os.Getenv("DEPLOYAGENT_INTEGRATION") == "" {
 		c.Skip("skipping integration tests")
@@ -27,6 +25,7 @@ func (s *S) TestInspect(c *check.C) {
 	checkSkip(c)
 
 	_, cleanup, err := testing.SetupPrimaryContainer(c)
+	c.Assert(err, check.IsNil)
 	defer cleanup()
 
 	sc, err := docker.NewSidecar("", "root")

@@ -53,20 +53,20 @@ func (s *dockerSidecar) Executor(ctx context.Context) exec.Executor {
 func (s *dockerSidecar) Commit(ctx context.Context, image string) (string, error) {
 	id, err := s.client.commit(ctx, s.primaryContainerID, image)
 	if err != nil {
-		return "", fmt.Errorf("error commiting image %v: %v", image, err)
+		return "", fmt.Errorf("error committing image %v: %v", image, err)
 	}
 	return id, nil
 }
 
 // UploadToPrimaryContainer uploads a file to the primary container
-func (s *dockerSidecar) Upload(ctx context.Context, fileName string) error {
+func (s *dockerSidecar) Upload(ctx context.Context, fileName string) (err error) {
 	file, err := os.Open(fileName)
 	if err != nil {
 		return fmt.Errorf("failed to open input file %q: %v", fileName, err)
 	}
 	defer func() {
-		if err := file.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "error closing file %q: %v", fileName, err)
+		if err = file.Close(); err != nil {
+			err = fmt.Errorf("error closing file %q: %v", fileName, err)
 		}
 	}()
 	info, err := file.Stat()
@@ -75,7 +75,7 @@ func (s *dockerSidecar) Upload(ctx context.Context, fileName string) error {
 	}
 	buf := new(bytes.Buffer)
 	tw := tar.NewWriter(buf)
-	if err := tw.WriteHeader(&tar.Header{
+	if err = tw.WriteHeader(&tar.Header{
 		Name: file.Name(),
 		Mode: 0666,
 		Size: info.Size(),
@@ -83,8 +83,8 @@ func (s *dockerSidecar) Upload(ctx context.Context, fileName string) error {
 		return fmt.Errorf("failed to write archive header: %v", err)
 	}
 	defer func() {
-		if err := tw.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "error closing archive: %v", err)
+		if err = tw.Close(); err != nil {
+			err = fmt.Errorf("error closing archive: %v", err)
 		}
 	}()
 	n, err := io.Copy(tw, file)
