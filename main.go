@@ -24,17 +24,17 @@ const version = "0.8.4"
 type Config struct {
 	DockerHost          string   `envconfig:"DOCKER_HOST"`
 	ContainerdAddress   string   `envconfig:"CONTAINERD_ADDRESS"`
-	RunAsSidecar        bool     `split_words:"true"`
 	DestinationImages   []string `split_words:"true"`
 	SourceImage         string   `split_words:"true"`
 	InputFile           string   `split_words:"true"`
-	DockerfileBuild     bool     `split_words:"true"`
-	RegistryPushRetries int      `split_words:"true" default:"3"`
 	RegistryAuthEmail   string   `split_words:"true"`
 	RegistryAuthPass    string   `split_words:"true"`
 	RegistryAuthUser    string   `split_words:"true"`
 	RegistryAddress     string   `split_words:"true"`
 	RunAsUser           string   `split_words:"true"`
+	RegistryPushRetries int      `split_words:"true" default:"3"`
+	RunAsSidecar        bool     `split_words:"true"`
+	DockerfileBuild     bool     `split_words:"true"`
 }
 
 func main() {

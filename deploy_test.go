@@ -65,6 +65,7 @@ func (s *S) TestDeploy(c *check.C) {
 	c.Assert(err, check.IsNil)
 	procfileData := `web: run-app`
 	p, err := s.fs.Create(fmt.Sprintf("%s/%s", defaultWorkingDir, "Procfile"))
+	c.Assert(err, check.IsNil)
 	defer p.Close()
 	c.Assert(err, check.IsNil)
 	_, err = p.WriteString(procfileData)

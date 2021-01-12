@@ -38,6 +38,7 @@ func (s *FilesystemSuite) TestExecutorFSCheckFile(c *check.C) {
 	c.Assert(exists, check.Equals, true)
 	os.Remove(tmpFile.Name())
 	exists, err = fs.CheckFile(tmpFile.Name())
+	c.Assert(err, check.IsNil)
 	c.Assert(exists, check.Equals, false)
 }
 

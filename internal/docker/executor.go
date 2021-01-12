@@ -41,10 +41,7 @@ func (d *executor) ExecuteAsUser(user string, opts exec.ExecuteOptions) error {
 		}, cmd...)
 	}
 	if len(opts.Envs) > 0 {
-		envCmd := []string{"env"}
-		for _, e := range opts.Envs {
-			envCmd = append(envCmd, e)
-		}
+		envCmd := append([]string{"env"}, opts.Envs...)
 		cmd = append(envCmd, cmd...)
 	}
 	e, err := d.client.api.CreateExec(docker.CreateExecOptions{

@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/fsouza/go-dockerclient"
+	docker "github.com/fsouza/go-dockerclient"
 	"gopkg.in/check.v1"
 )
 
@@ -52,7 +52,9 @@ func SetupPrimaryContainer(c *check.C) (string, func(), error) {
 
 	timeout := time.After(time.Second * 15)
 	for {
-		c, err := dClient.InspectContainer(pCont.ID)
+		c, err := dClient.InspectContainerWithOptions(docker.InspectContainerOptions{
+			ID: pCont.ID,
+		})
 		if err != nil {
 			return pCont.ID, cleanup, fmt.Errorf("error inspecting primary container: %v", err)
 		}
