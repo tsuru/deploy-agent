@@ -16,6 +16,7 @@ package containerd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -74,6 +75,7 @@ func pushWithProgress(ctx context.Context, client *containerd.Client, ref string
 				}
 
 				if done {
+					fw.Encode(imageProgess{Status: fmt.Sprintf("Pushed %s", ref)})
 					return nil
 				}
 			case <-doneCh:
@@ -118,10 +120,10 @@ type progressDetail struct {
 }
 
 type imageProgess struct {
-	Status         string         `json:"status"`
-	ProgressDetail progressDetail `json:"progressDetail"`
-	Progress       string         `json:"progress"`
-	ID             string         `json:"id"`
+	Status         string         `json:"status,omitempty"`
+	ProgressDetail progressDetail `json:"progressDetail,omitempty"`
+	Progress       string         `json:"progress,omitempty"`
+	ID             string         `json:"id,omitempty"`
 }
 
 func (j *pushjobs) status() []imageProgess {

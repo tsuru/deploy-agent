@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/errdefs"
-	"github.com/containerd/containerd/mount"
 	refDocker "github.com/containerd/containerd/reference/docker"
 	remoteDocker "github.com/containerd/containerd/remotes/docker"
 	"github.com/pkg/errors"
@@ -127,38 +125,28 @@ func (s *containerdSidecar) Commit(ctx context.Context, image string) (string, e
 }
 
 func (s *containerdSidecar) Upload(ctx context.Context, fileName string) error {
-	container, err := s.client.LoadContainer(ctx, s.primaryContainerID)
-	if err != nil {
-		return err
-	}
-	info, err := container.Info(ctx)
-	if err != nil {
-		return err
-	}
-	mounts, err := s.client.SnapshotService(info.Snapshotter).Mounts(ctx, s.primaryContainerID)
-	if err != nil {
-		return err
-	}
+	executor := s.Executor(ctx)
 	srcFile, err := os.Open(fileName)
 	if err != nil {
 		return err
 	}
 	defer srcFile.Close()
-	err = mount.WithTempMount(ctx, mounts, func(root string) error {
-		dstFileName := filepath.Join(root, srcFile.Name())
-		var dstFile *os.File
-		dstFile, err = os.Create(dstFileName)
-		if err != nil {
-			return err
-		}
-		_, err = io.Copy(dstFile, srcFile)
-		if err != nil {
-			return err
-		}
-		return dstFile.Close()
+	info, err := srcFile.Stat()
+	if err != nil {
+		return errors.Wrap(err, "failed to stat input file")
+	}
+	var stdin io.Reader
+	if info.Size() > 0 {
+		stdin = srcFile
+	}
+	err = executor.Execute(exec.ExecuteOptions{
+		Cmd:   "/bin/sh",
+		Args:  []string{"-c", fmt.Sprintf("cat >%s", srcFile.Name())},
+		Stdin: stdin,
+		Dir:   "/",
 	})
 	if err != nil {
-		return errors.Wrapf(err, "unable to mount %#v", mounts)
+		return errors.Wrap(err, "failed to execute copy command")
 	}
 	return nil
 }
