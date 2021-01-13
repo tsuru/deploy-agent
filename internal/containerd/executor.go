@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 
+	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/cio"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/tsuru/tsuru/exec"
@@ -62,6 +63,11 @@ func (e *containerdExecutor) ExecuteAsUser(user string, opts exec.ExecuteOptions
 	if opts.Stderr == nil {
 		opts.Stderr = ioutil.Discard
 	}
+	var stdinCloser *readerCloser
+	if opts.Stdin != nil {
+		stdinCloser = &readerCloser{reader: opts.Stdin, ctx: e.ctx}
+		opts.Stdin = stdinCloser
+	}
 	ioCreator := cio.NewCreator(cio.WithStreams(opts.Stdin, opts.Stdout, opts.Stderr))
 
 	execID := "exec-" + randID()
@@ -70,6 +76,9 @@ func (e *containerdExecutor) ExecuteAsUser(user string, opts exec.ExecuteOptions
 		return err
 	}
 	defer process.Delete(e.ctx)
+	if stdinCloser != nil {
+		stdinCloser.process = process
+	}
 
 	statusCh, err := process.Wait(e.ctx)
 	if err != nil {
@@ -84,7 +93,7 @@ func (e *containerdExecutor) ExecuteAsUser(user string, opts exec.ExecuteOptions
 	select {
 	case status := <-statusCh:
 		if status.ExitCode() != 0 {
-			return fmt.Errorf("unexpected exit code %#+v while running %v", status.ExitCode(), fullCmd)
+			return fmt.Errorf("unexpected exit code %d while running %v", status.ExitCode(), fullCmd)
 		}
 	case <-e.ctx.Done():
 		return e.ctx.Err()
@@ -96,4 +105,18 @@ func randID() string {
 	h := crypto.SHA1.New()
 	io.CopyN(h, rand.Reader, 10)
 	return fmt.Sprintf("%x", h.Sum(nil))[:20]
+}
+
+type readerCloser struct {
+	reader  io.Reader
+	process containerd.Process
+	ctx     context.Context
+}
+
+func (r *readerCloser) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if err == io.EOF && r.process != nil {
+		r.process.CloseIO(r.ctx, containerd.WithStdinCloser)
+	}
+	return n, err
 }
