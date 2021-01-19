@@ -23,7 +23,7 @@ func (s *S) TestSidecarUploadToPrimaryContainerIntegration(c *check.C) {
 	defer cleanup()
 	c.Assert(err, check.IsNil)
 
-	sidecar, err := NewSidecar("", "")
+	sidecar, err := NewSidecar(SidecarConfig{})
 	c.Assert(err, check.IsNil)
 
 	err = sidecar.Upload(context.Background(), "testdata/file.txt")
@@ -50,7 +50,7 @@ func (s *S) TestSidecarExecuteIntegration(c *check.C) {
 	defer cleanup()
 	c.Assert(err, check.IsNil)
 
-	sidecar, err := NewSidecar("", "")
+	sidecar, err := NewSidecar(SidecarConfig{})
 	c.Assert(err, check.IsNil)
 
 	err = sidecar.Executor(context.Background()).Execute(exec.ExecuteOptions{
@@ -179,7 +179,7 @@ func (s *S) TestSidecarExecuteAsUserIntegration(c *check.C) {
 	defer cleanup()
 	c.Assert(err, check.IsNil)
 
-	sidecar, err := NewSidecar("", "")
+	sidecar, err := NewSidecar(SidecarConfig{})
 	c.Assert(err, check.IsNil)
 
 	tt := []struct {

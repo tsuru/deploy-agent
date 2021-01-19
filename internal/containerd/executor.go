@@ -22,7 +22,7 @@ type containerdExecutor struct {
 }
 
 func (e *containerdExecutor) Execute(opts exec.ExecuteOptions) error {
-	return e.ExecuteAsUser(e.sidecar.user, opts)
+	return e.ExecuteAsUser(e.sidecar.config.User, opts)
 }
 
 func (e *containerdExecutor) IsRemote() bool {
