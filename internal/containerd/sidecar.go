@@ -54,6 +54,13 @@ func NewSidecar(ctx context.Context, config SidecarConfig) (sidecar.Sidecar, err
 	if err != nil {
 		return nil, err
 	}
+	ok, err := client.IsServing(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errors.New("containerd connection not serving")
+	}
 	sc := containerdSidecar{
 		client:    client,
 		config:    config,
