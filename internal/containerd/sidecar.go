@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,12 +18,11 @@ import (
 	"github.com/containerd/containerd/errdefs"
 	refDocker "github.com/containerd/containerd/reference/docker"
 	remoteDocker "github.com/containerd/containerd/remotes/docker"
+	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
 	"github.com/tsuru/deploy-agent/internal/sidecar"
 	"github.com/tsuru/tsuru/exec"
 )
-
-const defaultContainerdAddress = "/run/containerd/containerd.sock"
 
 var _ sidecar.Sidecar = &containerdSidecar{}
 
@@ -32,15 +33,21 @@ var pushHTTPClient = &http.Client{
 
 type containerdSidecar struct {
 	client             *containerd.Client
+	config             SidecarConfig
 	primaryContainerID string
-	user               string
+	localExec          exec.Executor
 }
 
-func NewSidecar(ctx context.Context, address string, user string) (sidecar.Sidecar, error) {
-	if address == "" {
-		address = defaultContainerdAddress
-	}
-	client, err := containerd.New(address,
+type SidecarConfig struct {
+	Address          string
+	User             string
+	BuildctlCmd      string
+	Standalone       bool
+	InsecureRegistry bool
+}
+
+func NewSidecar(ctx context.Context, config SidecarConfig) (sidecar.Sidecar, error) {
+	client, err := containerd.New(config.Address,
 		containerd.WithDefaultNamespace("k8s.io"),
 		containerd.WithTimeout(10*time.Minute),
 	)
@@ -48,8 +55,9 @@ func NewSidecar(ctx context.Context, address string, user string) (sidecar.Sidec
 		return nil, err
 	}
 	sc := containerdSidecar{
-		client: client,
-		user:   user,
+		client:    client,
+		config:    config,
+		localExec: exec.OsExecutor{},
 	}
 	if err = sc.setup(ctx); err != nil {
 		return nil, err
@@ -58,10 +66,18 @@ func NewSidecar(ctx context.Context, address string, user string) (sidecar.Sidec
 }
 
 func (s *containerdSidecar) setup(ctx context.Context) error {
+	if s.config.Standalone {
+		return nil
+	}
+
 	hostname, err := os.Hostname()
 	if err != nil {
 		return errors.Wrap(err, "failed to get hostname")
 	}
+
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
 
 	filter := fmt.Sprintf("labels.io.kubernetes.container.name==%s,labels.io.kubernetes.pod.name==%s", hostname, hostname)
 
@@ -86,7 +102,7 @@ func (s *containerdSidecar) setup(ctx context.Context) error {
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return errors.Wrap(ctx.Err(), "main container not running")
 		case <-time.After(time.Second * 1):
 		}
 	}
@@ -151,9 +167,50 @@ func (s *containerdSidecar) Upload(ctx context.Context, fileName string) error {
 	return nil
 }
 
-func (s *containerdSidecar) BuildImage(ctx context.Context, fileName, image string) error {
-	// TODO(cezarsa): build must work, requires running buildkit daemon
-	return errors.New("build not supported yet")
+func (s *containerdSidecar) BuildAndPush(ctx context.Context, fileName string, destinationImages []string, reg sidecar.RegistryConfig, stdout, stderr io.Writer) error {
+	// Hardcoded uid as it is directly related what's on the Dockerfile for
+	// deploy-agent.
+	const uid = 1000
+
+	tmpDir, err := ioutil.TempDir("", "build")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpDir)
+	tar := archiver.Tar{
+		MkdirAll: true,
+	}
+	err = tar.Unarchive(fileName, tmpDir)
+	if err != nil {
+		return err
+	}
+	err = filepath.Walk(tmpDir, func(name string, _ os.FileInfo, err error) error {
+		if err == nil {
+			err = os.Chown(name, uid, -1)
+		}
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	err = s.localExec.Execute(exec.ExecuteOptions{
+		Cmd: "sudo",
+		Args: []string{
+			"-E", "-u", fmt.Sprintf("#%d", uid), "--",
+			s.config.BuildctlCmd,
+			"build",
+			"--frontend", "dockerfile.v0",
+			"--local", "context=" + tmpDir,
+			"--local", "dockerfile=" + tmpDir,
+			"--output", fmt.Sprintf("type=image,\"name=%s\",push=true,registry.insecure=%v", strings.Join(destinationImages, ","), s.config.InsecureRegistry),
+		},
+		Stdout: stdout,
+		Stderr: stderr,
+	})
+	if err != nil {
+		return errors.Wrapf(err, "failed to build image")
+	}
+	return nil
 }
 
 func (s *containerdSidecar) TagAndPush(ctx context.Context, baseImage string, destinationImages []string, reg sidecar.RegistryConfig, w io.Writer) error {
@@ -179,7 +236,7 @@ func (s *containerdSidecar) TagAndPush(ctx context.Context, baseImage string, de
 			if local {
 				return local, err
 			}
-			return strings.HasPrefix(host, "192.168."), nil
+			return s.config.InsecureRegistry, nil
 		}),
 	)
 

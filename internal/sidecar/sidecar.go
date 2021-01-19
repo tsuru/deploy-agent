@@ -26,7 +26,7 @@ type Filesystem interface {
 type Sidecar interface {
 	Commit(ctx context.Context, image string) (string, error)
 	Upload(ctx context.Context, fileName string) error
-	BuildImage(ctx context.Context, fileName, image string) error
+	BuildAndPush(ctx context.Context, fileName string, destinationImages []string, reg RegistryConfig, stdout, stderr io.Writer) error
 	TagAndPush(ctx context.Context, baseImage string, destinationImages []string, reg RegistryConfig, w io.Writer) error
 	Inspect(ctx context.Context, image string) (*ImageInspect, error)
 	Executor(ctx context.Context) exec.Executor

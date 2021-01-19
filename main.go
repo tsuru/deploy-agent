@@ -23,7 +23,7 @@ const version = "0.8.4"
 
 type Config struct {
 	DockerHost          string   `envconfig:"DOCKER_HOST"`
-	ContainerdAddress   string   `envconfig:"CONTAINERD_ADDRESS"`
+	ContainerdAddress   string   `envconfig:"CONTAINERD_ADDRESS" default:"/run/containerd/containerd.sock"`
 	DestinationImages   []string `split_words:"true"`
 	SourceImage         string   `split_words:"true"`
 	InputFile           string   `split_words:"true"`
@@ -32,9 +32,11 @@ type Config struct {
 	RegistryAuthUser    string   `split_words:"true"`
 	RegistryAddress     string   `split_words:"true"`
 	RunAsUser           string   `split_words:"true"`
+	BuildctlCmd         string   `split_words:"true" default:"buildctl-daemonless.sh"`
 	RegistryPushRetries int      `split_words:"true" default:"3"`
 	RunAsSidecar        bool     `split_words:"true"`
 	DockerfileBuild     bool     `split_words:"true"`
+	InsecureRegistry    bool     `split_words:"true"`
 }
 
 func main() {
@@ -76,20 +78,30 @@ func runAgent() error {
 	var sc sidecar.Sidecar
 
 	if config.RunAsSidecar {
-		sc, err = docker.NewSidecar(config.DockerHost, config.RunAsUser)
+		sc, err = docker.NewSidecar(docker.SidecarConfig{
+			Address:    config.DockerHost,
+			User:       config.RunAsUser,
+			Standalone: config.DockerfileBuild,
+		})
 		if err != nil {
 			var containerdErr error
-			sc, containerdErr = containerd.NewSidecar(ctx, config.ContainerdAddress, config.RunAsUser)
+			sc, containerdErr = containerd.NewSidecar(ctx, containerd.SidecarConfig{
+				Address:          config.ContainerdAddress,
+				User:             config.RunAsUser,
+				BuildctlCmd:      config.BuildctlCmd,
+				InsecureRegistry: config.InsecureRegistry,
+				Standalone:       config.DockerfileBuild,
+			})
 			if containerdErr != nil {
 				return fmt.Errorf("failed to initialize both docker and containerd: docker error: %v, containerd error: %v", err, containerdErr)
 			}
 		}
 
 		if config.DockerfileBuild {
-			if err = sc.BuildImage(ctx, config.InputFile, config.DestinationImages[0]); err != nil {
+			if err = sc.BuildAndPush(ctx, config.InputFile, config.DestinationImages, regConfig, os.Stdout, os.Stderr); err != nil {
 				return fmt.Errorf("failed to build image: %v", err)
 			}
-			return sc.TagAndPush(ctx, config.DestinationImages[0], config.DestinationImages, regConfig, os.Stdout)
+			return nil
 		}
 
 		if config.InputFile != "" {

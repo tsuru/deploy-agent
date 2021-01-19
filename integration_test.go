@@ -28,7 +28,7 @@ func (s *S) TestInspect(c *check.C) {
 	c.Assert(err, check.IsNil)
 	defer cleanup()
 
-	sc, err := docker.NewSidecar("", "root")
+	sc, err := docker.NewSidecar(docker.SidecarConfig{User: "root"})
 	c.Assert(err, check.IsNil)
 
 	outW := new(bytes.Buffer)

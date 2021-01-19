@@ -24,16 +24,25 @@ type dockerSidecar struct {
 
 	// client is a client to the docker daemon
 	client *client
+
+	config SidecarConfig
+}
+
+type SidecarConfig struct {
+	Address    string
+	User       string
+	Standalone bool
 }
 
 // NewSidecar initializes a Sidecar
-func NewSidecar(dockerHost string, user string) (sidecar.Sidecar, error) {
-	client, err := newClient(dockerHost)
+func NewSidecar(config SidecarConfig) (sidecar.Sidecar, error) {
+	client, err := newClient(config.Address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create docker client: %v", err)
 	}
 	sc := dockerSidecar{
 		client: client,
+		config: config,
 	}
 	if err = sc.setup(); err != nil {
 		return nil, err
@@ -41,7 +50,7 @@ func NewSidecar(dockerHost string, user string) (sidecar.Sidecar, error) {
 	sc.executor = executor{
 		client:      sc.client,
 		containerID: sc.primaryContainerID,
-		defaultUser: user,
+		defaultUser: config.User,
 	}
 	return &sc, nil
 }
@@ -97,13 +106,17 @@ func (s *dockerSidecar) Upload(ctx context.Context, fileName string) (err error)
 	return s.client.upload(ctx, s.primaryContainerID, "/", buf)
 }
 
-func (s *dockerSidecar) BuildImage(ctx context.Context, fileName, image string) error {
+func (s *dockerSidecar) BuildAndPush(ctx context.Context, fileName string, destinationImages []string, reg sidecar.RegistryConfig, stdout, stderr io.Writer) error {
 	file, err := os.Open(fileName)
 	if err != nil {
 		return fmt.Errorf("failed to open input file %q: %v", fileName, err)
 	}
 	defer file.Close()
-	return s.client.buildImage(ctx, image, file)
+	err = s.client.buildImage(ctx, destinationImages[0], file, stdout)
+	if err != nil {
+		return err
+	}
+	return s.TagAndPush(ctx, destinationImages[0], destinationImages, reg, stdout)
 }
 
 func (s *dockerSidecar) TagAndPush(ctx context.Context, baseImage string, destinationImages []string, reg sidecar.RegistryConfig, w io.Writer) error {
@@ -152,6 +165,10 @@ func (s *dockerSidecar) pushImage(ctx context.Context, img image, auth docker.Au
 }
 
 func (s *dockerSidecar) setup() error {
+	if s.config.Standalone {
+		return nil
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
 	id, err := getPrimaryContainerID(ctx, s.client)
 	cancel()

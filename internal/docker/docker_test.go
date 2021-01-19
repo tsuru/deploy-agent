@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"io/ioutil"
 	"testing"
 
 	docker "github.com/fsouza/go-dockerclient"
@@ -215,6 +216,6 @@ func (s *S) TestClientBuildImage(c *check.C) {
 	n, err := io.Copy(tw, data)
 	c.Assert(err, check.IsNil)
 	c.Assert(n, check.Equals, dataSize)
-	err = client.buildImage(context.Background(), "tsuru/teste-go", buf)
+	err = client.buildImage(context.Background(), "tsuru/teste-go", buf, ioutil.Discard)
 	c.Assert(err, check.IsNil)
 }
