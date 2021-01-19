@@ -63,6 +63,10 @@ func newClient(endpoint string) (*client, error) {
 		}
 	})
 	cli.SetTimeout(fullTimeout)
+	err = cli.Ping()
+	if err != nil {
+		return nil, err
+	}
 	return &client{
 		api: cli,
 	}, nil
