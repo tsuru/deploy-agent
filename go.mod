@@ -4,7 +4,7 @@ go 1.12
 
 require (
 	github.com/AkihiroSuda/nerdctl v0.4.1-0.20210104033751-ac9758b9eab3
-	github.com/containerd/containerd v1.4.1
+	github.com/containerd/containerd v1.4.8
 	github.com/fsouza/go-dockerclient v1.7.0
 	github.com/ghodss/yaml v1.0.0
 	github.com/kelseyhightower/envconfig v1.3.0
