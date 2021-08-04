@@ -1,0 +1,14 @@
+ARG BASE_IMAGE
+FROM docker:19.03.14 as docker
+FROM ${BASE_IMAGE}
+
+COPY --from=docker /usr/local/bin/docker /usr/local/bin/docker
+
+RUN apk update --no-cache && \
+    apk add --no-cache curl tar && \
+    curl -fsSL "https://github.com/GoogleCloudPlatform/docker-credential-gcr/releases/download/v2.0.0/docker-credential-gcr_linux_amd64-2.0.0.tar.gz" \
+    | tar xz --to-stdout ./docker-credential-gcr > /usr/local/bin/docker-credential-gcr && \
+    chmod +x /usr/local/bin/docker-credential-gcr && \
+    docker-credential-gcr configure-docker && \
+    mkdir ${HOME}/original-docker-config && \
+    cp ${HOME}/.docker/config.json ${HOME}/original-docker-config/config.json
