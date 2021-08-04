@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
@@ -120,17 +121,22 @@ func (s *dockerSidecar) BuildAndPush(ctx context.Context, fileName string, desti
 }
 
 func (s *dockerSidecar) TagAndPush(ctx context.Context, baseImage string, destinationImages []string, reg sidecar.RegistryConfig, w io.Writer) error {
-	authConfig := docker.AuthConfiguration{
+	baseAuthConfig := &docker.AuthConfiguration{
 		Username:      reg.RegistryAuthUser,
 		Password:      reg.RegistryAuthPass,
 		ServerAddress: reg.RegistryAddress,
 	}
 	for _, destImg := range destinationImages {
+		registry, _, _ := splitImageName(destImg)
+		authConfig := loadCreds(registry, w)
+		if authConfig == nil {
+			authConfig = baseAuthConfig
+		}
 		img, err := s.client.tag(ctx, baseImage, destImg)
 		if err != nil {
 			return fmt.Errorf("error tagging image %v: %v", img, err)
 		}
-		err = s.pushImage(ctx, img, authConfig, reg.RegistryPushRetries, w)
+		err = s.pushImage(ctx, img, *authConfig, reg.RegistryPushRetries, w)
 		if err != nil {
 			return fmt.Errorf("error pushing image %v: %v", img, err)
 		}
@@ -201,4 +207,18 @@ func getPrimaryContainerID(ctx context.Context, dockerClient *client) (string, e
 		case <-time.After(time.Second * 1):
 		}
 	}
+}
+
+func loadCreds(registry string, w io.Writer) *docker.AuthConfiguration {
+	authConfig, err := docker.NewAuthConfigurationsFromCredsHelpers(registry)
+	if err == nil {
+		return authConfig
+	}
+	os.Setenv("DOCKER_CONFIG", path.Join(os.Getenv("HOME"), "original-docker-config"))
+	defer os.Unsetenv("DOCKER_CONFIG")
+	authConfig, err = docker.NewAuthConfigurationsFromCredsHelpers(registry)
+	if err == nil {
+		return authConfig
+	}
+	return nil
 }

@@ -84,7 +84,7 @@ func (c *client) commit(ctx context.Context, containerID, image string) (string,
 	img := parseImageName(image)
 	commitedImg, err := c.api.CommitContainer(docker.CommitContainerOptions{
 		Container:  containerID,
-		Repository: img.repository,
+		Repository: img.name(),
 		Tag:        img.tag,
 		Context:    ctx,
 	})
