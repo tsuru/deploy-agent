@@ -129,7 +129,7 @@ func (s *S) TestClientCommit(c *check.C) {
 
 	img, err := client.commit(context.Background(), contID, "10.200.10.1:5000/admin/app-myapp:v23-builder")
 	c.Assert(err, check.IsNil)
-	dockerImage, err := client.api.InspectImage("admin/app-myapp:v23-builder")
+	dockerImage, err := client.api.InspectImage("10.200.10.1:5000/admin/app-myapp:v23-builder")
 	c.Assert(err, check.IsNil)
 	c.Assert(img, check.DeepEquals, dockerImage.ID)
 }
