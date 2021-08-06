@@ -130,7 +130,7 @@ func (c *client) inspect(ctx context.Context, img string) (*docker.Image, error)
 	return c.api.InspectImage(img)
 }
 
-func (c *client) buildImage(ctx context.Context, imageName string, inputFile io.Reader, output io.Writer) error {
+func (c *client) buildImage(ctx context.Context, containerID string, imageName string, inputFile io.Reader, output io.Writer) error {
 	buildOptions := docker.BuildImageOptions{
 		Name:              imageName,
 		Pull:              true,
@@ -141,6 +141,7 @@ func (c *client) buildImage(ctx context.Context, imageName string, inputFile io.
 		Context:           ctx,
 		InactivityTimeout: streamInactivityTimeout,
 		RawJSONStream:     true,
+		NetworkMode:       "container:" + containerID,
 	}
 	return c.api.BuildImage(buildOptions)
 }

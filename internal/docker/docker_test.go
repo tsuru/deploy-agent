@@ -216,6 +216,6 @@ func (s *S) TestClientBuildImage(c *check.C) {
 	n, err := io.Copy(tw, data)
 	c.Assert(err, check.IsNil)
 	c.Assert(n, check.Equals, dataSize)
-	err = client.buildImage(context.Background(), "tsuru/teste-go", buf, ioutil.Discard)
+	err = client.buildImage(context.Background(), "id", "tsuru/teste-go", buf, ioutil.Discard)
 	c.Assert(err, check.IsNil)
 }

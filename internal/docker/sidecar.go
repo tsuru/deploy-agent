@@ -113,7 +113,7 @@ func (s *dockerSidecar) BuildAndPush(ctx context.Context, fileName string, desti
 		return fmt.Errorf("failed to open input file %q: %v", fileName, err)
 	}
 	defer file.Close()
-	err = s.client.buildImage(ctx, destinationImages[0], file, stdout)
+	err = s.client.buildImage(ctx, s.primaryContainerID, destinationImages[0], file, stdout)
 	if err != nil {
 		return err
 	}
@@ -171,13 +171,17 @@ func (s *dockerSidecar) pushImage(ctx context.Context, img image, auth docker.Au
 }
 
 func (s *dockerSidecar) setup() error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
+	defer cancel()
+
+	var id string
+	var err error
 	if s.config.Standalone {
-		return nil
+		id, err = getSelfContainerID(ctx, s.client)
+	} else {
+		id, err = getPrimaryContainerID(ctx, s.client)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
-	id, err := getPrimaryContainerID(ctx, s.client)
-	cancel()
 	if err != nil {
 		return fmt.Errorf("failed to get main container: %v", err)
 	}
@@ -185,16 +189,31 @@ func (s *dockerSidecar) setup() error {
 	return nil
 }
 
+func getSelfContainerID(ctx context.Context, dockerClient *client) (string, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", fmt.Errorf("failed to get hostname: %v", err)
+	}
+	return getContainerID(ctx, dockerClient, map[string]string{
+		"io.kubernetes.container.name": "build-cont",
+		"io.kubernetes.pod.name":       hostname,
+	})
+}
+
 func getPrimaryContainerID(ctx context.Context, dockerClient *client) (string, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return "", fmt.Errorf("failed to get hostname: %v", err)
 	}
+	return getContainerID(ctx, dockerClient, map[string]string{
+		"io.kubernetes.container.name": hostname,
+		"io.kubernetes.pod.name":       hostname,
+	})
+}
+
+func getContainerID(ctx context.Context, dockerClient *client, filter map[string]string) (string, error) {
 	for {
-		containers, err := dockerClient.listContainersByLabels(ctx, map[string]string{
-			"io.kubernetes.container.name": hostname,
-			"io.kubernetes.pod.name":       hostname,
-		})
+		containers, err := dockerClient.listContainersByLabels(ctx, filter)
 		if err != nil {
 			return "", fmt.Errorf("failed to get containers: %v", err)
 		}
