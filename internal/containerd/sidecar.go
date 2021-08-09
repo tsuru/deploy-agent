@@ -12,12 +12,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AkihiroSuda/nerdctl/pkg/imgutil/commit"
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/errdefs"
 	refDocker "github.com/containerd/containerd/reference/docker"
 	remoteDocker "github.com/containerd/containerd/remotes/docker"
+	"github.com/containerd/nerdctl/pkg/imgutil/commit"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
 	"github.com/tsuru/deploy-agent/internal/sidecar"
