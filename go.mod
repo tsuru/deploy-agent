@@ -3,7 +3,7 @@ module github.com/tsuru/deploy-agent
 go 1.12
 
 require (
-	github.com/containerd/containerd v1.5.4
+	github.com/containerd/containerd v1.5.7
 	github.com/containerd/nerdctl v0.11.0
 	github.com/fsouza/go-dockerclient v1.7.0
 	github.com/ghodss/yaml v1.0.0
