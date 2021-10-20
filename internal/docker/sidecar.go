@@ -132,6 +132,9 @@ func (s *dockerSidecar) TagAndPush(ctx context.Context, baseImage string, destin
 		if authConfig == nil {
 			authConfig = baseAuthConfig
 		}
+		if authConfig.ServerAddress == "" {
+			authConfig.ServerAddress = registry
+		}
 		img, err := s.client.tag(ctx, baseImage, destImg)
 		if err != nil {
 			return fmt.Errorf("error tagging image %v: %v", img, err)
