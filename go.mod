@@ -3,9 +3,9 @@ module github.com/tsuru/deploy-agent
 go 1.12
 
 require (
-	github.com/containerd/containerd v1.5.4
+	github.com/containerd/containerd v1.5.7
 	github.com/containerd/nerdctl v0.11.0
-	github.com/fsouza/go-dockerclient v1.7.0
+	github.com/fsouza/go-dockerclient v1.7.4
 	github.com/ghodss/yaml v1.0.0
 	github.com/kelseyhightower/envconfig v1.3.0
 	github.com/mholt/archiver/v3 v3.5.0
@@ -18,7 +18,4 @@ require (
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f
 )
 
-replace (
-	github.com/containerd/stargz-snapshotter/estargz => github.com/containerd/stargz-snapshotter/estargz v0.0.0-20210101143201-d58f43a8235e
-	github.com/fsouza/go-dockerclient => github.com/cezarsa/go-dockerclient v0.0.0-20210107161031-535fe726dda5
-)
+replace github.com/containerd/stargz-snapshotter/estargz => github.com/containerd/stargz-snapshotter/estargz v0.0.0-20210101143201-d58f43a8235e
