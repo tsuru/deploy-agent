@@ -62,27 +62,28 @@ func (s *dockerSidecar) Executor(ctx context.Context) exec.Executor {
 }
 
 func (s *dockerSidecar) Build(ctx context.Context, rawDockerfile string) (string, error) {
-	var inputBuff bytes.Buffer
-
-	t := time.Now()
-
-	tr := tar.NewWriter(&inputBuff)
-	tr.WriteHeader(&tar.Header{Name: "Dockerfile", Size: int64(len(rawDockerfile)), ModTime: t, AccessTime: t, ChangeTime: t})
-	fmt.Fprintf(tr, rawDockerfile)
-	tr.Close()
-
-	var buffer bytes.Buffer
-
-	err := s.client.api.BuildImage(docker.BuildImageOptions{
+	var input, output bytes.Buffer
+	tr := tar.NewWriter(&input)
+	err := tr.WriteHeader(&tar.Header{Name: "Dockerfile", Size: int64(len(rawDockerfile))})
+	if err != nil {
+		return "", fmt.Errorf("failed to create Dockerfile entry in tarball: %w", err)
+	}
+	_, err = fmt.Fprintf(tr, rawDockerfile)
+	if err != nil {
+		return "", fmt.Errorf("failed to write Dockerfile in the tarball: %w", err)
+	}
+	if err = tr.Close(); err != nil {
+		return "", fmt.Errorf("failed to close tarball: %w", err)
+	}
+	err = s.client.api.BuildImage(docker.BuildImageOptions{
 		Context:        ctx,
 		SuppressOutput: true,
-		InputStream:    &inputBuff,
-		OutputStream:   &buffer,
+		InputStream:    &input,
+		OutputStream:   &output,
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to build container image from Dockerfile: %w", err)
 	}
-
 	return strings.TrimSuffix(buffer.String(), "\n"), nil
 }
 
