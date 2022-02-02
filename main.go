@@ -132,9 +132,10 @@ LABEL tsuru.io.component=deploy-agent \
       deploy-agent.tsuru.io.version=%q \
       deploy-agent.tsuru.io.build-date=%q \
       deploy-agent.tsuru.io.source-image=%q
-`, version, time.Now().UTC().Format(time.RFC3339), config.SourceImage)
+`, config.SourceImage, version, time.Now().UTC().Format(time.RFC3339), config.SourceImage)
 
-			imageID, err := sc.Build(ctx, rawDockerfile)
+			var imageID string
+			imageID, err = sc.Build(ctx, rawDockerfile)
 			if err != nil {
 				return err
 			}

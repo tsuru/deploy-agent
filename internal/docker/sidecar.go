@@ -68,7 +68,7 @@ func (s *dockerSidecar) Build(ctx context.Context, rawDockerfile string) (string
 	if err != nil {
 		return "", fmt.Errorf("failed to create Dockerfile entry in tarball: %w", err)
 	}
-	_, err = fmt.Fprintf(tr, rawDockerfile)
+	_, err = fmt.Fprint(tr, rawDockerfile)
 	if err != nil {
 		return "", fmt.Errorf("failed to write Dockerfile in the tarball: %w", err)
 	}
@@ -84,7 +84,7 @@ func (s *dockerSidecar) Build(ctx context.Context, rawDockerfile string) (string
 	if err != nil {
 		return "", fmt.Errorf("failed to build container image from Dockerfile: %w", err)
 	}
-	return strings.TrimSuffix(buffer.String(), "\n"), nil
+	return strings.TrimSuffix(output.String(), "\n"), nil
 }
 
 func (s *dockerSidecar) Commit(ctx context.Context, image string) (string, error) {
