@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/kelseyhightower/envconfig"
 	"github.com/tsuru/deploy-agent/internal/containerd"
@@ -118,11 +119,30 @@ func runAgent() error {
 			// all we need to do is return the inspected files and image and push the
 			// destination images based on the sidecar container.
 
-			if err = inspect(ctx, sc, config.SourceImage, filesystem, os.Stdout, os.Stderr); err != nil {
+			// NOTE(nettoclaudio): We must generate a different digest for each
+			// app version. This way, Tsuru's garbage collector is able to remove
+			// old app images from container registry without dropping the original
+			// source image and related tags.
+			//
+			// See more: https://github.com/tsuru/tsuru/issues/2532
+			rawDockerfile := fmt.Sprintf(`FROM %s
+
+LABEL tsuru.io.component=deploy-agent  \
+      tsuru.io.build-from=source-image \
+      deploy-agent.tsuru.io.version=%q \
+      deploy-agent.tsuru.io.build-date=%q
+`, config.SourceImage, version, time.Now().UTC().Format(time.RFC3339))
+
+			imageID, err := sc.Build(ctx, rawDockerfile)
+			if err != nil {
+				return err
+			}
+
+			if err = inspect(ctx, sc, imageID, filesystem, os.Stdout, os.Stderr); err != nil {
 				return fmt.Errorf("error inspecting sidecar: %v", err)
 			}
 
-			if err = sc.TagAndPush(ctx, config.SourceImage, config.DestinationImages, regConfig, os.Stdout); err != nil {
+			if err = sc.TagAndPush(ctx, imageID, config.DestinationImages, regConfig, os.Stdout); err != nil {
 				return fmt.Errorf("error pushing images: %v", err)
 			}
 

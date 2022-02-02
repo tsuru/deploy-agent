@@ -24,6 +24,7 @@ type Filesystem interface {
 }
 
 type Sidecar interface {
+	Build(ctx context.Context, rawDockerfile string) (string, error)
 	Commit(ctx context.Context, image string) (string, error)
 	Upload(ctx context.Context, fileName string) error
 	BuildAndPush(ctx context.Context, fileName string, destinationImages []string, reg RegistryConfig, stdout, stderr io.Writer) error

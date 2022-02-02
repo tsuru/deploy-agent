@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
@@ -60,7 +61,34 @@ func (s *dockerSidecar) Executor(ctx context.Context) exec.Executor {
 	return &s.executor
 }
 
+func (s *dockerSidecar) Build(ctx context.Context, rawDockerfile string) (string, error) {
+	var inputBuff bytes.Buffer
+
+	t := time.Now()
+
+	tr := tar.NewWriter(&inputBuff)
+	tr.WriteHeader(&tar.Header{Name: "Dockerfile", Size: int64(len(rawDockerfile)), ModTime: t, AccessTime: t, ChangeTime: t})
+	fmt.Fprintf(tr, rawDockerfile)
+	tr.Close()
+
+	var buffer bytes.Buffer
+
+	err := s.client.api.BuildImage(docker.BuildImageOptions{
+		Context:        ctx,
+		SuppressOutput: true,
+		InputStream:    &inputBuff,
+		OutputStream:   &buffer,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSuffix(buffer.String(), "\n"), nil
+}
+
 func (s *dockerSidecar) Commit(ctx context.Context, image string) (string, error) {
+	fmt.Fprintf(os.Stderr, "Primary container ID: %v\n", s.primaryContainerID)
+
 	id, err := s.client.commit(ctx, s.primaryContainerID, image)
 	if err != nil {
 		return "", fmt.Errorf("error committing image %v: %v", image, err)

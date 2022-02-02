@@ -133,6 +133,10 @@ func (s *containerdSidecar) filterRunningContainers(ctx context.Context, conts [
 	return result, nil
 }
 
+func (s *containerdSidecar) Build(ctx context.Context, containerfile string) (string, error) {
+	return "", fmt.Errorf("not implemented yet")
+}
+
 func (s *containerdSidecar) Commit(ctx context.Context, image string) (string, error) {
 	imageRef, err := refDocker.ParseDockerRef(image)
 	if err != nil {
