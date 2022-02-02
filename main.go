@@ -127,11 +127,12 @@ func runAgent() error {
 			// See more: https://github.com/tsuru/tsuru/issues/2532
 			rawDockerfile := fmt.Sprintf(`FROM %s
 
-LABEL tsuru.io.component=deploy-agent  \
+LABEL tsuru.io.component=deploy-agent \
       tsuru.io.build-from=source-image \
       deploy-agent.tsuru.io.version=%q \
-      deploy-agent.tsuru.io.build-date=%q
-`, config.SourceImage, version, time.Now().UTC().Format(time.RFC3339))
+      deploy-agent.tsuru.io.build-date=%q \
+      deploy-agent.tsuru.io.source-image=%q
+`, version, time.Now().UTC().Format(time.RFC3339), config.SourceImage)
 
 			imageID, err := sc.Build(ctx, rawDockerfile)
 			if err != nil {
