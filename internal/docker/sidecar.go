@@ -87,8 +87,6 @@ func (s *dockerSidecar) Build(ctx context.Context, rawDockerfile string) (string
 }
 
 func (s *dockerSidecar) Commit(ctx context.Context, image string) (string, error) {
-	fmt.Fprintf(os.Stderr, "Primary container ID: %v\n", s.primaryContainerID)
-
 	id, err := s.client.commit(ctx, s.primaryContainerID, image)
 	if err != nil {
 		return "", fmt.Errorf("error committing image %v: %v", image, err)
