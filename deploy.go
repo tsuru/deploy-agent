@@ -5,11 +5,14 @@
 package main
 
 import (
+	"archive/tar"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
+	"time"
 
 	"github.com/tsuru/deploy-agent/internal/sidecar"
 	"github.com/tsuru/deploy-agent/internal/tsuru"
@@ -106,4 +109,35 @@ func inspect(ctx context.Context, sc sidecar.Sidecar, image string, filesystem F
 		return fmt.Errorf("failed to encode inspected data %v: %v", m, err)
 	}
 	return nil
+}
+
+func generateUniqueDockerfile(sourceImage string) (*os.File, error) {
+	tmpFile, err := ioutil.TempFile("", "build.*.tar")
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate temporary file: %w", err)
+	}
+	defer tmpFile.Close()
+
+	tr := tar.NewWriter(tmpFile)
+	defer tr.Close()
+
+	rawDockerfile := fmt.Sprintf(`FROM %s
+
+LABEL tsuru.io.component=deploy-agent \
+      tsuru.io.build-from=source-image \
+      deploy-agent.tsuru.io.version=%q \
+      deploy-agent.tsuru.io.build-date=%q \
+      deploy-agent.tsuru.io.source-image=%q
+`, sourceImage, version, time.Now().UTC().Format(time.RFC3339), sourceImage)
+
+	err = tr.WriteHeader(&tar.Header{Name: "Dockerfile", Size: int64(len(rawDockerfile)), Mode: int64(0644)})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Dockerfile entry in tarball: %w", err)
+	}
+
+	if _, err = fmt.Fprint(tr, rawDockerfile); err != nil {
+		return nil, fmt.Errorf("failed to write Dockerfile in the tarball: %w", err)
+	}
+
+	return tmpFile, nil
 }
