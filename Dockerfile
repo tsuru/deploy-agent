@@ -1,22 +1,19 @@
 ARG golang_version=1.16
 ARG alpine_version=3.15
+ARG docker_version=20.10.12
 ARG buildkit_version=v0.9.3
 
-FROM golang:${golang_version}-alpine${alpine_version} as builder
+FROM golang:${golang_version}-alpine${alpine_version} AS builder
 RUN apk add --no-cache --update gcc libc-dev
 COPY . /go/src/github.com/tsuru/deploy-agent/
 WORKDIR /go/src/github.com/tsuru/deploy-agent/
 RUN go build
 
+FROM docker:${docker_version}-alpine${alpine_version} AS docker
+
 FROM moby/buildkit:${buildkit_version}-rootless
-
-ARG alpine_version=3.15
-ARG docker_version=20.10.12
-ARG docker_buildx_version=0.7.1
-
-COPY --from=docker:${docker_version}-alpine${alpine_version} /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker /usr/local/bin/docker /usr/local/bin/
 COPY --from=builder /go/src/github.com/tsuru/deploy-agent/deploy-agent /bin/
-
 # NOTE(nettoclaudio): This piece of code configures the buildctl to not pull container images
 # from insecure registries under TLS protocol. It may be needed while developing anything on
 # Tsuru that uses containerd as container runtime.
@@ -30,12 +27,9 @@ RUN set -ex && \
     for registry in ${insecure_registries}; do \
       echo -e "[registry.\"${registry}\"]\n  http = true\n" >>  /home/user/.config/buildkit/buildkitd.toml; \
     done
-
 USER 0:0
 WORKDIR /
-
 RUN set -ex && \
     apk --update --no-cache add sudo && \
     ln -s /bin/deploy-agent /bin/tsuru_unit_agent
-
 ENTRYPOINT ["./bin/deploy-agent"]
