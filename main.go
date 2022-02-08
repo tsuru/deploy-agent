@@ -117,13 +117,25 @@ func runAgent() error {
 			// build/deploy/deploy-only is not required since this is an image deploy
 			// all we need to do is return the inspected files and image and push the
 			// destination images based on the sidecar container.
-
 			if err = inspect(ctx, sc, config.SourceImage, filesystem, os.Stdout, os.Stderr); err != nil {
 				return fmt.Errorf("error inspecting sidecar: %v", err)
 			}
 
-			if err = sc.TagAndPush(ctx, config.SourceImage, config.DestinationImages, regConfig, os.Stdout); err != nil {
-				return fmt.Errorf("error pushing images: %v", err)
+			// NOTE(nettoclaudio): We must generate a different digest for each
+			// app version. This way, Tsuru's garbage collector is able to remove
+			// old app images from container registry without dropping the original
+			// source image and related tags.
+			//
+			// See more: https://github.com/tsuru/tsuru/issues/2532
+			var dockerfile *os.File
+			dockerfile, err = generateUniqueDockerfile(config.SourceImage)
+			if err != nil {
+				return fmt.Errorf("failed to generate Dockerfile: %w", err)
+			}
+
+			err = sc.BuildAndPush(ctx, dockerfile.Name(), config.DestinationImages, regConfig, os.Stdout, os.Stderr)
+			if err != nil {
+				return fmt.Errorf("cannot build and push generated container image: %w", err)
 			}
 
 			return nil
