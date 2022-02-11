@@ -74,5 +74,6 @@ jobs:
       env:
         PACKAGE_NAME: deploy-agent
         PACKAGECLOUD_TOKEN: ${{secrets.PACKAGECLOUD_TOKEN}}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         curl -sL https://raw.githubusercontent.com/tsuru/push-to-packagecloud/master/push.sh | bash
