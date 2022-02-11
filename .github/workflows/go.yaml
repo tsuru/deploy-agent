@@ -61,7 +61,7 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/')
       uses: goreleaser/goreleaser-action@v1
       with:
-        args: --config goreleaser.yml
+        args: --config goreleaser.yml --rm-dist
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -74,6 +74,6 @@ jobs:
       env:
         PACKAGE_NAME: deploy-agent
         PACKAGECLOUD_TOKEN: ${{secrets.PACKAGECLOUD_TOKEN}}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SKIP_GORELEASER: "true"
       run: |
         curl -sL https://raw.githubusercontent.com/tsuru/push-to-packagecloud/master/push.sh | bash
