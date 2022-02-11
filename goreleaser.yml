@@ -1,7 +1,7 @@
 # goreleaser.yml
 # Build customization
 builds:
-- id: "default"
+- id: deploy-agent
   main: .
   binary: tsuru_unit_agent
   goos:
@@ -12,7 +12,7 @@ builds:
 # Archive customization
 archives:
 - builds:
-  - default
+  - deploy-agent
   name_template: "{{.Binary}}_{{.Version}}_{{.Os}}_{{.Arch}}"
   format: tar.gz
   replacements:
