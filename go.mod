@@ -5,6 +5,7 @@ go 1.12
 require (
 	github.com/containerd/containerd v1.5.7
 	github.com/containerd/nerdctl v0.11.0
+	github.com/docker/cli v20.10.12+incompatible
 	github.com/fsouza/go-dockerclient v1.7.4
 	github.com/ghodss/yaml v1.0.0
 	github.com/kelseyhightower/envconfig v1.3.0

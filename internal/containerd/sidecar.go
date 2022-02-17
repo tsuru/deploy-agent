@@ -18,6 +18,7 @@ import (
 	refDocker "github.com/containerd/containerd/reference/docker"
 	remoteDocker "github.com/containerd/containerd/remotes/docker"
 	"github.com/containerd/nerdctl/pkg/imgutil/commit"
+	dockerconfig "github.com/docker/cli/cli/config"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
 	"github.com/tsuru/deploy-agent/internal/sidecar"
@@ -225,6 +226,7 @@ func (s *containerdSidecar) TagAndPush(ctx context.Context, baseImage string, de
 	if err != nil {
 		return err
 	}
+
 	image, err := s.client.ImageService().Get(ctx, baseRef.String())
 	if err != nil {
 		return err
@@ -232,9 +234,25 @@ func (s *containerdSidecar) TagAndPush(ctx context.Context, baseImage string, de
 
 	authorizer := remoteDocker.NewDockerAuthorizer(
 		remoteDocker.WithAuthClient(pushHTTPClient),
-		remoteDocker.WithAuthCreds(func(string) (string, string, error) {
-			return reg.RegistryAuthUser, reg.RegistryAuthPass, nil
-		}))
+		remoteDocker.WithAuthCreds(func(host string) (string, string, error) {
+			if reg.RegistryAuthUser != "" || reg.RegistryAuthPass != "" {
+				return reg.RegistryAuthUser, reg.RegistryAuthPass, nil
+			}
+
+			configfile, err := dockerconfig.Load("")
+			if err != nil {
+				return "", "", errors.Wrap(err, "failed to load Docker config file (~/.docker/config.json)")
+			}
+
+			ac, err := configfile.GetCredentialsStore(host).Get(host)
+			if err != nil {
+				return "", "", errors.Wrapf(err, "failed to get credentials from Docker credentials store for %q", host)
+			}
+
+			return ac.Username, ac.Password, nil
+		}),
+	)
+
 	registryHosts := remoteDocker.ConfigureDefaultRegistries(
 		remoteDocker.WithAuthorizer(authorizer),
 		remoteDocker.WithClient(pushHTTPClient),
