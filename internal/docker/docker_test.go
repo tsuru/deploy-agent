@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/tsuru/deploy-agent/internal/sidecar"
 
 	dockertest "github.com/fsouza/go-dockerclient/testing"
 	"gopkg.in/check.v1"
@@ -216,6 +217,6 @@ func (s *S) TestClientBuildImage(c *check.C) {
 	n, err := io.Copy(tw, data)
 	c.Assert(err, check.IsNil)
 	c.Assert(n, check.Equals, dataSize)
-	err = client.buildImage(context.Background(), "id", "tsuru/teste-go", buf, ioutil.Discard)
+	err = client.buildImage(context.Background(), "id", "tsuru/go", "tsuru/teste-go", sidecar.RegistryConfig{}, buf, ioutil.Discard)
 	c.Assert(err, check.IsNil)
 }

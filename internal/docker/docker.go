@@ -15,6 +15,7 @@ import (
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/tsuru/deploy-agent/internal/sidecar"
 )
 
 const (
@@ -130,8 +131,22 @@ func (c *client) inspect(ctx context.Context, img string) (*docker.Image, error)
 	return c.api.InspectImage(img)
 }
 
-func (c *client) buildImage(ctx context.Context, containerID string, imageName string, inputFile io.Reader, output io.Writer) error {
-	buildOptions := docker.BuildImageOptions{
+func (c *client) buildImage(ctx context.Context, containerID, sourceImage, imageName string, reg sidecar.RegistryConfig, inputFile io.Reader, output io.Writer) error {
+	acs := docker.AuthConfigurations{
+		Configs: make(map[string]docker.AuthConfiguration),
+	}
+	if reg.RegistryAuthUser != "" && reg.RegistryAuthPass != "" {
+		acs.Configs[reg.RegistryAddress] = docker.AuthConfiguration{
+			ServerAddress: reg.RegistryAddress,
+			Username:      reg.RegistryAuthUser,
+			Password:      reg.RegistryAuthPass,
+		}
+	}
+	imgRef := parseImageName(sourceImage)
+	if ac := loadCreds(imgRef.registry); ac != nil {
+		acs.Configs[imgRef.registry] = *ac
+	}
+	return c.api.BuildImage(docker.BuildImageOptions{
 		Name:              imageName,
 		Pull:              true,
 		NoCache:           true,
@@ -142,8 +157,8 @@ func (c *client) buildImage(ctx context.Context, containerID string, imageName s
 		InactivityTimeout: streamInactivityTimeout,
 		RawJSONStream:     true,
 		NetworkMode:       "container:" + containerID,
-	}
-	return c.api.BuildImage(buildOptions)
+		AuthConfigs:       acs,
+	})
 }
 
 func parseImageName(imageName string) image {

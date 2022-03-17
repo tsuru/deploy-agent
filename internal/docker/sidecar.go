@@ -107,15 +107,15 @@ func (s *dockerSidecar) Upload(ctx context.Context, fileName string) (err error)
 	return s.client.upload(ctx, s.primaryContainerID, "/", buf)
 }
 
-func (s *dockerSidecar) BuildAndPush(ctx context.Context, fileName string, destinationImages []string, reg sidecar.RegistryConfig, stdout, stderr io.Writer) error {
+func (s *dockerSidecar) BuildAndPush(ctx context.Context, fileName, sourceImage string, destinationImages []string, reg sidecar.RegistryConfig, stdout, stderr io.Writer) error {
 	file, err := os.Open(fileName)
 	if err != nil {
 		return fmt.Errorf("failed to open input file %q: %v", fileName, err)
 	}
 	defer file.Close()
-	err = s.client.buildImage(ctx, s.primaryContainerID, destinationImages[0], file, stdout)
+	err = s.client.buildImage(ctx, s.primaryContainerID, sourceImage, destinationImages[0], reg, file, stdout)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to build container image: %v", err)
 	}
 	return s.TagAndPush(ctx, destinationImages[0], destinationImages, reg, stdout)
 }
@@ -128,7 +128,7 @@ func (s *dockerSidecar) TagAndPush(ctx context.Context, baseImage string, destin
 	}
 	for _, destImg := range destinationImages {
 		registry, _, _ := splitImageName(destImg)
-		authConfig := loadCreds(registry, w)
+		authConfig := loadCreds(registry)
 		if authConfig == nil {
 			authConfig = baseAuthConfig
 		}
@@ -231,7 +231,7 @@ func getContainerID(ctx context.Context, dockerClient *client, filter map[string
 	}
 }
 
-func loadCreds(registry string, w io.Writer) *docker.AuthConfiguration {
+func loadCreds(registry string) *docker.AuthConfiguration {
 	authConfig, err := docker.NewAuthConfigurationsFromCredsHelpers(registry)
 	if err == nil {
 		return authConfig

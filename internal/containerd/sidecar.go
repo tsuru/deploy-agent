@@ -175,7 +175,7 @@ func (s *containerdSidecar) Upload(ctx context.Context, fileName string) error {
 	return nil
 }
 
-func (s *containerdSidecar) BuildAndPush(ctx context.Context, fileName string, destinationImages []string, reg sidecar.RegistryConfig, stdout, stderr io.Writer) error {
+func (s *containerdSidecar) BuildAndPush(ctx context.Context, fileName, sourceImage string, destinationImages []string, reg sidecar.RegistryConfig, stdout, stderr io.Writer) error {
 	// Hardcoded uid as it is directly related what's on the Dockerfile for
 	// deploy-agent.
 	const uid = 1000

@@ -98,7 +98,7 @@ func runAgent() error {
 		}
 
 		if config.DockerfileBuild {
-			if err = sc.BuildAndPush(ctx, config.InputFile, config.DestinationImages, regConfig, os.Stdout, os.Stderr); err != nil {
+			if err = sc.BuildAndPush(ctx, config.InputFile, config.SourceImage, config.DestinationImages, regConfig, os.Stdout, os.Stderr); err != nil {
 				return fmt.Errorf("failed to build image: %v", err)
 			}
 			return nil
@@ -133,7 +133,7 @@ func runAgent() error {
 				return fmt.Errorf("failed to generate Dockerfile: %w", err)
 			}
 
-			err = sc.BuildAndPush(ctx, dockerfile.Name(), config.DestinationImages, regConfig, os.Stdout, os.Stderr)
+			err = sc.BuildAndPush(ctx, dockerfile.Name(), config.SourceImage, config.DestinationImages, regConfig, os.Stdout, os.Stderr)
 			if err != nil {
 				return fmt.Errorf("cannot build and push generated container image: %w", err)
 			}
