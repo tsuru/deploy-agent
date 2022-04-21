@@ -142,9 +142,11 @@ func (c *client) buildImage(ctx context.Context, containerID, sourceImage, image
 			Password:      reg.RegistryAuthPass,
 		}
 	}
-	imgRef := parseImageName(sourceImage)
-	if ac := loadCreds(imgRef.registry); ac != nil {
-		acs.Configs[imgRef.registry] = *ac
+	if sourceImage != "" {
+		imgRef := parseImageName(sourceImage)
+		if ac := loadCreds(imgRef.registry); ac != nil {
+			acs.Configs[imgRef.registry] = *ac
+		}
 	}
 	return c.api.BuildImage(docker.BuildImageOptions{
 		Name:              imageName,
