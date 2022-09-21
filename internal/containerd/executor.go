@@ -93,7 +93,7 @@ func (e *containerdExecutor) ExecuteAsUser(user string, opts exec.ExecuteOptions
 	select {
 	case status := <-statusCh:
 		if status.ExitCode() != 0 {
-			return fmt.Errorf("unexpected exit code %d while running %v", status.ExitCode(), fullCmd)
+			return fmt.Errorf("unexpected exit code %d while running %v", status.ExitCode(), opts.Cmd)
 		}
 	case <-e.ctx.Done():
 		return e.ctx.Err()

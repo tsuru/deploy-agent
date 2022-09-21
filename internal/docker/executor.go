@@ -68,7 +68,7 @@ func (d *executor) ExecuteAsUser(user string, opts exec.ExecuteOptions) error {
 		return err
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("unexpected exit code %#+v while running %v", exitCode, cmd)
+		return fmt.Errorf("unexpected exit code %#+v while running %v", exitCode, opts.Cmd)
 	}
 	return nil
 }
