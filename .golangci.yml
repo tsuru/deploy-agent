@@ -7,14 +7,11 @@ linters-settings:
     check-shadowing: true
   gofmt:
     simplify: true
-  maligned:
-    suggest-new: true
 
 linters:
   enable:
     - goimports
     - gofmt
     - misspell
-    - maligned
   disable:
     - errcheck
