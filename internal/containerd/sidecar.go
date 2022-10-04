@@ -138,7 +138,7 @@ func (s *containerdSidecar) Commit(ctx context.Context, image string) (string, e
 	if err != nil {
 		return "", err
 	}
-	containers, err := s.client.Containers(ctx, fmt.Sprintf("id=%s", s.primaryContainerID))
+	containers, err := s.client.Containers(ctx, fmt.Sprintf("id==%s", s.primaryContainerID))
 	if err != nil {
 		return "", err
 	}
