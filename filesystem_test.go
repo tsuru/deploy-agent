@@ -4,7 +4,6 @@
 package main
 
 import (
-	"io/ioutil"
 	"os"
 
 	"github.com/tsuru/tsuru/exec"
@@ -17,10 +16,10 @@ type FilesystemSuite struct{}
 var _ = check.Suite(&FilesystemSuite{})
 
 func (s *FilesystemSuite) TestExecutorFSReadFile(c *check.C) {
-	tmpFile, err := ioutil.TempFile("", "")
+	tmpFile, err := os.CreateTemp("", "")
 	c.Assert(err, check.IsNil)
 	defer os.Remove(tmpFile.Name())
-	err = ioutil.WriteFile(tmpFile.Name(), []byte("this is the file content"), 0666)
+	err = os.WriteFile(tmpFile.Name(), []byte("this is the file content"), 0666)
 	c.Assert(err, check.IsNil)
 	fs := executorFS{executor: &exec.OsExecutor{}}
 	data, err := fs.ReadFile(tmpFile.Name())
@@ -29,7 +28,7 @@ func (s *FilesystemSuite) TestExecutorFSReadFile(c *check.C) {
 }
 
 func (s *FilesystemSuite) TestExecutorFSCheckFile(c *check.C) {
-	tmpFile, err := ioutil.TempFile("", "")
+	tmpFile, err := os.CreateTemp("", "")
 	c.Assert(err, check.IsNil)
 	defer os.Remove(tmpFile.Name())
 	fs := executorFS{executor: &exec.OsExecutor{}}
@@ -43,7 +42,7 @@ func (s *FilesystemSuite) TestExecutorFSCheckFile(c *check.C) {
 }
 
 func (s *FilesystemSuite) TestExecutorFSRemoveFile(c *check.C) {
-	tmpFile, err := ioutil.TempFile("", "")
+	tmpFile, err := os.CreateTemp("", "")
 	c.Assert(err, check.IsNil)
 	defer os.Remove(tmpFile.Name())
 	fs := executorFS{executor: &exec.OsExecutor{}}

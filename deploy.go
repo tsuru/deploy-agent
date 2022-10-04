@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"time"
 
@@ -112,7 +111,7 @@ func inspect(ctx context.Context, sc sidecar.Sidecar, image string, filesystem F
 }
 
 func generateUniqueDockerfile(sourceImage string) (*os.File, error) {
-	tmpFile, err := ioutil.TempFile("", "build.*.tar")
+	tmpFile, err := os.CreateTemp("", "build.*.tar")
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate temporary file: %w", err)
 	}

@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -28,7 +27,7 @@ var (
 
 func execScript(cmds []string, envs []bind.EnvVar, w io.Writer, fs Filesystem, executor exec.Executor) error {
 	if w == nil {
-		w = ioutil.Discard
+		w = io.Discard
 	}
 	workingDir := defaultWorkingDir
 	exists, err := fs.CheckFile(defaultWorkingDir)

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -139,7 +138,14 @@ func (s *containerdSidecar) Commit(ctx context.Context, image string) (string, e
 	if err != nil {
 		return "", err
 	}
-	digest, err := commit.Commit(ctx, s.client, s.primaryContainerID, &commit.Opts{
+	containers, err := s.client.Containers(ctx, fmt.Sprintf("id=%s", s.primaryContainerID))
+	if err != nil {
+		return "", err
+	}
+	if len(containers) != 1 {
+		return "", fmt.Errorf("none or too many containers found")
+	}
+	digest, err := commit.Commit(ctx, s.client, containers[0], &commit.Opts{
 		Ref: imageRef.String(),
 	})
 	if err != nil {
@@ -180,7 +186,7 @@ func (s *containerdSidecar) BuildAndPush(ctx context.Context, fileName, sourceIm
 	// deploy-agent.
 	const uid = 1000
 
-	tmpDir, err := ioutil.TempDir("", "build")
+	tmpDir, err := os.MkdirTemp("", "build")
 	if err != nil {
 		return err
 	}

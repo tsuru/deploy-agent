@@ -7,7 +7,7 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"strings"
 
@@ -30,7 +30,7 @@ func (f *localFS) ReadFile(name string) ([]byte, error) {
 		return nil, err
 	}
 	defer file.Close()
-	return ioutil.ReadAll(file)
+	return io.ReadAll(file)
 }
 
 func (f *localFS) CheckFile(name string) (bool, error) {

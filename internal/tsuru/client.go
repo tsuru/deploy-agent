@@ -7,7 +7,7 @@ package tsuru
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -72,7 +72,7 @@ func (c Client) GetAppEnvs(appName string) ([]bind.EnvVar, error) {
 	}
 	var envs []bind.EnvVar
 	defer resp.Body.Close()
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +111,7 @@ func (c Client) RegisterUnit(appName string, customData map[string]interface{}) 
 	}
 	var envs []bind.EnvVar
 	defer resp.Body.Close()
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +137,7 @@ func (c Client) SendDiffDeploy(diff, appName string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}

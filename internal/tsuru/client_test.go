@@ -6,7 +6,7 @@ package tsuru
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -30,7 +30,7 @@ func (s *S) TestClient(c *check.C) {
 		c.Assert(r.Header.Get("Content-Type"), check.Equals, "application/x-www-form-urlencoded")
 		c.Assert(r.Header.Get("X-Agent-Version"), check.Equals, "0.2.1")
 		c.Assert(r.URL.Path, check.Equals, "/apps/test/units/register")
-		b, err := ioutil.ReadAll(r.Body)
+		b, err := io.ReadAll(r.Body)
 		c.Assert(err, check.IsNil)
 		val, err := url.ParseQuery(string(b))
 		c.Assert(err, check.IsNil)
@@ -92,7 +92,7 @@ func (s *S) TestClientSendDiff(c *check.C) {
 		c.Assert(r.Header.Get("Content-Type"), check.Equals, "application/x-www-form-urlencoded")
 		c.Assert(r.Header.Get("X-Agent-Version"), check.Equals, "0.2.1")
 		c.Assert(r.URL.Path, check.Equals, "/apps/test/diff")
-		b, err := ioutil.ReadAll(r.Body)
+		b, err := io.ReadAll(r.Body)
 		c.Assert(err, check.IsNil)
 		val, err := url.ParseQuery(string(b))
 		c.Assert(err, check.IsNil)

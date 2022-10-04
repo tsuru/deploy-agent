@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
-	"io/ioutil"
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/cio"
@@ -58,10 +57,10 @@ func (e *containerdExecutor) ExecuteAsUser(user string, opts exec.ExecuteOptions
 	}
 
 	if opts.Stdout == nil {
-		opts.Stdout = ioutil.Discard
+		opts.Stdout = io.Discard
 	}
 	if opts.Stderr == nil {
-		opts.Stderr = ioutil.Discard
+		opts.Stderr = io.Discard
 	}
 	var stdinCloser *readerCloser
 	if opts.Stdin != nil {

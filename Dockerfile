@@ -1,4 +1,4 @@
-ARG golang_version=1.16
+ARG golang_version=1.17
 ARG alpine_version=3.15
 ARG docker_version=20.10.12
 ARG buildkit_version=v0.9.3
