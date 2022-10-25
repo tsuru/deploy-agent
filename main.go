@@ -11,8 +11,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/docker/docker/client"
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+
+	pb "github.com/tsuru/deploy-agent/v2/api/v1alpha1"
+	"github.com/tsuru/deploy-agent/v2/pkg/build"
 )
 
 var cfg struct {
@@ -29,7 +35,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	dc, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create Docker client: %v", err)
+		os.Exit(1)
+	}
+	defer dc.Close()
+
+	ctx, cancel := context.WithDeadline(context.TODO(), time.Now().Add(5*time.Second))
+	defer cancel()
+
+	_, err = dc.Ping(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to ping Docker API: %v", err)
+		os.Exit(1)
+	}
+
 	s := grpc.NewServer()
+	pb.RegisterBuildServer(s, build.NewDocker(dc))
+
 	go handleGracefulTermination(s)
 
 	fmt.Println("Starting gRPC server at", l.Addr().String())
