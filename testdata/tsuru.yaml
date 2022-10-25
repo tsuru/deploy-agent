@@ -1,0 +1,7 @@
+hooks:
+  build:
+  - mkdir /tmp/foo
+  - echo "Hello world" > /tmp/foo/bar
+
+healthcheck:
+  path: /healthz

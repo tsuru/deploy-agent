@@ -1,4 +1,9 @@
+GO ?= go
 PROTOC ?= protoc
+
+.PHONY: test
+test: generate
+	$(GO) test -race ./...
 
 .PHONY: generate
 generate:
