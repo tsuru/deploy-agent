@@ -23,7 +23,7 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type BuildClient interface {
 	// Builds (and pushes) container images.
-	Build(ctx context.Context, opts ...grpc.CallOption) (Build_BuildClient, error)
+	Build(ctx context.Context, in *BuildRequest, opts ...grpc.CallOption) (Build_BuildClient, error)
 }
 
 type buildClient struct {
@@ -34,27 +34,28 @@ func NewBuildClient(cc grpc.ClientConnInterface) BuildClient {
 	return &buildClient{cc}
 }
 
-func (c *buildClient) Build(ctx context.Context, opts ...grpc.CallOption) (Build_BuildClient, error) {
+func (c *buildClient) Build(ctx context.Context, in *BuildRequest, opts ...grpc.CallOption) (Build_BuildClient, error) {
 	stream, err := c.cc.NewStream(ctx, &Build_ServiceDesc.Streams[0], "/v1alpha1.Build/Build", opts...)
 	if err != nil {
 		return nil, err
 	}
 	x := &buildBuildClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
 	return x, nil
 }
 
 type Build_BuildClient interface {
-	Send(*BuildRequest) error
 	Recv() (*BuildResponse, error)
 	grpc.ClientStream
 }
 
 type buildBuildClient struct {
 	grpc.ClientStream
-}
-
-func (x *buildBuildClient) Send(m *BuildRequest) error {
-	return x.ClientStream.SendMsg(m)
 }
 
 func (x *buildBuildClient) Recv() (*BuildResponse, error) {
@@ -70,7 +71,7 @@ func (x *buildBuildClient) Recv() (*BuildResponse, error) {
 // for forward compatibility
 type BuildServer interface {
 	// Builds (and pushes) container images.
-	Build(Build_BuildServer) error
+	Build(*BuildRequest, Build_BuildServer) error
 	mustEmbedUnimplementedBuildServer()
 }
 
@@ -78,7 +79,7 @@ type BuildServer interface {
 type UnimplementedBuildServer struct {
 }
 
-func (UnimplementedBuildServer) Build(Build_BuildServer) error {
+func (UnimplementedBuildServer) Build(*BuildRequest, Build_BuildServer) error {
 	return status.Errorf(codes.Unimplemented, "method Build not implemented")
 }
 func (UnimplementedBuildServer) mustEmbedUnimplementedBuildServer() {}
@@ -95,12 +96,15 @@ func RegisterBuildServer(s grpc.ServiceRegistrar, srv BuildServer) {
 }
 
 func _Build_Build_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(BuildServer).Build(&buildBuildServer{stream})
+	m := new(BuildRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(BuildServer).Build(m, &buildBuildServer{stream})
 }
 
 type Build_BuildServer interface {
 	Send(*BuildResponse) error
-	Recv() (*BuildRequest, error)
 	grpc.ServerStream
 }
 
@@ -110,14 +114,6 @@ type buildBuildServer struct {
 
 func (x *buildBuildServer) Send(m *BuildResponse) error {
 	return x.ServerStream.SendMsg(m)
-}
-
-func (x *buildBuildServer) Recv() (*BuildRequest, error) {
-	m := new(BuildRequest)
-	if err := x.ServerStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
 }
 
 // Build_ServiceDesc is the grpc.ServiceDesc for Build service.
@@ -132,7 +128,6 @@ var Build_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "Build",
 			Handler:       _Build_Build_Handler,
 			ServerStreams: true,
-			ClientStreams: true,
 		},
 	},
 	Metadata: "api/v1alpha1/build_service.proto",

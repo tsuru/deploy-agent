@@ -10,30 +10,10 @@ option go_package = "github.com/tsuru/deploy-agent/v2/api/v1alpha1";
 
 service Build {
     // Builds (and pushes) container images.
-    rpc Build(stream BuildRequest) returns (stream BuildResponse) {};
+    rpc Build(BuildRequest) returns (stream BuildResponse) {};
 }
 
 message BuildRequest {
-  oneof data {
-    // BuildParams are the parameters to build and push the container image.
-    BuildParameters build_params = 1;
-
-    // ChunkData is a chunk of the app's source context (source code or
-    // Dockerfile context).
-    bytes chunk_data = 2;
-  }
-}
-
-enum DeployOrigin {
-  option allow_alias = true;
-  DEPLOY_ORIGIN_UNSPECIFIED = 0;
-  DEPLOY_ORIGIN_SOURCE_FILES = 1;    // tsuru app deploy ... /path/to/my/files.sh
-  DEPLOY_ORIGIN_CONTAINER_IMAGE = 2; // tsuru app deploy ... -i registry.example.com/tsuru/my-app:staging
-  DEPLOY_ORIGIN_DOCKERFILE = 3;      // tsuru app deploy --dockerfile Dockerfile --dockerfile-context ./
-  DEPLOY_ORIGIN_CONTAINERFILE = 3;   // alias for containerfile :P
-}
-
-message BuildParameters {
   // DeployOrigin indicates how the application is being deployed.
   DeployOrigin deploy_origin = 1;
 
@@ -48,6 +28,21 @@ message BuildParameters {
 
   // DestinationImages are the tags of the container image after build.
   repeated string destination_images = 3;
+
+  // Data is the app's source data (or container context).
+  // Cannot exceed 2^32 of size.
+  //
+  // See more: https://developers.google.com/protocol-buffers/docs/proto3#scalar
+  bytes data = 4;
+}
+
+enum DeployOrigin {
+  option allow_alias = true;
+  DEPLOY_ORIGIN_UNSPECIFIED = 0;
+  DEPLOY_ORIGIN_SOURCE_FILES = 1;    // tsuru app deploy ... /path/to/my/files.sh
+  DEPLOY_ORIGIN_CONTAINER_IMAGE = 2; // tsuru app deploy ... -i registry.example.com/tsuru/my-app:staging
+  DEPLOY_ORIGIN_DOCKERFILE = 3;      // tsuru app deploy --dockerfile Dockerfile --dockerfile-context ./
+  DEPLOY_ORIGIN_CONTAINERFILE = 3;   // alias for containerfile :P
 }
 
 message BuildResponse {

@@ -14,16 +14,22 @@ import (
 
 var _ pb.BuildServer = (*Docker)(nil)
 
-func NewDocker(dc *client.Client) *Docker {
-	return &Docker{Client: dc}
+type DockerOptions struct {
+	TempDir string
+}
+
+func NewDocker(dc *client.Client, opts DockerOptions) *Docker {
+	return &Docker{Client: dc, opts: opts}
 }
 
 type Docker struct {
 	*pb.UnimplementedBuildServer
 	*client.Client
+
+	opts DockerOptions
 }
 
-func (d *Docker) Build(stream pb.Build_BuildServer) error {
+func (d *Docker) Build(req *pb.BuildRequest, stream pb.Build_BuildServer) error {
 	fmt.Println("Build RPC called")
 	defer fmt.Println("Finishing Build RPC call")
 

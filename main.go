@@ -52,7 +52,7 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	pb.RegisterBuildServer(s, build.NewDocker(dc))
+	pb.RegisterBuildServer(s, build.NewDocker(dc, build.DockerOptions{}))
 
 	go handleGracefulTermination(s)
 
