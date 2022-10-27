@@ -14,8 +14,11 @@ service Build {
 }
 
 message BuildRequest {
+  // App is the Tsuru app which is being deployed.
+  TsuruApp app = 1;
+
   // DeployOrigin indicates how the application is being deployed.
-  DeployOrigin deploy_origin = 1;
+  DeployOrigin deploy_origin = 2;
 
   // SourceImage is the source container image name.
   //
@@ -24,16 +27,19 @@ message BuildRequest {
   // When deploy is from container image (DEPLOY_ORIGIN_CONTAINER_IMAGE), it holds
   // the app's container image (e.g. registry.example.com/company/app:v100).
   // Otherwise it's empty.
-  string source_image = 2;
+  string source_image = 3;
 
   // DestinationImages are the tags of the container image after build.
-  repeated string destination_images = 3;
+  repeated string destination_images = 4;
 
   // Data is the app's source data (or container context).
   // Cannot exceed 2^32 of size.
   //
   // See more: https://developers.google.com/protocol-buffers/docs/proto3#scalar
-  bytes data = 4;
+  bytes data = 5;
+
+  // PushOptions contains the options push the generated images.
+  PushOptions push_options = 6;
 }
 
 enum DeployOrigin {
@@ -52,6 +58,20 @@ message BuildResponse {
     // TsuruConfig is the configuration of the application.
     TsuruConfig tsuru_config = 2;
   }
+}
+
+message TsuruApp {
+  // Name is the Tsuru app name.
+  string name = 1;
+  // EnvVars are the enviroment variables set on app.
+  map<string, string> env_vars = 3;
+}
+
+message PushOptions {
+  // Disable turns off the push for container registry.
+  bool disable = 1;
+  // InsecureRegistry allows sending an image to registry running in plain HTTP.
+  bool insecure_registry = 2;
 }
 
 message TsuruConfig {

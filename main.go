@@ -5,28 +5,30 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/docker/docker/client"
-	"golang.org/x/net/context"
+	"github.com/moby/buildkit/client"
+	"github.com/moby/buildkit/util/appdefaults"
+	"github.com/tsuru/deploy-agent/v2/pkg/build"
 	"google.golang.org/grpc"
 
 	pb "github.com/tsuru/deploy-agent/v2/api/v1alpha1"
-	"github.com/tsuru/deploy-agent/v2/pkg/build"
 )
 
 var cfg struct {
-	Port int
+	Port            int
+	BuildkitAddress string
 }
 
 func main() {
 	flag.IntVar(&cfg.Port, "port", 4444, "Server TCP port")
+	flag.StringVar(&cfg.BuildkitAddress, "buildkit-addr", os.Getenv("BUILDKIT_HOST"), fmt.Sprintf("Buildkit daemon address (default: %s)", appdefaults.Address))
 	flag.Parse()
 
 	l, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
@@ -35,24 +37,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	dc, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if cfg.BuildkitAddress == "" {
+		cfg.BuildkitAddress = appdefaults.Address
+	}
+
+	ctx := context.Background()
+
+	c, err := client.New(ctx, cfg.BuildkitAddress, client.WithFailFast())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create Docker client: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to create Buildkit client: %v", err)
 		os.Exit(1)
 	}
-	defer dc.Close()
-
-	ctx, cancel := context.WithDeadline(context.TODO(), time.Now().Add(5*time.Second))
-	defer cancel()
-
-	_, err = dc.Ping(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to ping Docker API: %v", err)
-		os.Exit(1)
-	}
+	defer c.Close()
 
 	s := grpc.NewServer()
-	pb.RegisterBuildServer(s, build.NewDocker(dc, build.DockerOptions{}))
+	pb.RegisterBuildServer(s, build.NewDocker(c, build.DockerOptions{}))
 
 	go handleGracefulTermination(s)
 

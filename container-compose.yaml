@@ -1,0 +1,16 @@
+version: 2.1
+
+services:
+  buildkit:
+    image: moby/buildkit:latest
+    command: --addr tcp://0.0.0.0:7777
+    ports:
+    - 7777:7777
+    privileged: true
+
+    #docker:
+    #  image: docker:dind
+    #  command: --experimental
+    #  ports:
+    #  - 6666:6666
+    #  privileged: true

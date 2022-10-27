@@ -121,16 +121,15 @@ func BuildContainerfile(p BuildContainerfileParams) (string, error) {
 var containerfileTemplate = template.Must(template.New("containerfile").Parse(`
 FROM {{ .Image }}
 
-COPY ./application.tar.gz /home/application/
-ADD  ./application.tar.gz /home/application/current
+COPY ./application.tar.gz /home/application/archive.tar.gz
 
-{{- with .BuildHooks }}{{ "\n" }}
-RUN set -x \
-{{- range $_, $hook := . }}
-    && { {{ . }} ; } \
-    {{- end }}
-    && :
+RUN --mount=type=secret,id=tsuru-app-envvars,target=/var/run/secrets/envs.sh,uid=1000,gid=1000 \
+    [ -f /var/run/secrets/envs.sh ] && . /var/run/secrets/envs.sh \
+    && /var/lib/tsuru/deploy archive file:///home/application/archive.tar.gz \
+{{- range $_, $hook := .BuildHooks }}
+    && { {{ . }}; } \
 {{- end }}
+    && :
 
 WORKDIR /home/application/current
 `))

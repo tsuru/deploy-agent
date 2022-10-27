@@ -169,8 +169,12 @@ func TestBuildContainerfile(t *testing.T) {
 			expected: `
 FROM tsuru/scratch:latest
 
-COPY ./application.tar.gz /home/application/
-ADD  ./application.tar.gz /home/application/current
+COPY ./application.tar.gz /home/application/archive.tar.gz
+
+RUN --mount=type=secret,id=tsuru-app-envvars,target=/var/run/secrets/envs.sh,uid=1000,gid=1000 \
+    [ -f /var/run/secrets/envs.sh ] && . /var/run/secrets/envs.sh \
+    && /var/lib/tsuru/deploy archive file:///home/application/archive.tar.gz \
+    && :
 
 WORKDIR /home/application/current
 `,
@@ -186,12 +190,13 @@ WORKDIR /home/application/current
 			expected: `
 FROM tsuru/scratch:latest
 
-COPY ./application.tar.gz /home/application/
-ADD  ./application.tar.gz /home/application/current
+COPY ./application.tar.gz /home/application/archive.tar.gz
 
-RUN set -x \
-    && { mkdir -p /tmp/foo ; } \
-    && { echo "Hello world" > /tmp/foo/bar ; } \
+RUN --mount=type=secret,id=tsuru-app-envvars,target=/var/run/secrets/envs.sh,uid=1000,gid=1000 \
+    [ -f /var/run/secrets/envs.sh ] && . /var/run/secrets/envs.sh \
+    && /var/lib/tsuru/deploy archive file:///home/application/archive.tar.gz \
+    && { mkdir -p /tmp/foo; } \
+    && { echo "Hello world" > /tmp/foo/bar; } \
     && :
 
 WORKDIR /home/application/current

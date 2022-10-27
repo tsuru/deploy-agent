@@ -5,16 +5,22 @@
 package build
 
 import (
-	"archive/tar"
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
+	"github.com/moby/buildkit/client"
+	"github.com/moby/buildkit/frontend/dockerfile/builder"
+	"github.com/moby/buildkit/session"
+	"github.com/moby/buildkit/session/secrets/secretsprovider"
+	"github.com/moby/buildkit/util/progress/progresswriter"
 	tsuruprovtypes "github.com/tsuru/tsuru/types/provision"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v3"
@@ -28,14 +34,14 @@ type DockerOptions struct {
 	TempDir string
 }
 
-func NewDocker(dc *client.Client, opts DockerOptions) *Docker {
-	return &Docker{Client: dc, opts: opts}
+func NewDocker(c *client.Client, opts DockerOptions) *Docker {
+	return &Docker{cli: c, opts: opts}
 }
 
 type Docker struct {
 	*pb.UnimplementedBuildServer
-	*client.Client
 
+	cli  *client.Client
 	opts DockerOptions
 }
 
@@ -47,6 +53,9 @@ func (d *Docker) Build(req *pb.BuildRequest, stream pb.Build_BuildServer) error 
 	if err := ctx.Err(); err != nil { // e.g. context deadline exceeded
 		return err
 	}
+
+	w := &BuildResponseOutputWriter{stream}
+	fmt.Fprintln(w, "---> Starting container image build")
 
 	// TODO: check if mandatory field were provided
 	tsuruFiles, err := ExtractTsuruAppFilesFromAppSourceContext(ctx, bytes.NewReader(req.Data))
@@ -64,92 +73,155 @@ func (d *Docker) Build(req *pb.BuildRequest, stream pb.Build_BuildServer) error 
 		return status.Errorf(codes.Unknown, "failed to send tsuru app files: %s", err)
 	}
 
-	w := &BuildResponseOutputWriter{stream}
-
-	if err = d.build(ctx, req, tsuruFiles, bytes.NewReader(req.Data), int64(len(req.Data)), w); err != nil {
+	if err = d.build(ctx, req, tsuruFiles, bytes.NewReader(req.Data), w); err != nil {
 		return status.Errorf(codes.Internal, "failed to build container image: %s", err)
 	}
 
-	if err = d.push(ctx, req.DestinationImages, w); err != nil {
-		return status.Errorf(codes.Internal, "failed to push container image(s) to registry: %s", err)
-	}
-
-	fmt.Fprintln(w, "OK")
+	fmt.Fprintln(w, "--> Container image build finished")
 
 	return nil
 }
 
-func (d *Docker) build(ctx context.Context, req *pb.BuildRequest, tsuruAppFiles *TsuruAppFiles, appData io.Reader, appDataSize int64, w io.Writer) error {
+func (d *Docker) build(ctx context.Context, req *pb.BuildRequest, tsuruAppFiles *TsuruAppFiles, appData io.Reader, w *BuildResponseOutputWriter) error {
 	if err := ctx.Err(); err != nil { // e.g. context deadline exceeded
 		return err
 	}
 
-	if w == nil {
-		w = io.Discard
+	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, d.opts.TempDir, req, tsuruAppFiles, appData)
+	if err != nil {
+		return err
 	}
+	defer cleanFunc()
 
-	dockerfile, err := generateContainerfile(req.SourceImage, tsuruAppFiles)
+	pw, err := progresswriter.NewPrinter(context.Background(), w, "plain") // using an empty context intentionally
 	if err != nil {
 		return err
 	}
 
-	var dockerBuildContext bytes.Buffer
-	if err = generateDockerBuildContext(&dockerBuildContext, dockerfile, appData, appDataSize); err != nil {
-		return err
-	}
+	eg, _ := errgroup.WithContext(ctx)
 
-	resp, err := d.Client.ImageBuild(ctx, &dockerBuildContext, types.ImageBuildOptions{
-		Version:    types.BuilderBuildKit,
-		Tags:       req.DestinationImages,
-		Remove:     true,
-		Dockerfile: "Dockerfile",
-		Context:    &dockerBuildContext,
-	})
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	_, err = io.Copy(w, resp.Body)
-	if errors.Is(err, io.EOF) {
-		return nil
-	}
-
-	return err
-}
-
-func (d *Docker) push(ctx context.Context, imageNames []string, w io.Writer) error {
-	if err := ctx.Err(); err != nil { // e.g. context deadline exceeded, context cancelled
-		return err
-	}
-
-	if w == nil {
-		w = io.Discard
-	}
-
-	for _, image := range imageNames {
-		fmt.Fprintf(w, "Pushing container image %s to registry...\n", image)
-
-		r, err := d.Client.ImagePush(ctx, image, types.ImagePushOptions{})
+	eg.Go(func() error {
+		secrets, err := secretsprovider.NewStore([]secretsprovider.Source{
+			{
+				ID:       "tsuru-app-envvars",
+				FilePath: filepath.Join(tmpDir, "envs.sh"),
+			},
+		})
 		if err != nil {
 			return err
 		}
-		defer r.Close()
 
-		_, err = io.Copy(w, r)
-		if err != nil && !errors.Is(err, io.EOF) {
-			return err
+		var (
+			insecureRegistry bool        // disabled by default
+			pushImage        bool = true // enabled by default
+		)
+		if pots := req.PushOptions; pots != nil {
+			pushImage = !pots.Disable
+			insecureRegistry = pots.InsecureRegistry
 		}
+
+		opts := client.SolveOpt{
+			LocalDirs: map[string]string{
+				"context":    tmpDir,
+				"dockerfile": tmpDir,
+			},
+			Exports: []client.ExportEntry{
+				{
+					Type: client.ExporterImage,
+					Attrs: map[string]string{
+						"name":              strings.Join(req.DestinationImages, ","),
+						"push":              strconv.FormatBool(pushImage),
+						"registry.insecure": strconv.FormatBool(insecureRegistry),
+					},
+				},
+			},
+			Session: []session.Attachable{
+				secretsprovider.NewSecretProvider(secrets),
+			},
+		}
+		_, err = d.cli.Build(ctx, opts, "deploy-agent", builder.Build, progresswriter.ResetTime(pw).Status())
+		return err
+	})
+
+	eg.Go(func() error {
+		<-pw.Done()
+		return pw.Err()
+	})
+
+	if err = eg.Wait(); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func generateContainerfile(image string, tsuruAppFiles *TsuruAppFiles) (string, error) {
+func generateBuildLocalDir(ctx context.Context, baseDir string, req *pb.BuildRequest, tsuruAppFiles *TsuruAppFiles, appData io.Reader) (string, func(), error) {
+	noopFunc := func() {}
+
+	if err := ctx.Err(); err != nil {
+		return "", noopFunc, err
+	}
+
+	contextRootDir, err := os.MkdirTemp(baseDir, "deploy-agent-*")
+	if err != nil {
+		return "", noopFunc, status.Errorf(codes.Internal, "failed to create temp dir: %s", err)
+	}
+
+	eg, _ := errgroup.WithContext(ctx)
+
+	eg.Go(func() error {
+		dockerfile, err := os.Create(filepath.Join(contextRootDir, "Dockerfile"))
+		if err != nil {
+			return status.Errorf(codes.Internal, "cannot create Dockerfile in %s: %s", contextRootDir, err)
+		}
+		defer dockerfile.Close()
+
+		return generateContainerfile(dockerfile, req.SourceImage, tsuruAppFiles)
+	})
+
+	eg.Go(func() error {
+		appArchive, err := os.Create(filepath.Join(contextRootDir, "application.tar.gz"))
+		if err != nil {
+			return status.Errorf(codes.Internal, "cannot create application archive: %s", err)
+		}
+		defer appArchive.Close()
+
+		_, err = io.Copy(appArchive, appData)
+		return err
+	})
+
+	eg.Go(func() error {
+		envsFile, err := os.Create(filepath.Join(contextRootDir, "envs.sh"))
+		if err != nil {
+			return err
+		}
+		defer envsFile.Close()
+
+		fmt.Fprintln(envsFile, "# File containing the env vars of Tsuru app. Generated by deploy-agent.")
+
+		if req.App == nil {
+			return nil
+		}
+
+		for k, v := range req.App.EnvVars {
+			fmt.Fprintln(envsFile, fmt.Sprintf("%s=%q", k, v))
+		}
+
+		return nil
+	})
+
+	if err = eg.Wait(); err != nil {
+		return "", noopFunc, err
+	}
+
+	return contextRootDir, func() { os.RemoveAll(contextRootDir) }, nil
+}
+
+func generateContainerfile(w io.Writer, image string, tsuruAppFiles *TsuruAppFiles) error {
 	var tsuruYaml tsuruprovtypes.TsuruYamlData
 	if tsuruAppFiles != nil {
 		if err := yaml.Unmarshal([]byte(tsuruAppFiles.TsuruYaml), &tsuruYaml); err != nil {
-			return "", err
+			return err
 		}
 	}
 
@@ -158,44 +230,16 @@ func generateContainerfile(image string, tsuruAppFiles *TsuruAppFiles) (string, 
 		buildHooks = hooks.Build
 	}
 
-	return BuildContainerfile(BuildContainerfileParams{
+	dockerfile, err := BuildContainerfile(BuildContainerfileParams{
 		Image:      image,
 		BuildHooks: buildHooks,
 	})
-}
-
-func generateDockerBuildContext(dst io.Writer, dockerfile string, appData io.Reader, appDataSize int64) error {
-	if dst == nil {
-		return fmt.Errorf("writer cannot be nil")
-	}
-
-	ww := tar.NewWriter(dst)
-
-	if err := ww.WriteHeader(&tar.Header{
-		Name: "Dockerfile",
-		Mode: 0744,
-		Size: int64(len(dockerfile)),
-	}); err != nil {
+	if err != nil {
 		return err
 	}
 
-	if _, err := io.WriteString(ww, dockerfile); err != nil {
-		return err
-	}
-
-	if err := ww.WriteHeader(&tar.Header{
-		Name: "application.tar.gz",
-		Mode: 0744,
-		Size: appDataSize,
-	}); err != nil {
-		return err
-	}
-
-	if _, err := io.Copy(ww, appData); err != nil {
-		return err
-	}
-
-	return ww.Close()
+	_, err = io.WriteString(w, dockerfile)
+	return err
 }
 
 type BuildResponseOutputWriter struct {
@@ -208,4 +252,20 @@ func (w *BuildResponseOutputWriter) Write(p []byte) (int, error) {
 	}
 
 	return len(p), w.stream.Send(&pb.BuildResponse{Data: &pb.BuildResponse_Output{Output: string(p)}})
+}
+
+func (w *BuildResponseOutputWriter) Read(p []byte) (int, error) { // required to implement console.File
+	return 0, nil
+}
+
+func (w *BuildResponseOutputWriter) Close() error { // required to implement console.File
+	return nil
+}
+
+func (w *BuildResponseOutputWriter) Fd() uintptr { // required to implement console.File
+	return uintptr(0)
+}
+
+func (w *BuildResponseOutputWriter) Name() string { // required to implement console.File
+	return ""
 }
