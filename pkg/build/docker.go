@@ -245,9 +245,13 @@ func generateContainerfile(w io.Writer, image string, tsuruAppFiles *TsuruAppFil
 
 type BuildResponseOutputWriter struct {
 	stream pb.Build_BuildServer
+	mu     sync.Mutex
 }
 
 func (w *BuildResponseOutputWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	if len(p) == 0 {
 		return 0, nil
 	}
