@@ -21,7 +21,6 @@ import (
 	"github.com/moby/buildkit/session/auth/authprovider"
 	"github.com/moby/buildkit/session/secrets/secretsprovider"
 	"github.com/moby/buildkit/util/progress/progresswriter"
-	tsuruprovtypes "github.com/tsuru/tsuru/types/provision"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -219,7 +218,7 @@ func generateBuildLocalDir(ctx context.Context, baseDir string, req *pb.BuildReq
 }
 
 func generateContainerfile(w io.Writer, image string, tsuruAppFiles *TsuruAppFiles) error {
-	var tsuruYaml tsuruprovtypes.TsuruYamlData
+	var tsuruYaml TsuruYamlData
 	if tsuruAppFiles != nil {
 		if err := yaml.Unmarshal([]byte(tsuruAppFiles.TsuruYaml), &tsuruYaml); err != nil {
 			return err
