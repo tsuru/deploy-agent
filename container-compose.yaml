@@ -8,9 +8,7 @@ services:
     - 7777:7777
     privileged: true
 
-    #docker:
-    #  image: docker:dind
-    #  command: --experimental
-    #  ports:
-    #  - 6666:6666
-    #  privileged: true
+  registry:
+    image: registry:2
+    ports:
+    - 5000:5000

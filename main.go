@@ -24,11 +24,13 @@ import (
 var cfg struct {
 	Port            int
 	BuildkitAddress string
+	BuildkitTmpDir  string
 }
 
 func main() {
 	flag.IntVar(&cfg.Port, "port", 4444, "Server TCP port")
 	flag.StringVar(&cfg.BuildkitAddress, "buildkit-addr", os.Getenv("BUILDKIT_HOST"), fmt.Sprintf("Buildkit daemon address (default: %s)", appdefaults.Address))
+	flag.StringVar(&cfg.BuildkitTmpDir, "buildkit-tmp-dir", os.TempDir(), "Directory path to store temp files during container image builds")
 	flag.Parse()
 
 	l, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
@@ -51,7 +53,7 @@ func main() {
 	defer c.Close()
 
 	s := grpc.NewServer()
-	pb.RegisterBuildServer(s, build.NewDocker(c, build.DockerOptions{}))
+	pb.RegisterBuildServer(s, build.NewDocker(c, build.DockerOptions{TempDir: cfg.BuildkitTmpDir}))
 
 	go handleGracefulTermination(s)
 

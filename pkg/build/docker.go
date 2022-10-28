@@ -13,10 +13,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/frontend/dockerfile/builder"
 	"github.com/moby/buildkit/session"
+	"github.com/moby/buildkit/session/auth/authprovider"
 	"github.com/moby/buildkit/session/secrets/secretsprovider"
 	"github.com/moby/buildkit/util/progress/progresswriter"
 	tsuruprovtypes "github.com/tsuru/tsuru/types/provision"
@@ -54,7 +56,7 @@ func (d *Docker) Build(req *pb.BuildRequest, stream pb.Build_BuildServer) error 
 		return err
 	}
 
-	w := &BuildResponseOutputWriter{stream}
+	w := &BuildResponseOutputWriter{stream: stream}
 	fmt.Fprintln(w, "---> Starting container image build")
 
 	// TODO: check if mandatory field were provided
@@ -101,12 +103,10 @@ func (d *Docker) build(ctx context.Context, req *pb.BuildRequest, tsuruAppFiles 
 	eg, _ := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		secrets, err := secretsprovider.NewStore([]secretsprovider.Source{
-			{
-				ID:       "tsuru-app-envvars",
-				FilePath: filepath.Join(tmpDir, "envs.sh"),
-			},
-		})
+		secrets, err := secretsprovider.NewStore([]secretsprovider.Source{{
+			ID:       "tsuru-app-envvars",
+			FilePath: filepath.Join(tmpDir, "envs.sh"),
+		}})
 		if err != nil {
 			return err
 		}
@@ -136,6 +136,7 @@ func (d *Docker) build(ctx context.Context, req *pb.BuildRequest, tsuruAppFiles 
 				},
 			},
 			Session: []session.Attachable{
+				authprovider.NewDockerAuthProvider(w),
 				secretsprovider.NewSecretProvider(secrets),
 			},
 		}
