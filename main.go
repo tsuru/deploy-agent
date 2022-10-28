@@ -15,10 +15,10 @@ import (
 
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/util/appdefaults"
-	"github.com/tsuru/deploy-agent/v2/pkg/build"
+	"github.com/tsuru/deploy-agent/pkg/build"
 	"google.golang.org/grpc"
 
-	pb "github.com/tsuru/deploy-agent/v2/api/v1alpha1"
+	pb "github.com/tsuru/deploy-agent/api/v1alpha1"
 )
 
 var cfg struct {

@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	. "github.com/tsuru/deploy-agent/v2/pkg/build"
+	. "github.com/tsuru/deploy-agent/pkg/build"
 )
 
 func TestIsTsuruYaml(t *testing.T) {

@@ -27,7 +27,7 @@ import (
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v3"
 
-	pb "github.com/tsuru/deploy-agent/v2/api/v1alpha1"
+	pb "github.com/tsuru/deploy-agent/api/v1alpha1"
 )
 
 var _ pb.BuildServer = (*Docker)(nil)

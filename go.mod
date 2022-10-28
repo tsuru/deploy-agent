@@ -1,4 +1,4 @@
-module github.com/tsuru/deploy-agent/v2
+module github.com/tsuru/deploy-agent
 
 go 1.19
 

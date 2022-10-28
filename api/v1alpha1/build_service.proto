@@ -6,7 +6,7 @@ syntax = "proto3";
 
 package v1alpha1;
 
-option go_package = "github.com/tsuru/deploy-agent/v2/api/v1alpha1";
+option go_package = "github.com/tsuru/deploy-agent/api/v1alpha1";
 
 service Build {
     // Builds (and pushes) container images.
