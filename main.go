@@ -22,9 +22,9 @@ import (
 )
 
 var cfg struct {
-	Port            int
 	BuildkitAddress string
 	BuildkitTmpDir  string
+	Port            int
 }
 
 func main() {

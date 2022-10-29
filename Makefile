@@ -1,9 +1,17 @@
 GO ?= go
+GOLANGCI_LINT ?= golangci-lint
 PROTOC ?= protoc
+
+.PHONY: all
+all: lint test
 
 .PHONY: test
 test: generate
 	$(GO) test -race ./...
+
+.PHONY: lint
+lint: generate
+	$(GOLANGCI_LINT) run ./...
 
 .PHONY: generate
 generate:

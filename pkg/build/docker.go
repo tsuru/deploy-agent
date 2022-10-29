@@ -19,6 +19,7 @@ import (
 	"github.com/moby/buildkit/frontend/dockerfile/builder"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/auth/authprovider"
+	"github.com/moby/buildkit/session/secrets"
 	"github.com/moby/buildkit/session/secrets/secretsprovider"
 	"github.com/moby/buildkit/util/progress/progresswriter"
 	"golang.org/x/sync/errgroup"
@@ -94,7 +95,7 @@ func (d *Docker) build(ctx context.Context, req *pb.BuildRequest, tsuruAppFiles 
 	}
 	defer cleanFunc()
 
-	pw, err := progresswriter.NewPrinter(context.Background(), w, "plain") // using an empty context intentionally
+	pw, err := progresswriter.NewPrinter(context.Background(), w, "plain") //nolint - using an empty context intentionally
 	if err != nil {
 		return err
 	}
@@ -102,7 +103,8 @@ func (d *Docker) build(ctx context.Context, req *pb.BuildRequest, tsuruAppFiles 
 	eg, _ := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		secrets, err := secretsprovider.NewStore([]secretsprovider.Source{{
+		var secrets secrets.SecretStore
+		secrets, err = secretsprovider.NewStore([]secretsprovider.Source{{
 			ID:       "tsuru-app-envvars",
 			FilePath: filepath.Join(tmpDir, "envs.sh"),
 		}})
@@ -170,9 +172,9 @@ func generateBuildLocalDir(ctx context.Context, baseDir string, req *pb.BuildReq
 	eg, _ := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		dockerfile, err := os.Create(filepath.Join(contextRootDir, "Dockerfile"))
-		if err != nil {
-			return status.Errorf(codes.Internal, "cannot create Dockerfile in %s: %s", contextRootDir, err)
+		dockerfile, nerr := os.Create(filepath.Join(contextRootDir, "Dockerfile"))
+		if nerr != nil {
+			return status.Errorf(codes.Internal, "cannot create Dockerfile in %s: %s", contextRootDir, nerr)
 		}
 		defer dockerfile.Close()
 
@@ -180,20 +182,20 @@ func generateBuildLocalDir(ctx context.Context, baseDir string, req *pb.BuildReq
 	})
 
 	eg.Go(func() error {
-		appArchive, err := os.Create(filepath.Join(contextRootDir, "application.tar.gz"))
-		if err != nil {
-			return status.Errorf(codes.Internal, "cannot create application archive: %s", err)
+		appArchive, nerr := os.Create(filepath.Join(contextRootDir, "application.tar.gz"))
+		if nerr != nil {
+			return status.Errorf(codes.Internal, "cannot create application archive: %s", nerr)
 		}
 		defer appArchive.Close()
 
-		_, err = io.Copy(appArchive, appData)
-		return err
+		_, nerr = io.Copy(appArchive, appData)
+		return nerr
 	})
 
 	eg.Go(func() error {
-		envsFile, err := os.Create(filepath.Join(contextRootDir, "envs.sh"))
-		if err != nil {
-			return err
+		envsFile, nerr := os.Create(filepath.Join(contextRootDir, "envs.sh"))
+		if nerr != nil {
+			return nerr
 		}
 		defer envsFile.Close()
 
@@ -204,7 +206,7 @@ func generateBuildLocalDir(ctx context.Context, baseDir string, req *pb.BuildReq
 		}
 
 		for k, v := range req.App.EnvVars {
-			fmt.Fprintln(envsFile, fmt.Sprintf("%s=%q", k, v))
+			fmt.Fprintf(envsFile, "%s=%q\n", k, v)
 		}
 
 		return nil

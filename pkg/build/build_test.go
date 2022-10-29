@@ -159,8 +159,8 @@ func newTsuruAppSource(t *testing.T, b *bytes.Buffer, files map[string]string) {
 
 func TestBuildContainerfile(t *testing.T) {
 	cases := []struct {
-		params   BuildContainerfileParams
 		expected string
+		params   BuildContainerfileParams
 	}{
 		{
 			params: BuildContainerfileParams{
