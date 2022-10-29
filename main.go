@@ -29,7 +29,7 @@ var cfg struct {
 
 func main() {
 	flag.IntVar(&cfg.Port, "port", 4444, "Server TCP port")
-	flag.StringVar(&cfg.BuildkitAddress, "buildkit-addr", os.Getenv("BUILDKIT_HOST"), fmt.Sprintf("Buildkit daemon address (default: %s)", appdefaults.Address))
+	flag.StringVar(&cfg.BuildkitAddress, "buildkit-addr", getEnvOrDefault("BUILDKIT_HOST", appdefaults.Address), "Buildkit server address")
 	flag.StringVar(&cfg.BuildkitTmpDir, "buildkit-tmp-dir", os.TempDir(), "Directory path to store temp files during container image builds")
 	flag.Parse()
 
@@ -37,10 +37,6 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to listen: %v", err)
 		os.Exit(1)
-	}
-
-	if cfg.BuildkitAddress == "" {
-		cfg.BuildkitAddress = appdefaults.Address
 	}
 
 	ctx := context.Background()
@@ -76,4 +72,12 @@ func handleGracefulTermination(s *grpc.Server) {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
+}
+
+func getEnvOrDefault(env, def string) string {
+	if envvar, found := os.LookupEnv(env); found {
+		return envvar
+	}
+
+	return def
 }
