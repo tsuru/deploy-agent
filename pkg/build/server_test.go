@@ -5,11 +5,10 @@
 package build_test
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"path/filepath"
@@ -24,15 +23,17 @@ import (
 
 	pb "github.com/tsuru/deploy-agent/api/v1alpha1"
 	. "github.com/tsuru/deploy-agent/pkg/build"
+	"github.com/tsuru/deploy-agent/pkg/build/fake"
 )
 
 func TestBuild(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]struct {
-		ctx    context.Context
-		req    *pb.BuildRequest
-		assert func(t *testing.T, stream pb.Build_BuildClient, err error)
+		ctx     context.Context
+		builder Builder
+		req     *pb.BuildRequest
+		assert  func(t *testing.T, stream pb.Build_BuildClient, err error)
 	}{
 		"w/ context canceled": {
 			ctx: func() context.Context {
@@ -139,20 +140,37 @@ func TestBuild(t *testing.T) {
 			},
 		},
 
-		"deploy from source code, archive not gzipped": {
+		"build successful": {
+			builder: &fake.FakeBuilder{
+				OnFindTsuruAppFiles: func(ctx context.Context, r *pb.BuildRequest) (*pb.TsuruConfig, error) {
+					assert.NotNil(t, ctx)
+					assert.NotNil(t, r)
+					return &pb.TsuruConfig{
+						Procfile:  "web: ./path/to/server.sh --addr :${PORT}",
+						TsuruYaml: "healthcheck:\n  path: /healthz",
+					}, nil
+				},
+				OnBuild: func(ctx context.Context, r *pb.BuildRequest, tc *pb.TsuruConfig, w io.Writer) error {
+					assert.NotNil(t, ctx)
+					assert.NotNil(t, r)
+					assert.NotNil(t, tc)
+					assert.NotNil(t, w)
+					fmt.Fprintln(w, "--- EXECUTING BUILD ---")
+					return nil
+				},
+			},
 			req: &pb.BuildRequest{
 				SourceImage:       "tsuru/scratch:latest",
 				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
 				DeployOrigin:      pb.DeployOrigin_DEPLOY_ORIGIN_SOURCE_FILES,
-				Data:              []byte("just a common string"),
+				Data:              []byte("fake data :P"),
 			},
 			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
 				require.NoError(t, err)
 				require.NotNil(t, stream)
-				_, err = readResponse(t, stream)
-				s, ok := status.FromError(err)
-				require.True(t, ok)
-				assert.Equal(t, "app source data must be a GZIP compressed file: gzip: invalid header", s.Message())
+				output, err := readResponse(t, stream)
+				assert.NoError(t, err)
+				assert.Regexp(t, `(.*)--- EXECUTING BUILD ---(.*)`, output)
 			},
 		},
 	}
@@ -161,7 +179,7 @@ func TestBuild(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			require.NotNil(t, tt.assert, "assert function not provided")
 
-			serverAddr := setupServer(t, NewDocker(nil, DockerOptions{TempDir: t.TempDir()}))
+			serverAddr := setupServer(t, NewServer(tt.builder))
 			c := setupClient(t, serverAddr)
 
 			ctx := context.Background()
@@ -220,34 +238,10 @@ func readResponse(t *testing.T, stream pb.Build_BuildClient) (string, error) {
 
 		switch r.Data.(type) {
 		case *pb.BuildResponse_Output:
-			io.WriteString(&buffer, r.GetOutput())
+			_, err = io.WriteString(&buffer, r.GetOutput())
+			require.NoError(t, err)
 		}
 	}
 
 	return buffer.String(), nil
-}
-
-func appSourceContextData(t *testing.T, files map[string][]byte) []byte {
-	t.Helper()
-
-	var b bytes.Buffer
-	z := gzip.NewWriter(&b)
-
-	tw := tar.NewWriter(z)
-
-	for name, content := range files {
-		err := tw.WriteHeader(&tar.Header{
-			Name: name,
-			Size: int64(len(content)),
-		})
-		require.NoError(t, err)
-
-		_, err = tw.Write(content)
-		require.NoError(t, err)
-	}
-
-	require.NoError(t, tw.Close())
-	require.NoError(t, z.Close())
-
-	return b.Bytes()
 }

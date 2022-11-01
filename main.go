@@ -49,7 +49,7 @@ func main() {
 	defer c.Close()
 
 	s := grpc.NewServer()
-	pb.RegisterBuildServer(s, build.NewDocker(c, build.DockerOptions{TempDir: cfg.BuildkitTmpDir}))
+	pb.RegisterBuildServer(s, build.NewServer(nil))
 
 	go handleGracefulTermination(s)
 

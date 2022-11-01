@@ -13,7 +13,10 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"text/template"
+
+	pb "github.com/tsuru/deploy-agent/api/v1alpha1"
 )
 
 var (
@@ -133,3 +136,35 @@ RUN --mount=type=secret,id=tsuru-app-envvars,target=/var/run/secrets/envs.sh,uid
 
 WORKDIR /home/application/current
 `))
+
+type BuildResponseOutputWriter struct {
+	stream pb.Build_BuildServer
+	mu     sync.Mutex
+}
+
+func (w *BuildResponseOutputWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if len(p) == 0 {
+		return 0, nil
+	}
+
+	return len(p), w.stream.Send(&pb.BuildResponse{Data: &pb.BuildResponse_Output{Output: string(p)}})
+}
+
+func (w *BuildResponseOutputWriter) Read(p []byte) (int, error) { // required to implement console.File
+	return 0, nil
+}
+
+func (w *BuildResponseOutputWriter) Close() error { // required to implement console.File
+	return nil
+}
+
+func (w *BuildResponseOutputWriter) Fd() uintptr { // required to implement console.File
+	return uintptr(0)
+}
+
+func (w *BuildResponseOutputWriter) Name() string { // required to implement console.File
+	return ""
+}

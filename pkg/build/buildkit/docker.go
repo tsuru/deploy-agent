@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package build
+package buildkit
 
+/*
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/frontend/dockerfile/builder"
@@ -45,62 +44,6 @@ type Docker struct {
 
 	cli  *client.Client
 	opts DockerOptions
-}
-
-func (d *Docker) Build(req *pb.BuildRequest, stream pb.Build_BuildServer) error {
-	fmt.Println("Build RPC called")
-	defer fmt.Println("Finishing Build RPC call")
-
-	ctx := stream.Context()
-	if err := ctx.Err(); err != nil { // e.g. context deadline exceeded
-		return err
-	}
-
-	if err := validateBuildRequest(req); err != nil {
-		return err
-	}
-
-	switch pb.DeployOrigin_name[int32(req.DeployOrigin)] {
-	case "DEPLOY_ORIGIN_SOURCE_FILES":
-		return d.buildFromAppSourceData(ctx, req, stream)
-
-	default:
-		return status.Error(codes.Unimplemented, "build not implemented for this deploy origin")
-	}
-
-	return nil
-}
-
-func (d *Docker) buildFromAppSourceData(ctx context.Context, req *pb.BuildRequest, stream pb.Build_BuildServer) error {
-	if len(req.Data) == 0 {
-		return status.Error(codes.InvalidArgument, "app source data not provided")
-	}
-
-	w := &BuildResponseOutputWriter{stream: stream}
-	fmt.Fprintln(w, "---> Starting container image build")
-
-	tsuruFiles, err := ExtractTsuruAppFilesFromAppSourceContext(ctx, bytes.NewReader(req.Data))
-	if err != nil {
-		return err
-	}
-
-	if err = stream.Send(&pb.BuildResponse{
-		Data: &pb.BuildResponse_TsuruConfig{
-			TsuruConfig: &pb.TsuruConfig{
-				Procfile:  tsuruFiles.Procfile,
-				TsuruYaml: tsuruFiles.TsuruYaml,
-			},
-		}}); err != nil {
-		return status.Errorf(codes.Unknown, "failed to send tsuru app files: %s", err)
-	}
-
-	if err = d.build(ctx, req, tsuruFiles, bytes.NewReader(req.Data), w); err != nil {
-		return status.Errorf(codes.Internal, "failed to build container image: %s", err)
-	}
-
-	fmt.Fprintln(w, "--> Container image build finished")
-
-	return nil
 }
 
 func (d *Docker) build(ctx context.Context, req *pb.BuildRequest, tsuruAppFiles *TsuruAppFiles, appData io.Reader, w *BuildResponseOutputWriter) error {
@@ -171,36 +114,6 @@ func (d *Docker) build(ctx context.Context, req *pb.BuildRequest, tsuruAppFiles 
 
 	if err = eg.Wait(); err != nil {
 		return err
-	}
-
-	return nil
-}
-
-func validateBuildRequest(r *pb.BuildRequest) error {
-	if r == nil {
-		return status.Error(codes.Internal, "build request cannot be nil")
-	}
-
-	if r.SourceImage == "" {
-		return status.Error(codes.InvalidArgument, "source image cannot be empty")
-	}
-
-	if len(r.DestinationImages) == 0 {
-		return status.Error(codes.InvalidArgument, "destination images not provided")
-	}
-
-	for _, dst := range r.DestinationImages {
-		if dst == "" {
-			return status.Error(codes.InvalidArgument, "destination image cannot be empty")
-		}
-	}
-
-	if _, found := pb.DeployOrigin_name[int32(r.DeployOrigin)]; !found {
-		return status.Error(codes.InvalidArgument, "invalid deploy origin")
-	}
-
-	if r.DeployOrigin == pb.DeployOrigin_DEPLOY_ORIGIN_UNSPECIFIED {
-		return status.Error(codes.InvalidArgument, "deploy origin must be provided")
 	}
 
 	return nil
@@ -292,35 +205,4 @@ func generateContainerfile(w io.Writer, image string, tsuruAppFiles *TsuruAppFil
 	_, err = io.WriteString(w, dockerfile)
 	return err
 }
-
-type BuildResponseOutputWriter struct {
-	stream pb.Build_BuildServer
-	mu     sync.Mutex
-}
-
-func (w *BuildResponseOutputWriter) Write(p []byte) (int, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if len(p) == 0 {
-		return 0, nil
-	}
-
-	return len(p), w.stream.Send(&pb.BuildResponse{Data: &pb.BuildResponse_Output{Output: string(p)}})
-}
-
-func (w *BuildResponseOutputWriter) Read(p []byte) (int, error) { // required to implement console.File
-	return 0, nil
-}
-
-func (w *BuildResponseOutputWriter) Close() error { // required to implement console.File
-	return nil
-}
-
-func (w *BuildResponseOutputWriter) Fd() uintptr { // required to implement console.File
-	return uintptr(0)
-}
-
-func (w *BuildResponseOutputWriter) Name() string { // required to implement console.File
-	return ""
-}
+*/
