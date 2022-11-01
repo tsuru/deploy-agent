@@ -16,6 +16,7 @@ import (
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/util/appdefaults"
 	"github.com/tsuru/deploy-agent/pkg/build"
+	"github.com/tsuru/deploy-agent/pkg/build/buildkit"
 	"google.golang.org/grpc"
 
 	pb "github.com/tsuru/deploy-agent/api/v1alpha1"
@@ -49,7 +50,7 @@ func main() {
 	defer c.Close()
 
 	s := grpc.NewServer()
-	pb.RegisterBuildServer(s, build.NewServer(nil))
+	pb.RegisterBuildServer(s, build.NewServer(buildkit.NewBuildKit(c, buildkit.BuildKitOptions{TempDir: cfg.BuildkitTmpDir})))
 
 	go handleGracefulTermination(s)
 
