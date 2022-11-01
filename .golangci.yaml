@@ -15,6 +15,9 @@ linters:
   - whitespace
 
 linters-settings:
+  gofmt:
+    simplify: true
+
   goheader:
     template: |-
       Copyright {{ YEAR }} {{ AUTHOR }} authors. All rights reserved.
