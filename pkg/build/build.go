@@ -55,7 +55,7 @@ func ExtractTsuruAppFilesFromAppSourceContext(ctx context.Context, r io.Reader) 
 
 	z, err := gzip.NewReader(r)
 	if err != nil { // not gzip file
-		return nil, fmt.Errorf("app's source context must be a GZIP file")
+		return nil, fmt.Errorf("app source data must be a GZIP compressed file: %w", err)
 	}
 	defer z.Close()
 
@@ -71,7 +71,7 @@ func ExtractTsuruAppFilesFromAppSourceContext(ctx context.Context, r io.Reader) 
 		}
 
 		if err != nil {
-			return nil, fmt.Errorf("failed to read next file")
+			return nil, fmt.Errorf("failed to read next file in the tarball: %w", err)
 		}
 
 		if h.Typeflag != tar.TypeReg { // not a regular file, skipping...

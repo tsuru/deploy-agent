@@ -120,7 +120,7 @@ func TestExtractTsuruAppFilesFromAppSourceContext(t *testing.T) {
 			file: func(t *testing.T) io.Reader {
 				return strings.NewReader(`not gzip`)
 			},
-			expectedError: "app's source context must be a GZIP file",
+			expectedError: "app source data must be a GZIP compressed file: unexpected EOF",
 		},
 	}
 
