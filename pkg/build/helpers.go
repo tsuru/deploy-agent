@@ -16,7 +16,7 @@ import (
 	"sync"
 	"text/template"
 
-	pb "github.com/tsuru/deploy-agent/api/v1alpha1"
+	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 )
 
 var (

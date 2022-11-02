@@ -21,9 +21,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/tsuru/deploy-agent/api/v1alpha1"
 	. "github.com/tsuru/deploy-agent/pkg/build"
 	"github.com/tsuru/deploy-agent/pkg/build/fake"
+	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 )
 
 func TestBuild(t *testing.T) {

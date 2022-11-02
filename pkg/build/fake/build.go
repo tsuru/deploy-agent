@@ -9,8 +9,8 @@ import (
 	"errors"
 	"io"
 
-	pb "github.com/tsuru/deploy-agent/api/v1alpha1"
 	"github.com/tsuru/deploy-agent/pkg/build"
+	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 )
 
 var _ build.Builder = (*FakeBuilder)(nil)

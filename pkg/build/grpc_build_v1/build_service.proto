@@ -4,9 +4,9 @@
 
 syntax = "proto3";
 
-package v1alpha1;
+package grpc_build_v1;
 
-option go_package = "github.com/tsuru/deploy-agent/api/v1alpha1";
+option go_package = "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1";
 
 service Build {
     // Builds (and pushes) container images.

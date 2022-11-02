@@ -26,8 +26,8 @@ import (
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v3"
 
-	pb "github.com/tsuru/deploy-agent/api/v1alpha1"
 	"github.com/tsuru/deploy-agent/pkg/build"
+	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 )
 
 var _ build.Builder = (*BuildKit)(nil)

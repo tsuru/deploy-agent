@@ -8,7 +8,7 @@ import (
 	"context"
 	"io"
 
-	pb "github.com/tsuru/deploy-agent/api/v1alpha1"
+	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 )
 
 type Builder interface {
