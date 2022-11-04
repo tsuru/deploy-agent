@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"sync"
 	"text/template"
@@ -20,8 +21,9 @@ import (
 )
 
 var (
-	ProcfileName   = "Procfile"
-	TsuruYamlNames = []string{"tsuru.yml", "tsuru.yaml", "app.yml", "app.yaml"}
+	ProcfileName    = "Procfile"
+	TsuruYamlNames  = []string{"tsuru.yml", "tsuru.yaml", "app.yml", "app.yaml"}
+	TsuruConfigDirs = []string{"/home/application/current", "/app/user", "/"}
 )
 
 func IsTsuruYaml(name string) bool {
@@ -89,6 +91,7 @@ func ExtractTsuruAppFilesFromAppSourceContext(ctx context.Context, r io.Reader) 
 			}
 
 			tsuruYaml[name] = string(data)
+			continue
 		}
 
 		if name == ProcfileName {
@@ -98,10 +101,62 @@ func ExtractTsuruAppFilesFromAppSourceContext(ctx context.Context, r io.Reader) 
 			}
 
 			procfile = string(data)
+			continue
 		}
 	}
 
 	return &TsuruAppFiles{
+		Procfile:  procfile,
+		TsuruYaml: tsuruYaml.String(),
+	}, nil
+}
+
+func ExtractTsuruAppFilesFromContainerImageTarball(ctx context.Context, r io.Reader) (*pb.TsuruConfig, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	var procfile string
+	tsuruYaml := make(TsuruYamlCandidates)
+
+	t := tar.NewReader(r)
+	for {
+		h, err := t.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to read next file in the tarball: %w", err)
+		}
+
+		if h.Typeflag != tar.TypeReg {
+			continue
+		}
+
+		name := filepath.Base(h.Name)
+		if IsTsuruYaml(name) {
+			data, err := io.ReadAll(t)
+			if err != nil {
+				return nil, err
+			}
+
+			tsuruYaml[name] = string(data)
+			continue
+		}
+
+		if name == ProcfileName {
+			data, err := io.ReadAll(t)
+			if err != nil {
+				return nil, err
+			}
+
+			procfile = string(data)
+			continue
+		}
+	}
+
+	return &pb.TsuruConfig{
 		Procfile:  procfile,
 		TsuruYaml: tsuruYaml.String(),
 	}, nil

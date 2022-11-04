@@ -12,6 +12,5 @@ import (
 )
 
 type Builder interface {
-	Build(ctx context.Context, r *pb.BuildRequest, tc *pb.TsuruConfig, w io.Writer) error
-	FindTsuruAppFiles(ctx context.Context, r *pb.BuildRequest) (*pb.TsuruConfig, error)
+	Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (*pb.TsuruConfig, error)
 }

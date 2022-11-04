@@ -52,7 +52,7 @@ func TestBuild(t *testing.T) {
 			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
 				require.NoError(t, err)
 				require.NotNil(t, stream)
-				_, err = readResponse(t, stream)
+				_, _, err = readResponse(t, stream)
 				assert.Error(t, err)
 				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "source image cannot be empty").Error())
 			},
@@ -65,7 +65,7 @@ func TestBuild(t *testing.T) {
 			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
 				require.NoError(t, err)
 				require.NotNil(t, stream)
-				_, err = readResponse(t, stream)
+				_, _, err = readResponse(t, stream)
 				assert.Error(t, err)
 				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "destination images not provided").Error())
 			},
@@ -79,7 +79,7 @@ func TestBuild(t *testing.T) {
 			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
 				require.NoError(t, err)
 				require.NotNil(t, stream)
-				_, err = readResponse(t, stream)
+				_, _, err = readResponse(t, stream)
 				assert.Error(t, err)
 				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "destination image cannot be empty").Error())
 			},
@@ -93,7 +93,7 @@ func TestBuild(t *testing.T) {
 			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
 				require.NoError(t, err)
 				require.NotNil(t, stream)
-				_, err = readResponse(t, stream)
+				_, _, err = readResponse(t, stream)
 				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "deploy origin must be provided").Error())
 			},
 		},
@@ -107,22 +107,8 @@ func TestBuild(t *testing.T) {
 			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
 				require.NoError(t, err)
 				require.NotNil(t, stream)
-				_, err = readResponse(t, stream)
+				_, _, err = readResponse(t, stream)
 				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "invalid deploy origin").Error())
-			},
-		},
-
-		"unsupported deploy origin": {
-			req: &pb.BuildRequest{
-				SourceImage:       "tsuru/scratch:latest",
-				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
-				DeployOrigin:      pb.DeployOrigin_DEPLOY_ORIGIN_DOCKERFILE,
-			},
-			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
-				require.NoError(t, err)
-				require.NotNil(t, stream)
-				_, err = readResponse(t, stream)
-				assert.EqualError(t, err, status.Error(codes.Unimplemented, "build not implemented for this deploy origin").Error())
 			},
 		},
 
@@ -135,28 +121,41 @@ func TestBuild(t *testing.T) {
 			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
 				require.NoError(t, err)
 				require.NotNil(t, stream)
-				_, err = readResponse(t, stream)
+				_, _, err = readResponse(t, stream)
 				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "app source data not provided").Error())
+			},
+		},
+
+		"when builder returns an error": {
+			builder: &fake.FakeBuilder{
+				OnBuild: func(ctx context.Context, r *pb.BuildRequest, w io.Writer) (*pb.TsuruConfig, error) {
+					return nil, errors.New("some error")
+				},
+			},
+			req: &pb.BuildRequest{
+				SourceImage:       "tsuru/scratch:latest",
+				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
+				DeployOrigin:      pb.DeployOrigin_DEPLOY_ORIGIN_CONTAINER_IMAGE,
+			},
+			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, stream)
+				_, _, err = readResponse(t, stream)
+				assert.EqualError(t, err, status.Error(codes.Unknown, "some error").Error())
 			},
 		},
 
 		"build successful": {
 			builder: &fake.FakeBuilder{
-				OnFindTsuruAppFiles: func(ctx context.Context, r *pb.BuildRequest) (*pb.TsuruConfig, error) {
+				OnBuild: func(ctx context.Context, r *pb.BuildRequest, w io.Writer) (*pb.TsuruConfig, error) {
 					assert.NotNil(t, ctx)
 					assert.NotNil(t, r)
+					assert.NotNil(t, w)
+					fmt.Fprintln(w, "--- EXECUTING BUILD ---")
 					return &pb.TsuruConfig{
 						Procfile:  "web: ./path/to/server.sh --addr :${PORT}",
 						TsuruYaml: "healthcheck:\n  path: /healthz",
 					}, nil
-				},
-				OnBuild: func(ctx context.Context, r *pb.BuildRequest, tc *pb.TsuruConfig, w io.Writer) error {
-					assert.NotNil(t, ctx)
-					assert.NotNil(t, r)
-					assert.NotNil(t, tc)
-					assert.NotNil(t, w)
-					fmt.Fprintln(w, "--- EXECUTING BUILD ---")
-					return nil
 				},
 			},
 			req: &pb.BuildRequest{
@@ -168,8 +167,10 @@ func TestBuild(t *testing.T) {
 			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
 				require.NoError(t, err)
 				require.NotNil(t, stream)
-				output, err := readResponse(t, stream)
-				assert.NoError(t, err)
+				tsuruConfig, output, err := readResponse(t, stream)
+				require.NoError(t, err)
+				require.NotNil(t, tsuruConfig)
+				assert.Equal(t, &pb.TsuruConfig{Procfile: "web: ./path/to/server.sh --addr :${PORT}", TsuruYaml: "healthcheck:\n  path: /healthz"}, tsuruConfig)
 				assert.Regexp(t, `(.*)--- EXECUTING BUILD ---(.*)`, output)
 			},
 		},
@@ -222,10 +223,12 @@ func setupClient(t *testing.T, address string) pb.BuildClient {
 	return pb.NewBuildClient(conn)
 }
 
-func readResponse(t *testing.T, stream pb.Build_BuildClient) (string, error) {
+func readResponse(t *testing.T, stream pb.Build_BuildClient) (*pb.TsuruConfig, string, error) {
 	t.Helper()
 
+	var tc *pb.TsuruConfig
 	var buffer bytes.Buffer
+
 	for {
 		r, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -233,15 +236,18 @@ func readResponse(t *testing.T, stream pb.Build_BuildClient) (string, error) {
 		}
 
 		if err != nil {
-			return "", err
+			return nil, "", err
 		}
 
 		switch r.Data.(type) {
+		case *pb.BuildResponse_TsuruConfig:
+			tc = r.GetTsuruConfig()
+
 		case *pb.BuildResponse_Output:
 			_, err = io.WriteString(&buffer, r.GetOutput())
 			require.NoError(t, err)
 		}
 	}
 
-	return buffer.String(), nil
+	return tc, buffer.String(), nil
 }

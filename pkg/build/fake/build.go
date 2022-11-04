@@ -16,22 +16,13 @@ import (
 var _ build.Builder = (*FakeBuilder)(nil)
 
 type FakeBuilder struct {
-	OnBuild             func(ctx context.Context, r *pb.BuildRequest, tc *pb.TsuruConfig, w io.Writer) error
-	OnFindTsuruAppFiles func(ctx context.Context, r *pb.BuildRequest) (*pb.TsuruConfig, error)
+	OnBuild func(ctx context.Context, r *pb.BuildRequest, w io.Writer) (*pb.TsuruConfig, error)
 }
 
-func (b *FakeBuilder) Build(ctx context.Context, r *pb.BuildRequest, tc *pb.TsuruConfig, w io.Writer) error {
+func (b *FakeBuilder) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (*pb.TsuruConfig, error) {
 	if b.OnBuild == nil {
-		return errors.New("fake: method not implemented")
-	}
-
-	return b.OnBuild(ctx, r, tc, w)
-}
-
-func (b *FakeBuilder) FindTsuruAppFiles(ctx context.Context, r *pb.BuildRequest) (*pb.TsuruConfig, error) {
-	if b.OnFindTsuruAppFiles == nil {
 		return nil, errors.New("fake: method not implemented")
 	}
 
-	return b.OnFindTsuruAppFiles(ctx, r)
+	return b.OnBuild(ctx, r, w)
 }

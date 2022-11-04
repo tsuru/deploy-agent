@@ -40,27 +40,13 @@ func (s *Server) Build(req *pb.BuildRequest, stream pb.Build_BuildServer) error 
 	w := &BuildResponseOutputWriter{stream: stream}
 	fmt.Fprintln(w, "---> Starting container image build")
 
-	switch pb.DeployOrigin_name[int32(req.DeployOrigin)] {
-	case "DEPLOY_ORIGIN_SOURCE_FILES":
-		if err := validateBuildRequestFromSourceData(req); err != nil {
-			return err
-		}
-
-	default:
-		return status.Error(codes.Unimplemented, "build not implemented for this deploy origin")
-	}
-
-	appFiles, err := s.b.FindTsuruAppFiles(ctx, req)
+	appFiles, err := s.b.Build(ctx, req, w)
 	if err != nil {
 		return err
 	}
 
 	if err = stream.Send(&pb.BuildResponse{Data: &pb.BuildResponse_TsuruConfig{TsuruConfig: appFiles}}); err != nil {
 		return status.Errorf(codes.Unknown, "failed to send tsuru app files: %s", err)
-	}
-
-	if err = s.b.Build(ctx, req, appFiles, w); err != nil {
-		return status.Errorf(codes.Internal, "failed to build container image: %s", err)
 	}
 
 	fmt.Fprintln(w, "--> Container image build finished")
@@ -93,6 +79,13 @@ func validateBuildRequest(r *pb.BuildRequest) error {
 
 	if r.DeployOrigin == pb.DeployOrigin_DEPLOY_ORIGIN_UNSPECIFIED {
 		return status.Error(codes.InvalidArgument, "deploy origin must be provided")
+	}
+
+	switch pb.DeployOrigin_name[int32(r.DeployOrigin)] {
+	case "DEPLOY_ORIGIN_SOURCE_FILES":
+		if err := validateBuildRequestFromSourceData(r); err != nil {
+			return err
+		}
 	}
 
 	return nil
