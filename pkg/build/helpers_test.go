@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	. "github.com/tsuru/deploy-agent/pkg/build"
+	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 )
 
 func TestIsTsuruYaml(t *testing.T) {
@@ -97,7 +98,7 @@ func TestTsuruYamlCandidates_String(t *testing.T) {
 func TestExtractTsuruAppFilesFromAppSourceContext(t *testing.T) {
 	cases := []struct {
 		file          func(t *testing.T) io.Reader
-		expected      *TsuruAppFiles
+		expected      *pb.TsuruConfig
 		expectedError string
 	}{
 		{
@@ -110,7 +111,7 @@ func TestExtractTsuruAppFilesFromAppSourceContext(t *testing.T) {
 				})
 				return &buffer
 			},
-			expected: &TsuruAppFiles{
+			expected: &pb.TsuruConfig{
 				TsuruYaml: "# Tsuru YAML",
 				Procfile:  `web: /path/to/server.sh --address 0.0.0.0:${PORT}`,
 			},

@@ -53,7 +53,7 @@ type TsuruAppFiles struct {
 	TsuruYaml string
 }
 
-func ExtractTsuruAppFilesFromAppSourceContext(ctx context.Context, r io.Reader) (*TsuruAppFiles, error) {
+func ExtractTsuruAppFilesFromAppSourceContext(ctx context.Context, r io.Reader) (*pb.TsuruConfig, error) {
 	if err := ctx.Err(); err != nil { // context deadline exceeded
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func ExtractTsuruAppFilesFromAppSourceContext(ctx context.Context, r io.Reader) 
 		}
 	}
 
-	return &TsuruAppFiles{
+	return &pb.TsuruConfig{
 		Procfile:  procfile,
 		TsuruYaml: tsuruYaml.String(),
 	}, nil
