@@ -1,0 +1,9 @@
+hooks:
+  build:
+  - touch /tmp/foo
+  - |-
+    mkdir -p /tmp/tsuru \
+    && echo "MY_ENV_VAR=${MY_ENV_VAR}" > /tmp/tsuru/envs
+
+healthcheck:
+  path: /

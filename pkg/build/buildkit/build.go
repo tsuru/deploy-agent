@@ -15,11 +15,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/containerd/console"
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/frontend/dockerfile/builder"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/auth/authprovider"
-	"github.com/moby/buildkit/session/secrets"
 	"github.com/moby/buildkit/session/secrets/secretsprovider"
 	"github.com/moby/buildkit/util/progress/progresswriter"
 	"golang.org/x/sync/errgroup"
@@ -51,9 +51,9 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 		return nil, err
 	}
 
-	ow, ok := w.(*build.BuildResponseOutputWriter)
+	ow, ok := w.(console.File)
 	if !ok {
-		return nil, errors.New("writer must be from BuildResponseOutputWriter")
+		return nil, errors.New("writer must implement console.File")
 	}
 
 	switch r.DeployOrigin {
@@ -67,7 +67,7 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 	return nil, status.Errorf(codes.Unimplemented, "deploy origin not supported")
 }
 
-func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, r *pb.BuildRequest, w *build.BuildResponseOutputWriter) (*pb.TsuruConfig, error) {
+func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, r *pb.BuildRequest, w console.File) (*pb.TsuruConfig, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -98,22 +98,20 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, r *pb.BuildReque
 		return nil, err
 	}
 
-	eg, ctx := errgroup.WithContext(ctx)
+	secrets, err := secretsprovider.NewStore([]secretsprovider.Source{{
+		ID:       "tsuru-app-envvars",
+		FilePath: filepath.Join(tmpDir, "envs.sh"),
+	}})
+	if err != nil {
+		return nil, err
+	}
+
+	eg, nctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		var secrets secrets.SecretStore
-		secrets, err = secretsprovider.NewStore([]secretsprovider.Source{{
-			ID:       "tsuru-app-envvars",
-			FilePath: filepath.Join(tmpDir, "envs.sh"),
-		}})
-		if err != nil {
-			return err
-		}
+		var insecureRegistry bool // disabled by default
+		var pushImage bool = true // enabled by default
 
-		var (
-			insecureRegistry bool        // disabled by default
-			pushImage        bool = true // enabled by default
-		)
 		if pots := r.PushOptions; pots != nil {
 			pushImage = !pots.Disable
 			insecureRegistry = pots.InsecureRegistry
@@ -139,7 +137,8 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, r *pb.BuildReque
 				secretsprovider.NewSecretProvider(secrets),
 			},
 		}
-		_, err = b.cli.Build(ctx, opts, "deploy-agent", builder.Build, progresswriter.ResetTime(pw).Status())
+
+		_, err = b.cli.Build(nctx, opts, "deploy-agent", builder.Build, progresswriter.ResetTime(pw).Status())
 		return err
 	})
 
@@ -180,7 +179,7 @@ func generateContainerfile(w io.Writer, image string, tsuruAppFiles *pb.TsuruCon
 	return err
 }
 
-func (b *BuildKit) buildFromContainerImage(ctx context.Context, r *pb.BuildRequest, w *build.BuildResponseOutputWriter) (*pb.TsuruConfig, error) {
+func (b *BuildKit) buildFromContainerImage(ctx context.Context, r *pb.BuildRequest, w console.File) (*pb.TsuruConfig, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -317,9 +316,6 @@ func generateBuildLocalDir(ctx context.Context, baseDir, dockerfile string, appA
 	})
 
 	eg.Go(func() error {
-		if envs == nil { // there's no envs... skipping it
-			return nil
-		}
 		envsFile, nerr := os.Create(filepath.Join(contextRootDir, "envs.sh"))
 		if nerr != nil {
 			return nerr

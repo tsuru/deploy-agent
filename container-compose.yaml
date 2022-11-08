@@ -1,14 +1,23 @@
-version: 2.1
+version: "2.4"
 
 services:
   buildkit:
-    image: moby/buildkit:latest
-    command: --addr tcp://0.0.0.0:7777
+    image: moby/buildkit:v0.10.5
+    command: --addr tcp://0.0.0.0:7777 --config /etc/buildkit/buildkitd.toml
+    privileged: true
     ports:
     - 7777:7777
-    privileged: true
+    volumes:
+    - ./pkg/build/buildkit/testdata/buildkitd.toml:/etc/buildkit/buildkitd.toml:ro
 
   registry:
     image: registry:2
     ports:
     - 5000:5000
+
+  docker:
+    image: docker:20.10.3-dind
+    command: dockerd -H tcp://0.0.0.0:2375 --insecure-registry 169.196.255.254:5000
+    privileged: true
+    ports:
+    - 2375:2375

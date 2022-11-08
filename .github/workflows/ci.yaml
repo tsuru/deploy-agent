@@ -7,13 +7,24 @@ jobs:
     - uses: actions/setup-go@v3
       with:
         go-version: '1.19'
+
     - uses: actions/checkout@v2
+
+    # NOTE: using link-local reserved address block in order to avoid conflict.
+    - name: Add fake IP (169.196.255.254) on loopback interface
+      run: |-
+        { ip address | grep -q 169.196.255.254; } || sudo ip address add 169.196.255.254 dev lo
+
+    - name: Running required services (Builkit, Docker Registry, Docker)
+      run: docker-compose -f ./container-compose.yaml up -d
+
     - name: Install protoc and Go compiler plugins
       run: |-
         sudo apt install -y protobuf-compiler
         go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
         go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
-    - run: make test
+
+    - run: make test test/integration
 
   lint:
     runs-on: ubuntu-latest
