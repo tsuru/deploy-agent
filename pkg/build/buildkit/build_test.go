@@ -235,54 +235,85 @@ func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
 }
 
 func TestBuildKit_Build_FromContainerImages(t *testing.T) {
-	srcImage := baseRegistry(t, "my-container", "latest")
-
 	dc := newDockerClient(t)
 	defer dc.Close()
-
-	data := appArchiveData(t, "./testdata/container_image/")
-	r := bytes.NewReader(data)
-
-	buildResp, err := dc.ImageBuild(context.TODO(), r, dockertypes.ImageBuildOptions{
-		Tags:        []string{srcImage},
-		Remove:      true,
-		ForceRemove: true,
-		Context:     r,
-	})
-	require.NoError(t, err)
-	defer buildResp.Body.Close()
-
-	fmt.Println("Building container image", srcImage)
-	io.Copy(os.Stdout, buildResp.Body)
-
-	pushReader, err := dc.ImagePush(context.TODO(), srcImage, dockertypes.ImagePushOptions{RegistryAuth: "fake auth token"})
-	require.NoError(t, err)
-	defer pushReader.Close()
-
-	fmt.Println("Pushing image to container registry")
-	io.Copy(os.Stdout, pushReader)
-
-	req := &pb.BuildRequest{
-		DeployOrigin: pb.DeployOrigin_DEPLOY_ORIGIN_CONTAINER_IMAGE,
-		App: &pb.TsuruApp{
-			Name: "my-app",
-		},
-		SourceImage:       srcImage,
-		DestinationImages: []string{baseRegistry(t, "app-my-app", "v1")},
-		PushOptions:       &pb.PushOptions{InsecureRegistry: registryHTTP},
-	}
 
 	bc := newBuildKitClient(t)
 	defer bc.Close()
 
-	appFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).
-		Build(context.TODO(), req, os.Stdout)
+	t.Run("container image that contains Tsuru app files (tsuru.yaml, Procfile)", func(t *testing.T) {
+		srcImage := baseRegistry(t, "my-container", "latest")
 
-	require.NoError(t, err)
-	assert.Equal(t, &pb.TsuruConfig{
-		Procfile:  "web: my-server --addr 0.0.0.0:${PORT}\nworker: ./path/to/worker.sh --debug\n",
-		TsuruYaml: "healthcheck:\n  path: /healthz\n  interval_seconds: 3\n  timeout_seconds: 1\n",
-	}, appFiles)
+		data := appArchiveData(t, "./testdata/container_image/")
+		r := bytes.NewReader(data)
+
+		buildResp, err := dc.ImageBuild(context.TODO(), r, dockertypes.ImageBuildOptions{
+			Tags:        []string{srcImage},
+			Remove:      true,
+			ForceRemove: true,
+			Context:     r,
+		})
+		require.NoError(t, err)
+		defer buildResp.Body.Close()
+
+		fmt.Println("Building container image", srcImage)
+		_, err = io.Copy(os.Stdout, buildResp.Body)
+		require.NoError(t, err)
+
+		pushReader, err := dc.ImagePush(context.TODO(), srcImage, dockertypes.ImagePushOptions{RegistryAuth: "fake auth token"})
+		require.NoError(t, err)
+		defer pushReader.Close()
+
+		fmt.Println("Pushing image to container registry")
+		_, err = io.Copy(os.Stdout, pushReader)
+		require.NoError(t, err)
+
+		req := &pb.BuildRequest{
+			DeployOrigin: pb.DeployOrigin_DEPLOY_ORIGIN_CONTAINER_IMAGE,
+			App: &pb.TsuruApp{
+				Name: "my-app",
+			},
+			SourceImage:       srcImage,
+			DestinationImages: []string{baseRegistry(t, "app-my-app", "v1")},
+			PushOptions:       &pb.PushOptions{InsecureRegistry: registryHTTP},
+		}
+
+		appFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).
+			Build(context.TODO(), req, os.Stdout)
+
+		require.NoError(t, err)
+		assert.Equal(t, &pb.TsuruConfig{
+			Procfile:  "web: my-server --addr 0.0.0.0:${PORT}\nworker: ./path/to/worker.sh --debug\n",
+			TsuruYaml: "healthcheck:\n  path: /healthz\n  interval_seconds: 3\n  timeout_seconds: 1\n",
+			ImageConfig: &pb.ContainerImageConfig{
+				Cmd: []string{"sh"},
+			},
+		}, appFiles)
+	})
+
+	t.Run("container image without Tsuru app files (tsuru.yaml, Procfile)", func(t *testing.T) {
+		req := &pb.BuildRequest{
+			DeployOrigin: pb.DeployOrigin_DEPLOY_ORIGIN_CONTAINER_IMAGE,
+			App: &pb.TsuruApp{
+				Name: "my-app",
+			},
+			SourceImage:       "nginx:1.22-alpine",
+			DestinationImages: []string{baseRegistry(t, "app-my-app", "v2")},
+			PushOptions:       &pb.PushOptions{InsecureRegistry: registryHTTP},
+		}
+
+		appFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).
+			Build(context.TODO(), req, os.Stdout)
+
+		require.NoError(t, err)
+		assert.Equal(t, &pb.TsuruConfig{
+			ImageConfig: &pb.ContainerImageConfig{
+				Entrypoint:   []string{"/docker-entrypoint.sh"},
+				Cmd:          []string{"nginx", "-g", "daemon off;"},
+				ExposedPorts: []string{"80/tcp"},
+			},
+		}, appFiles)
+	})
 }
 
 func appArchiveData(t *testing.T, dir string) []byte {

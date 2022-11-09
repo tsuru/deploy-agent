@@ -16,6 +16,8 @@ import (
 	"strings"
 
 	"github.com/containerd/console"
+	containerregistryname "github.com/google/go-containerregistry/pkg/name"
+	containerregistryremote "github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/frontend/dockerfile/builder"
 	"github.com/moby/buildkit/session"
@@ -224,7 +226,7 @@ func (b *BuildKit) buildFromContainerImage(ctx context.Context, r *pb.BuildReque
 			},
 			Session: []session.Attachable{authprovider.NewDockerAuthProvider(w)},
 		}
-		_, err := b.cli.Build(nctx, opts, "deploy-agent", builder.Build, progresswriter.ResetTime(pw).Status())
+		_, err = b.cli.Build(nctx, opts, "deploy-agent", builder.Build, progresswriter.ResetTime(pw).Status())
 		return err
 	})
 
@@ -233,11 +235,27 @@ func (b *BuildKit) buildFromContainerImage(ctx context.Context, r *pb.BuildReque
 		return pw.Err()
 	})
 
-	if err := eg.Wait(); err != nil {
+	if err = eg.Wait(); err != nil {
 		return nil, err
 	}
 
-	return b.extractTsuruConfigsFromContainerImage(ctx, tmpDir)
+	var insecureRegistry bool
+	if r.PushOptions != nil {
+		insecureRegistry = r.PushOptions.InsecureRegistry
+	}
+
+	imageConfig, err := extractContainerImageConfigFromImageManifest(ctx, r.DestinationImages[0], insecureRegistry)
+	if err != nil {
+		return nil, err
+	}
+
+	appFiles, err := b.extractTsuruConfigsFromContainerImage(ctx, tmpDir)
+	if err != nil {
+		return nil, err
+	}
+
+	appFiles.ImageConfig = imageConfig
+	return appFiles, nil
 }
 
 func (b *BuildKit) extractTsuruConfigsFromContainerImage(ctx context.Context, localContextDir string) (*pb.TsuruConfig, error) {
@@ -276,6 +294,41 @@ func (b *BuildKit) extractTsuruConfigsFromContainerImage(ctx context.Context, lo
 	}
 
 	return tc, nil
+}
+
+func extractContainerImageConfigFromImageManifest(ctx context.Context, imageStr string, insecureRegistry bool) (*pb.ContainerImageConfig, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	opts := []containerregistryname.Option{containerregistryname.Insecure}
+
+	ref, err := containerregistryname.ParseReference(imageStr, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	image, err := containerregistryremote.Image(ref)
+	if err != nil {
+		return nil, err
+	}
+
+	cf, err := image.ConfigFile()
+	if err != nil {
+		return nil, err
+	}
+
+	var exposedPorts []string
+	for k := range cf.Config.ExposedPorts {
+		exposedPorts = append(exposedPorts, k)
+	}
+
+	return &pb.ContainerImageConfig{
+		Entrypoint:   cf.Config.Entrypoint,
+		Cmd:          cf.Config.Cmd,
+		WorkingDir:   cf.Config.WorkingDir,
+		ExposedPorts: exposedPorts,
+	}, nil
 }
 
 func generateBuildLocalDir(ctx context.Context, baseDir, dockerfile string, appArchiveData io.Reader, envs map[string]string) (string, func(), error) {

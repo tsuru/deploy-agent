@@ -74,9 +74,18 @@ message PushOptions {
   bool insecure_registry = 2;
 }
 
+message ContainerImageConfig {
+  repeated string entrypoint = 1;
+  repeated string cmd = 2;
+  repeated string exposed_ports = 3;
+  string working_dir = 4;
+}
+
 message TsuruConfig {
   // Procfile definition found during the build.
   string procfile = 1;
   // TsuruYAML definition found during the build.
   string tsuru_yaml = 2;
+  // ContainerImageConfig found in the container image registry.
+  ContainerImageConfig image_config = 3;
 }
