@@ -1,0 +1,2 @@
+web: my-server --addr 0.0.0.0:${PORT}
+worker: ./path/to/worker.sh --debug

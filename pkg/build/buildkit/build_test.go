@@ -234,6 +234,57 @@ func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
 	})
 }
 
+func TestBuildKit_Build_FromContainerImages(t *testing.T) {
+	srcImage := baseRegistry(t, "my-container", "latest")
+
+	dc := newDockerClient(t)
+	defer dc.Close()
+
+	data := appArchiveData(t, "./testdata/container_image/")
+	r := bytes.NewReader(data)
+
+	buildResp, err := dc.ImageBuild(context.TODO(), r, dockertypes.ImageBuildOptions{
+		Tags:        []string{srcImage},
+		Remove:      true,
+		ForceRemove: true,
+		Context:     r,
+	})
+	require.NoError(t, err)
+	defer buildResp.Body.Close()
+
+	fmt.Println("Building container image", srcImage)
+	io.Copy(os.Stdout, buildResp.Body)
+
+	pushReader, err := dc.ImagePush(context.TODO(), srcImage, dockertypes.ImagePushOptions{RegistryAuth: "fake auth token"})
+	require.NoError(t, err)
+	defer pushReader.Close()
+
+	fmt.Println("Pushing image to container registry")
+	io.Copy(os.Stdout, pushReader)
+
+	req := &pb.BuildRequest{
+		DeployOrigin: pb.DeployOrigin_DEPLOY_ORIGIN_CONTAINER_IMAGE,
+		App: &pb.TsuruApp{
+			Name: "my-app",
+		},
+		SourceImage:       srcImage,
+		DestinationImages: []string{baseRegistry(t, "app-my-app", "v1")},
+		PushOptions:       &pb.PushOptions{InsecureRegistry: registryHTTP},
+	}
+
+	bc := newBuildKitClient(t)
+	defer bc.Close()
+
+	appFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).
+		Build(context.TODO(), req, os.Stdout)
+
+	require.NoError(t, err)
+	assert.Equal(t, &pb.TsuruConfig{
+		Procfile:  "web: my-server --addr 0.0.0.0:${PORT}\nworker: ./path/to/worker.sh --debug\n",
+		TsuruYaml: "healthcheck:\n  path: /healthz\n  interval_seconds: 3\n  timeout_seconds: 1\n",
+	}, appFiles)
+}
+
 func appArchiveData(t *testing.T, dir string) []byte {
 	t.Helper()
 
