@@ -48,11 +48,6 @@ func (c TsuruYamlCandidates) String() string {
 	return ""
 }
 
-type TsuruAppFiles struct {
-	Procfile  string
-	TsuruYaml string
-}
-
 func ExtractTsuruAppFilesFromAppSourceContext(ctx context.Context, r io.Reader) (*pb.TsuruConfig, error) {
 	if err := ctx.Err(); err != nil { // context deadline exceeded
 		return nil, err
