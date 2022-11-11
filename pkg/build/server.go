@@ -77,10 +77,6 @@ func validateBuildRequest(r *pb.BuildRequest) error {
 		return status.Error(codes.InvalidArgument, "invalid deploy origin")
 	}
 
-	if r.DeployOrigin == pb.DeployOrigin_DEPLOY_ORIGIN_UNSPECIFIED {
-		return status.Error(codes.InvalidArgument, "deploy origin must be provided")
-	}
-
 	switch pb.DeployOrigin_name[int32(r.DeployOrigin)] {
 	case "DEPLOY_ORIGIN_SOURCE_FILES":
 		if err := validateBuildRequestFromSourceData(r); err != nil {

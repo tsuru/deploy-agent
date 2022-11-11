@@ -85,19 +85,6 @@ func TestBuild(t *testing.T) {
 			},
 		},
 
-		"unspecified deploy origin": {
-			req: &pb.BuildRequest{
-				SourceImage:       "tsuru/scratch:latest",
-				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
-			},
-			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
-				require.NoError(t, err)
-				require.NotNil(t, stream)
-				_, _, err = readResponse(t, stream)
-				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "deploy origin must be provided").Error())
-			},
-		},
-
 		"invalid deploy origin": {
 			req: &pb.BuildRequest{
 				SourceImage:       "tsuru/scratch:latest",
