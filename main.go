@@ -15,11 +15,13 @@ import (
 
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/util/appdefaults"
+	"google.golang.org/grpc"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+
 	"github.com/tsuru/deploy-agent/pkg/build"
 	"github.com/tsuru/deploy-agent/pkg/build/buildkit"
-	"google.golang.org/grpc"
-
-	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
+	buildpb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
+	"github.com/tsuru/deploy-agent/pkg/health"
 )
 
 var cfg struct {
@@ -50,7 +52,8 @@ func main() {
 	defer c.Close()
 
 	s := grpc.NewServer()
-	pb.RegisterBuildServer(s, build.NewServer(buildkit.NewBuildKit(c, buildkit.BuildKitOptions{TempDir: cfg.BuildkitTmpDir})))
+	buildpb.RegisterBuildServer(s, build.NewServer(buildkit.NewBuildKit(c, buildkit.BuildKitOptions{TempDir: cfg.BuildkitTmpDir})))
+	healthpb.RegisterHealthServer(s, health.NewServer())
 
 	go handleGracefulTermination(s)
 
