@@ -31,7 +31,7 @@ var cfg struct {
 }
 
 func main() {
-	flag.IntVar(&cfg.Port, "port", 4444, "Server TCP port")
+	flag.IntVar(&cfg.Port, "port", 8080, "Server TCP port")
 	flag.StringVar(&cfg.BuildkitAddress, "buildkit-addr", getEnvOrDefault("BUILDKIT_HOST", appdefaults.Address), "Buildkit server address")
 	flag.StringVar(&cfg.BuildkitTmpDir, "buildkit-tmp-dir", os.TempDir(), "Directory path to store temp files during container image builds")
 	flag.Parse()
