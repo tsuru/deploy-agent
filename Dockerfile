@@ -22,4 +22,4 @@ RUN set -ex \
     && curl -fsSL -o /usr/local/bin/grpc_health_probe "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v${grpc_health_probe_version}/grpc_health_probe-linux-amd64" \
     && chmod +x /usr/local/bin/grpc_health_probe
 EXPOSE 8080
-ENTRYPOINT ["deploy-agent"]
+ENTRYPOINT ["/usr/local/bin/deploy-agent"]
