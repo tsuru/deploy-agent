@@ -16,7 +16,9 @@ import (
 	"strings"
 
 	"github.com/containerd/console"
+	containerregistryauthn "github.com/google/go-containerregistry/pkg/authn"
 	containerregistryname "github.com/google/go-containerregistry/pkg/name"
+	containerregistrygoogle "github.com/google/go-containerregistry/pkg/v1/google"
 	containerregistryremote "github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/frontend/dockerfile/builder"
@@ -301,14 +303,22 @@ func extractContainerImageConfigFromImageManifest(ctx context.Context, imageStr 
 		return nil, err
 	}
 
-	opts := []containerregistryname.Option{containerregistryname.Insecure}
+	var nameOpts []containerregistryname.Option
+	if insecureRegistry {
+		nameOpts = append(nameOpts, containerregistryname.Insecure)
+	}
 
-	ref, err := containerregistryname.ParseReference(imageStr, opts...)
+	ref, err := containerregistryname.ParseReference(imageStr, nameOpts...)
 	if err != nil {
 		return nil, err
 	}
 
-	image, err := containerregistryremote.Image(ref)
+	remoteOpts := []containerregistryremote.Option{
+		containerregistryremote.WithContext(ctx),
+		containerregistryremote.WithAuthFromKeychain(containerregistryauthn.NewMultiKeychain(containerregistryauthn.DefaultKeychain, containerregistrygoogle.Keychain)),
+	}
+
+	image, err := containerregistryremote.Image(ref, remoteOpts...)
 	if err != nil {
 		return nil, err
 	}
