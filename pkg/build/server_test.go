@@ -71,7 +71,7 @@ func TestBuild(t *testing.T) {
 			},
 		},
 
-		"destionation images w/ empty element": {
+		"destination images w/ empty element": {
 			req: &pb.BuildRequest{
 				SourceImage:       "tsuru/scratch:latest",
 				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1", ""},
@@ -85,17 +85,32 @@ func TestBuild(t *testing.T) {
 			},
 		},
 
-		"invalid deploy origin": {
+		"invalid build kind": {
 			req: &pb.BuildRequest{
 				SourceImage:       "tsuru/scratch:latest",
 				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
-				DeployOrigin:      pb.DeployOrigin(1000),
+				App:               &pb.TsuruApp{Name: "my-app"},
+				Kind:              pb.BuildKind(1000),
 			},
 			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
 				require.NoError(t, err)
 				require.NotNil(t, stream)
 				_, _, err = readResponse(t, stream)
-				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "invalid deploy origin").Error())
+				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "invalid build kind").Error())
+			},
+		},
+
+		"missing app, when kind is from app": {
+			req: &pb.BuildRequest{
+				SourceImage:       "tsuru/scratch:latest",
+				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
+				Kind:              pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD,
+			},
+			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, stream)
+				_, _, err = readResponse(t, stream)
+				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "app cannot be nil").Error())
 			},
 		},
 
@@ -103,7 +118,8 @@ func TestBuild(t *testing.T) {
 			req: &pb.BuildRequest{
 				SourceImage:       "tsuru/scratch:latest",
 				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
-				DeployOrigin:      pb.DeployOrigin_DEPLOY_ORIGIN_SOURCE_FILES,
+				App:               &pb.TsuruApp{Name: "my-app"},
+				Kind:              pb.BuildKind_BUILD_KIND_APP_DEPLOY_WITH_SOURCE_UPLOAD,
 			},
 			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
 				require.NoError(t, err)
@@ -122,7 +138,8 @@ func TestBuild(t *testing.T) {
 			req: &pb.BuildRequest{
 				SourceImage:       "tsuru/scratch:latest",
 				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
-				DeployOrigin:      pb.DeployOrigin_DEPLOY_ORIGIN_CONTAINER_IMAGE,
+				App:               &pb.TsuruApp{Name: "my-app"},
+				Kind:              pb.BuildKind_BUILD_KIND_APP_DEPLOY_WITH_CONTAINER_IMAGE,
 			},
 			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
 				require.NoError(t, err)
@@ -148,7 +165,8 @@ func TestBuild(t *testing.T) {
 			req: &pb.BuildRequest{
 				SourceImage:       "tsuru/scratch:latest",
 				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
-				DeployOrigin:      pb.DeployOrigin_DEPLOY_ORIGIN_SOURCE_FILES,
+				Kind:              pb.BuildKind_BUILD_KIND_APP_DEPLOY_WITH_SOURCE_UPLOAD,
+				App:               &pb.TsuruApp{Name: "my-app"},
 				Data:              []byte("fake data :P"),
 			},
 			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {

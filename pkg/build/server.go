@@ -6,6 +6,7 @@ package build
 
 import (
 	"fmt"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -73,12 +74,21 @@ func validateBuildRequest(r *pb.BuildRequest) error {
 		}
 	}
 
-	if _, found := pb.DeployOrigin_name[int32(r.DeployOrigin)]; !found {
-		return status.Error(codes.InvalidArgument, "invalid deploy origin")
+	kind, found := pb.BuildKind_name[int32(r.Kind)]
+	if !found {
+		return status.Error(codes.InvalidArgument, "invalid build kind")
 	}
 
-	switch pb.DeployOrigin_name[int32(r.DeployOrigin)] {
-	case "DEPLOY_ORIGIN_SOURCE_FILES":
+	if strings.HasPrefix(kind, "BUILD_KIND_APP_") && r.App == nil {
+		return status.Error(codes.InvalidArgument, "app cannot be nil")
+	}
+
+	if strings.HasPrefix(kind, "BUILD_KIND_PLATFORM_") && r.Platform == nil {
+		return status.Error(codes.InvalidArgument, "platform cannot be nil")
+	}
+
+	switch kind {
+	case "BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD":
 		if err := validateBuildRequestFromSourceData(r); err != nil {
 			return err
 		}

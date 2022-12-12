@@ -78,7 +78,7 @@ func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
 	destImage := baseRegistry(t, "python", "latest")
 
 	req := &pb.BuildRequest{
-		DeployOrigin: pb.DeployOrigin_DEPLOY_ORIGIN_SOURCE_FILES,
+		Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD,
 		App: &pb.TsuruApp{
 			Name:    "my-app",
 			EnvVars: map[string]string{"MY_ENV_VAR": "my awesome env var :P"},
@@ -269,7 +269,7 @@ func TestBuildKit_Build_FromContainerImages(t *testing.T) {
 		require.NoError(t, err)
 
 		req := &pb.BuildRequest{
-			DeployOrigin: pb.DeployOrigin_DEPLOY_ORIGIN_CONTAINER_IMAGE,
+			Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_CONTAINER_IMAGE,
 			App: &pb.TsuruApp{
 				Name: "my-app",
 			},
@@ -293,7 +293,7 @@ func TestBuildKit_Build_FromContainerImages(t *testing.T) {
 
 	t.Run("container image without Tsuru app files (tsuru.yaml, Procfile)", func(t *testing.T) {
 		req := &pb.BuildRequest{
-			DeployOrigin: pb.DeployOrigin_DEPLOY_ORIGIN_CONTAINER_IMAGE,
+			Kind: pb.BuildKind_BUILD_KIND_APP_DEPLOY_WITH_CONTAINER_IMAGE,
 			App: &pb.TsuruApp{
 				Name: "my-app",
 			},

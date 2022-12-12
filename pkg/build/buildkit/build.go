@@ -60,15 +60,15 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 		return nil, errors.New("writer must implement console.File")
 	}
 
-	switch r.DeployOrigin {
-	case pb.DeployOrigin_DEPLOY_ORIGIN_SOURCE_FILES:
+	switch pb.BuildKind_name[int32(r.Kind)] {
+	case "BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD":
 		return b.buildFromAppSourceFiles(ctx, r, ow)
 
-	case pb.DeployOrigin_DEPLOY_ORIGIN_CONTAINER_IMAGE:
+	case "BUILD_KIND_APP_BUILD_WITH_CONTAINER_IMAGE":
 		return b.buildFromContainerImage(ctx, r, ow)
 	}
 
-	return nil, status.Errorf(codes.Unimplemented, "deploy origin not supported")
+	return nil, status.Errorf(codes.Unimplemented, "build kind not supported")
 }
 
 func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, r *pb.BuildRequest, w console.File) (*pb.TsuruConfig, error) {

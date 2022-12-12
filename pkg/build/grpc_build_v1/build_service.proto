@@ -14,41 +14,57 @@ service Build {
 }
 
 message BuildRequest {
-  // App is the Tsuru app which is being deployed.
-  TsuruApp app = 1;
+  // BuildKind indicates what kind of process started the build on the caller side.
+  BuildKind kind = 1;
 
-  // DeployOrigin indicates how the application is being deployed.
-  DeployOrigin deploy_origin = 2;
+  // App is the Tsuru app which is being deployed, if any.
+  //
+  // NOTE: mandatory field when build kind starts with BUILD_KIND_APP_.
+  TsuruApp app = 2;
+
+  // Platform is the Tsuru platform which is being builded, if any.
+  //
+  // NOTE: mandatory field when build kind starts with BUILD_KIND_PLATFORM_.
+  TsuruPlatform platform = 3;
 
   // SourceImage is the source container image name.
   //
-  // When deploy is from app's source code (DEPLOY_ORIGIN_SOURCE_FILES), it holds
+  // When deploy is from app's source code (BUILD_KIND_APP_DEPLOY_WITH_SOURCE_UPLOAD), it holds
   // the plataform's container image (e.g. docker.io/tsuru/scratch:latest).
-  // When deploy is from container image (DEPLOY_ORIGIN_CONTAINER_IMAGE), it holds
+  // When deploy is from container image (BUILD_KIND_APP_DEPLOY_WITH_CONTAINER_IMAGE), it holds
   // the app's container image (e.g. registry.example.com/company/app:v100).
   // Otherwise it's empty.
-  string source_image = 3;
+  string source_image = 4;
 
   // DestinationImages are the tags of the container image after build.
-  repeated string destination_images = 4;
+  repeated string destination_images = 5;
 
   // Data is the app's source data (or container context).
   // Cannot exceed 2^32 of size.
   //
   // See more: https://developers.google.com/protocol-buffers/docs/proto3#scalar
-  bytes data = 5;
+  bytes data = 6;
+
+  // Containerfile is the container file definition.
+  string Containerfile = 7;
 
   // PushOptions contains the options push the generated images.
-  PushOptions push_options = 6;
+  PushOptions push_options = 10;
 }
 
-enum DeployOrigin {
+enum BuildKind {
   option allow_alias = true;
-  DEPLOY_ORIGIN_UNSPECIFIED = 0;
-  DEPLOY_ORIGIN_SOURCE_FILES = 1;    // tsuru app deploy ... /path/to/my/files.sh
-  DEPLOY_ORIGIN_CONTAINER_IMAGE = 2; // tsuru app deploy ... -i registry.example.com/tsuru/my-app:staging
-  DEPLOY_ORIGIN_DOCKERFILE = 3;      // tsuru app deploy --dockerfile Dockerfile --dockerfile-context ./
-  DEPLOY_ORIGIN_CONTAINERFILE = 3;   // alias for containerfile :P
+
+  BUILD_KIND_UNSPECIFIED                     = 0;
+  BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD    = 1; // tsuru app build ... /path/to/my/files.sh
+  BUILD_KIND_APP_DEPLOY_WITH_SOURCE_UPLOAD   = 1; // tsuru app deploy ... /path/to/my/files.sh
+  BUILD_KIND_APP_BUILD_WITH_CONTAINER_IMAGE  = 2; // tsuru app build ... -i registry.example.com/tsuru/my-app:staging
+  BUILD_KIND_APP_DEPLOY_WITH_CONTAINER_IMAGE = 2; // tsuru app deploy ... -i registry.example.com/tsuru/my-app:staging
+  BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE   = 3; // tsuru app build ... --dockerfile Dockerfile --dockerfile-context ./
+  BUILD_KIND_APP_DEPLOY_WITH_CONTAINER_FILE  = 3; // tsuru app deploy ... --dockerfile Dockerfile --dockerfile-context ./
+
+  BUILD_KIND_PLATFORM_WITH_CONTAINER_IMAGE   = 5; // tsuru platform add/update ... -i registry.example.com/tsuru/python:latest
+  BUILD_KIND_PLATFORM_WITH_CONTAINER_FILE    = 6; // tsuru platform add/update ... --dockerfile Dockerfile
 }
 
 message BuildResponse {
@@ -65,6 +81,11 @@ message TsuruApp {
   string name = 1;
   // EnvVars are the enviroment variables set on app.
   map<string, string> env_vars = 3;
+}
+
+message TsuruPlatform {
+  // Name is the Tsuru platform name.
+  string name = 1;
 }
 
 message PushOptions {
