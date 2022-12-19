@@ -66,6 +66,9 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 
 	case "BUILD_KIND_APP_BUILD_WITH_CONTAINER_IMAGE":
 		return b.buildFromContainerImage(ctx, r, ow)
+
+	case "BUILD_KIND_PLATFORM_WITH_CONTAINER_FILE":
+		return nil, b.buildPlatform(ctx, r, ow)
 	}
 
 	return nil, status.Errorf(codes.Unimplemented, "build kind not supported")
@@ -97,61 +100,7 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, r *pb.BuildReque
 	}
 	defer cleanFunc()
 
-	pw, err := progresswriter.NewPrinter(context.Background(), w, "plain") //nolint - using an empty context intentionally
-	if err != nil {
-		return nil, err
-	}
-
-	secrets, err := secretsprovider.NewStore([]secretsprovider.Source{{
-		ID:       "tsuru-app-envvars",
-		FilePath: filepath.Join(tmpDir, "envs.sh"),
-	}})
-	if err != nil {
-		return nil, err
-	}
-
-	eg, nctx := errgroup.WithContext(ctx)
-
-	eg.Go(func() error {
-		var insecureRegistry bool // disabled by default
-		var pushImage bool = true // enabled by default
-
-		if pots := r.PushOptions; pots != nil {
-			pushImage = !pots.Disable
-			insecureRegistry = pots.InsecureRegistry
-		}
-
-		opts := client.SolveOpt{
-			LocalDirs: map[string]string{
-				"context":    tmpDir,
-				"dockerfile": tmpDir,
-			},
-			Exports: []client.ExportEntry{
-				{
-					Type: client.ExporterImage,
-					Attrs: map[string]string{
-						"name":              strings.Join(r.DestinationImages, ","),
-						"push":              strconv.FormatBool(pushImage),
-						"registry.insecure": strconv.FormatBool(insecureRegistry),
-					},
-				},
-			},
-			Session: []session.Attachable{
-				authprovider.NewDockerAuthProvider(w),
-				secretsprovider.NewSecretProvider(secrets),
-			},
-		}
-
-		_, err = b.cli.Build(nctx, opts, "deploy-agent", builder.Build, progresswriter.ResetTime(pw).Status())
-		return err
-	})
-
-	eg.Go(func() error {
-		<-pw.Done()
-		return pw.Err()
-	})
-
-	if err = eg.Wait(); err != nil {
+	if err = b.callBuildKitBuild(ctx, tmpDir, r, w); err != nil {
 		return nil, err
 	}
 
@@ -194,50 +143,7 @@ func (b *BuildKit) buildFromContainerImage(ctx context.Context, r *pb.BuildReque
 	}
 	defer cleanFunc()
 
-	pw, err := progresswriter.NewPrinter(context.Background(), w, "plain") //nolint - using an empty context intentionally
-	if err != nil {
-		return nil, err
-	}
-
-	eg, nctx := errgroup.WithContext(ctx)
-
-	eg.Go(func() error {
-		var (
-			insecureRegistry bool        // disabled by default
-			pushImage        bool = true // enabled by default
-		)
-		if pots := r.PushOptions; pots != nil {
-			pushImage = !pots.Disable
-			insecureRegistry = pots.InsecureRegistry
-		}
-
-		opts := client.SolveOpt{
-			LocalDirs: map[string]string{
-				"context":    tmpDir,
-				"dockerfile": tmpDir,
-			},
-			Exports: []client.ExportEntry{
-				{
-					Type: client.ExporterImage,
-					Attrs: map[string]string{
-						"name":              strings.Join(r.DestinationImages, ","),
-						"push":              strconv.FormatBool(pushImage),
-						"registry.insecure": strconv.FormatBool(insecureRegistry),
-					},
-				},
-			},
-			Session: []session.Attachable{authprovider.NewDockerAuthProvider(w)},
-		}
-		_, err = b.cli.Build(nctx, opts, "deploy-agent", builder.Build, progresswriter.ResetTime(pw).Status())
-		return err
-	})
-
-	eg.Go(func() error {
-		<-pw.Done()
-		return pw.Err()
-	})
-
-	if err = eg.Wait(); err != nil {
+	if err = b.callBuildKitBuild(ctx, tmpDir, r, w); err != nil {
 		return nil, err
 	}
 
@@ -396,4 +302,76 @@ func generateBuildLocalDir(ctx context.Context, baseDir, dockerfile string, appA
 	}
 
 	return contextRootDir, func() { os.RemoveAll(contextRootDir) }, nil
+}
+
+func (b *BuildKit) buildPlatform(ctx context.Context, r *pb.BuildRequest, w console.File) error {
+	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, r.Containerfile, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer cleanFunc()
+
+	return b.callBuildKitBuild(ctx, tmpDir, r, w)
+}
+
+func (b *BuildKit) callBuildKitBuild(ctx context.Context, buildContextDir string, r *pb.BuildRequest, w console.File) error {
+	var secretSources []secretsprovider.Source
+	if r.App != nil {
+		secretSources = append(secretSources, secretsprovider.Source{
+			ID:       "tsuru-app-envvars",
+			FilePath: filepath.Join(buildContextDir, "envs.sh"),
+		})
+	}
+
+	secrets, err := secretsprovider.NewStore(secretSources)
+	if err != nil {
+		return err
+	}
+
+	pw, err := progresswriter.NewPrinter(context.Background(), w, "plain") //nolint - using an empty context intentionally
+	if err != nil {
+		return err
+	}
+
+	eg, nctx := errgroup.WithContext(ctx)
+
+	eg.Go(func() error {
+		var insecureRegistry bool // disabled by default
+		var pushImage bool = true // enabled by default
+
+		if pots := r.PushOptions; pots != nil {
+			pushImage = !pots.Disable
+			insecureRegistry = pots.InsecureRegistry
+		}
+
+		opts := client.SolveOpt{
+			LocalDirs: map[string]string{
+				"context":    buildContextDir,
+				"dockerfile": buildContextDir,
+			},
+			Exports: []client.ExportEntry{
+				{
+					Type: client.ExporterImage,
+					Attrs: map[string]string{
+						"name":              strings.Join(r.DestinationImages, ","),
+						"push":              strconv.FormatBool(pushImage),
+						"registry.insecure": strconv.FormatBool(insecureRegistry),
+					},
+				},
+			},
+			Session: []session.Attachable{
+				authprovider.NewDockerAuthProvider(w),
+				secretsprovider.NewSecretProvider(secrets),
+			},
+		}
+		_, err = b.cli.Build(nctx, opts, "deploy-agent", builder.Build, progresswriter.ResetTime(pw).Status())
+		return err
+	})
+
+	eg.Go(func() error {
+		<-pw.Done()
+		return pw.Err()
+	})
+
+	return eg.Wait()
 }

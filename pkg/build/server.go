@@ -46,8 +46,10 @@ func (s *Server) Build(req *pb.BuildRequest, stream pb.Build_BuildServer) error 
 		return err
 	}
 
-	if err = stream.Send(&pb.BuildResponse{Data: &pb.BuildResponse_TsuruConfig{TsuruConfig: appFiles}}); err != nil {
-		return status.Errorf(codes.Unknown, "failed to send tsuru app files: %s", err)
+	if appFiles != nil {
+		if err = stream.Send(&pb.BuildResponse{Data: &pb.BuildResponse_TsuruConfig{TsuruConfig: appFiles}}); err != nil {
+			return status.Errorf(codes.Unknown, "failed to send tsuru app files: %s", err)
+		}
 	}
 
 	fmt.Fprintln(w, "--> Container image build finished")
@@ -60,8 +62,8 @@ func validateBuildRequest(r *pb.BuildRequest) error {
 		return status.Error(codes.Internal, "build request cannot be nil")
 	}
 
-	if r.SourceImage == "" {
-		return status.Error(codes.InvalidArgument, "source image cannot be empty")
+	if r.SourceImage == "" && r.Containerfile == "" {
+		return status.Error(codes.InvalidArgument, "either source image or containerfile must be set")
 	}
 
 	if len(r.DestinationImages) == 0 {
@@ -92,14 +94,31 @@ func validateBuildRequest(r *pb.BuildRequest) error {
 		if err := validateBuildRequestFromSourceData(r); err != nil {
 			return err
 		}
+
+	case "BUILD_KIND_PLATFORM_WITH_CONTAINER_FILE":
+		if err := validateBuildRequestFromContainerfile(r); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
 func validateBuildRequestFromSourceData(r *pb.BuildRequest) error {
+	if r.SourceImage == "" {
+		return status.Error(codes.InvalidArgument, "source image cannot be empty")
+	}
+
 	if len(r.Data) == 0 {
 		return status.Error(codes.InvalidArgument, "app source data not provided")
+	}
+
+	return nil
+}
+
+func validateBuildRequestFromContainerfile(r *pb.BuildRequest) error {
+	if r.Containerfile == "" {
+		return status.Error(codes.InvalidArgument, "containerfile cannot be empty")
 	}
 
 	return nil

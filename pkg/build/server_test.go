@@ -47,14 +47,14 @@ func TestBuild(t *testing.T) {
 			},
 		},
 
-		"missing source image": {
+		"missing source image and containerfile": {
 			req: &pb.BuildRequest{},
 			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
 				require.NoError(t, err)
 				require.NotNil(t, stream)
 				_, _, err = readResponse(t, stream)
 				assert.Error(t, err)
-				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "source image cannot be empty").Error())
+				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "either source image or containerfile must be set").Error())
 			},
 		},
 
@@ -111,6 +111,21 @@ func TestBuild(t *testing.T) {
 				require.NotNil(t, stream)
 				_, _, err = readResponse(t, stream)
 				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "app cannot be nil").Error())
+			},
+		},
+
+		"deploy from source code, empty source image": {
+			req: &pb.BuildRequest{
+				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
+				App:               &pb.TsuruApp{Name: "my-app"},
+				Kind:              pb.BuildKind_BUILD_KIND_APP_DEPLOY_WITH_SOURCE_UPLOAD,
+				Containerfile:     "...",
+			},
+			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, stream)
+				_, _, err = readResponse(t, stream)
+				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "source image cannot be empty").Error())
 			},
 		},
 
@@ -177,6 +192,59 @@ func TestBuild(t *testing.T) {
 				require.NotNil(t, tsuruConfig)
 				assert.Equal(t, &pb.TsuruConfig{Procfile: "web: ./path/to/server.sh --addr :${PORT}", TsuruYaml: "healthcheck:\n  path: /healthz"}, tsuruConfig)
 				assert.Regexp(t, `(.*)--- EXECUTING BUILD ---(.*)`, output)
+			},
+		},
+
+		"platform build, missing platform": {
+			req: &pb.BuildRequest{
+				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
+				Kind:              pb.BuildKind_BUILD_KIND_PLATFORM_WITH_CONTAINER_FILE,
+				Containerfile:     "...",
+			},
+			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, stream)
+				_, _, err = readResponse(t, stream)
+				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "platform cannot be nil").Error())
+			},
+		},
+
+		"platform build, empty containerfile": {
+			req: &pb.BuildRequest{
+				SourceImage:       "...",
+				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
+				Platform:          &pb.TsuruPlatform{Name: "my-platform"},
+				Kind:              pb.BuildKind_BUILD_KIND_PLATFORM_WITH_CONTAINER_FILE,
+			},
+			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, stream)
+				_, _, err = readResponse(t, stream)
+				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "containerfile cannot be empty").Error())
+			},
+		},
+
+		"platform build, build successful": {
+			builder: &fake.FakeBuilder{
+				OnBuild: func(ctx context.Context, r *pb.BuildRequest, w io.Writer) (*pb.TsuruConfig, error) {
+					assert.Equal(t, "FROM tsuru/scratch:latest", r.Containerfile)
+					fmt.Fprintln(w, "BUILDING PLATFORM...")
+					return nil, nil
+				},
+			},
+			req: &pb.BuildRequest{
+				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
+				Platform:          &pb.TsuruPlatform{Name: "my-platform"},
+				Kind:              pb.BuildKind_BUILD_KIND_PLATFORM_WITH_CONTAINER_FILE,
+				Containerfile:     `FROM tsuru/scratch:latest`,
+			},
+			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, stream)
+				tsuruConfig, output, err := readResponse(t, stream)
+				require.NoError(t, err)
+				require.Nil(t, tsuruConfig)
+				assert.Regexp(t, `(.*)BUILDING PLATFORM(.*)`, output)
 			},
 		},
 	}
