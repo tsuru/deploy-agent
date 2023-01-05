@@ -8,6 +8,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"os/signal"
@@ -24,14 +25,24 @@ import (
 	"github.com/tsuru/deploy-agent/pkg/health"
 )
 
+const (
+	DefaultServerMaxRecvMsgSize = 4 * (1 << 30) // 4 GiB
+	DefaultServerMaxSendMsgSize = math.MaxInt32 // int32 max length
+)
+
 var cfg struct {
-	BuildkitAddress string
-	BuildkitTmpDir  string
-	Port            int
+	BuildkitAddress      string
+	BuildkitTmpDir       string
+	Port                 int
+	ServerMaxRecvMsgSize int
+	ServerMaxSendMsgSize int
 }
 
 func main() {
 	flag.IntVar(&cfg.Port, "port", 8080, "Server TCP port")
+	flag.IntVar(&cfg.ServerMaxRecvMsgSize, "max-receiving-message-size", DefaultServerMaxRecvMsgSize, "Max message size in bytes that server can receive")
+	flag.IntVar(&cfg.ServerMaxSendMsgSize, "max-sending-message-size", DefaultServerMaxSendMsgSize, "Max message size in bytes that server can send")
+
 	flag.StringVar(&cfg.BuildkitAddress, "buildkit-addr", getEnvOrDefault("BUILDKIT_HOST", appdefaults.Address), "Buildkit server address")
 	flag.StringVar(&cfg.BuildkitTmpDir, "buildkit-tmp-dir", os.TempDir(), "Directory path to store temp files during container image builds")
 	flag.Parse()
@@ -51,7 +62,12 @@ func main() {
 	}
 	defer c.Close()
 
-	s := grpc.NewServer()
+	serverOpts := []grpc.ServerOption{
+		grpc.MaxRecvMsgSize(cfg.ServerMaxRecvMsgSize),
+		grpc.MaxSendMsgSize(cfg.ServerMaxSendMsgSize),
+	}
+
+	s := grpc.NewServer(serverOpts...)
 	buildpb.RegisterBuildServer(s, build.NewServer(buildkit.NewBuildKit(c, buildkit.BuildKitOptions{TempDir: cfg.BuildkitTmpDir})))
 	healthpb.RegisterHealthServer(s, health.NewServer())
 
