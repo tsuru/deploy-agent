@@ -3,6 +3,8 @@ builds:
   binary: deploy-agent
   flags:
   - -trimpath
+  env:
+  - CGO_ENABLED=0
   goos:
   - linux
   - darwin
