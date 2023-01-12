@@ -104,6 +104,19 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, r *pb.BuildReque
 		return nil, err
 	}
 
+	// NOTE(nettoclaudio): Some platforms doesn't require an user-defined Procfile (e.g. go, java, static, etc).
+	// So we need to retrieve the default Procfile from the platform image.
+	if appFiles.Procfile == "" {
+		fmt.Fprintln(w, "User-defined Procfile not found, trying to extract it from platform's container image")
+
+		tc, err := b.extractTsuruConfigsFromContainerImage(ctx, r.DestinationImages[0])
+		if err != nil {
+			return nil, err
+		}
+
+		appFiles.Procfile = tc.Procfile
+	}
+
 	return appFiles, nil
 }
 
@@ -157,7 +170,7 @@ func (b *BuildKit) buildFromContainerImage(ctx context.Context, r *pb.BuildReque
 		return nil, err
 	}
 
-	appFiles, err := b.extractTsuruConfigsFromContainerImage(ctx, tmpDir)
+	appFiles, err := b.callBuildKitToExtractTsuruConfigs(ctx, tmpDir)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +179,17 @@ func (b *BuildKit) buildFromContainerImage(ctx context.Context, r *pb.BuildReque
 	return appFiles, nil
 }
 
-func (b *BuildKit) extractTsuruConfigsFromContainerImage(ctx context.Context, localContextDir string) (*pb.TsuruConfig, error) {
+func (b *BuildKit) extractTsuruConfigsFromContainerImage(ctx context.Context, image string) (*pb.TsuruConfig, error) {
+	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, fmt.Sprintf("FROM %s", image), nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanFunc()
+
+	return b.callBuildKitToExtractTsuruConfigs(ctx, tmpDir)
+}
+
+func (b *BuildKit) callBuildKitToExtractTsuruConfigs(ctx context.Context, localContextDir string) (*pb.TsuruConfig, error) {
 	eg, ctx := errgroup.WithContext(ctx)
 	pr, pw := io.Pipe() // reader/writer for tar output
 

@@ -234,6 +234,32 @@ func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
 	})
 }
 
+func TestBuildKit_Build_AppDeployFromSourceFiles_NoUserDefinedProcfile(t *testing.T) {
+	destImage := baseRegistry(t, "my-static-app", "latest")
+
+	req := &pb.BuildRequest{
+		Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD,
+		App: &pb.TsuruApp{
+			Name: "my-app",
+		},
+		SourceImage:       "tsuru/static:2.3",
+		DestinationImages: []string{destImage},
+		Data:              appArchiveData(t, "./testdata/static/"),
+		PushOptions:       &pb.PushOptions{InsecureRegistry: registryHTTP},
+	}
+
+	bc := newBuildKitClient(t)
+	defer bc.Close()
+
+	appFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).
+		Build(context.TODO(), req, os.Stdout)
+
+	require.NoError(t, err)
+	assert.Equal(t, &pb.TsuruConfig{
+		Procfile: "web: /usr/sbin/nginx -g \"daemon off;\"\n",
+	}, appFiles)
+}
+
 func TestBuildKit_Build_FromContainerImages(t *testing.T) {
 	dc := newDockerClient(t)
 	defer dc.Close()
