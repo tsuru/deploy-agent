@@ -62,3 +62,36 @@ jobs:
       with:
         push: true
         tags: tsuru/deploy-agent:latest
+
+  release:
+    if: github.event_name != 'pull_request' && github.repository == 'tsuru/deploy-agent' && startsWith(github.ref, 'refs/tags/')
+    needs:
+    - lint
+    - test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: docker login
+      uses: azure/docker-login@v1
+      with:
+        username: ${{ secrets.REGISTRY_USERNAME }}
+        password: ${{ secrets.REGISTRY_PASSWORD }}
+
+    - uses: actions/setup-go@v3
+      with:
+        go-version: '1.19'
+
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - uses: goreleaser/goreleaser-action@v2
+      with:
+        args: release --rm-dist
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
