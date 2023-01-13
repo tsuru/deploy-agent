@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -34,6 +35,9 @@ func TestIsTsuruYaml(t *testing.T) {
 		{name: "app.yaml", expected: true},
 		{name: "other.yaml"},
 		{name: "not.txt"},
+		{name: "./tsuru.yaml", expected: true},
+		{name: "/home/application/current/tsuru.yaml", expected: true},
+		{name: "/home/application/current/other.yaml"},
 	}
 
 	for _, tt := range cases {
@@ -53,38 +57,60 @@ func TestTsuruYamlCandidates_String(t *testing.T) {
 		{},
 		{
 			candidates: TsuruYamlCandidates{
-				"other.yaml":   "# My other.yaml file",
-				"example.yaml": "# example.yaml",
+				"/home/application/current/other.yaml":   "# My other.yaml file",
+				"/home/application/current/example.yaml": "# example.yaml",
 			},
 		},
 		{
 			candidates: TsuruYamlCandidates{
-				"tsuru.yml":  "# Tsuru YAML from tsuru.yml",
-				"tsuru.yaml": "-------------------------",
+				"/home/application/current/tsuru.yml":  "# Tsuru YAML from tsuru.yml",
+				"/home/application/current/tsuru.yaml": "-------------------------",
 			},
 			expected: "# Tsuru YAML from tsuru.yml",
 		},
 		{
 			candidates: TsuruYamlCandidates{
-				"tsuru.yaml": "# Tsuru YAML from tsuru.yaml",
-				"app.yaml":   "----------------",
-				"app.yml":    "----------------",
+				"/home/application/current/tsuru.yaml": "# Tsuru YAML from tsuru.yaml",
+				"/home/application/current/app.yaml":   "----------------",
+				"/home/application/current/app.yml":    "----------------",
 			},
 			expected: "# Tsuru YAML from tsuru.yaml",
 		},
 		{
 			candidates: TsuruYamlCandidates{
-				"app.yaml": "----------------",
-				"app.yml":  "# Tsuru YAML from app.yml",
+				"/home/application/current/app.yaml": "----------------",
+				"/home/application/current/app.yml":  "# Tsuru YAML from app.yml",
 			},
 			expected: "# Tsuru YAML from app.yml",
 		},
 		{
 			candidates: TsuruYamlCandidates{
-				"app.yaml":   "# Tsuru YAML from app.yaml",
-				"other.yaml": "--------------------",
+				"/home/application/current/app.yaml":   "# Tsuru YAML from app.yaml",
+				"/home/application/current/other.yaml": "--------------------",
 			},
 			expected: "# Tsuru YAML from app.yaml",
+		},
+		{
+			candidates: TsuruYamlCandidates{
+				"/home/application/current/tsuru.yaml": "# Tsuru YAML from tsuru.yaml",
+				"/app/user/tsuru.yaml":                 "--------------------",
+				"/tsuru.yaml":                          "--------------------",
+			},
+			expected: "# Tsuru YAML from tsuru.yaml",
+		},
+		{
+			candidates: TsuruYamlCandidates{
+				"/app/user/tsuru.yaml": "# Tsuru YAML from tsuru.yaml",
+				"/tsuru.yaml":          "--------------------",
+			},
+			expected: "# Tsuru YAML from tsuru.yaml",
+		},
+		{
+			candidates: TsuruYamlCandidates{
+				"/tsuru.yaml": "# Tsuru YAML from tsuru.yaml",
+				"/other.yaml": "--------------------",
+			},
+			expected: "# Tsuru YAML from tsuru.yaml",
 		},
 	}
 
@@ -95,7 +121,53 @@ func TestTsuruYamlCandidates_String(t *testing.T) {
 	}
 }
 
+func TestProcfileCandidates_String(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		candidates ProcfileCandidates
+		expected   string
+	}{
+		{},
+		{
+			candidates: ProcfileCandidates{
+				"/home/application/current/Procfile": "web: ./path/to/server.sh --port ${PORT}",
+				"/app/user/Procfile":                 "--------------------",
+				"/Procfile":                          "--------------------",
+			},
+			expected: "web: ./path/to/server.sh --port ${PORT}",
+		},
+		{
+			candidates: ProcfileCandidates{
+				"/app/user/Procfile": "web: ./path/to/server.sh --port ${PORT}",
+				"/Procfile":          "--------------------",
+			},
+			expected: "web: ./path/to/server.sh --port ${PORT}",
+		},
+		{
+			candidates: ProcfileCandidates{
+				"/Procfile":     "web: ./path/to/server.sh --port ${PORT}",
+				"/tmp/Procfile": "--------------------",
+			},
+			expected: "web: ./path/to/server.sh --port ${PORT}",
+		},
+		{
+			candidates: ProcfileCandidates{
+				"/tmp/Procfile":                           "--------------------",
+				"/app/user/demo/Procfile":                 "--------------------",
+				"/home/application/current/demo/Procfile": "--------------------",
+			},
+		},
+	}
+
+	for _, tt := range cases {
+		assert.Equal(t, tt.expected, tt.candidates.String())
+	}
+}
+
 func TestExtractTsuruAppFilesFromAppSourceContext(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		file          func(t *testing.T) io.Reader
 		expected      *pb.TsuruConfig
@@ -103,11 +175,31 @@ func TestExtractTsuruAppFilesFromAppSourceContext(t *testing.T) {
 	}{
 		{
 			file: func(t *testing.T) io.Reader {
+				return strings.NewReader(`not gzip`)
+			},
+			expectedError: "app source data must be a GZIP compressed file: unexpected EOF",
+		},
+
+		{
+			file: func(t *testing.T) io.Reader {
+				var b bytes.Buffer
+				z := gzip.NewWriter(&b)
+				fmt.Fprintln(z, "gzip but not tarball")
+				z.Close()
+				return &b
+			},
+			expectedError: "failed to read next file in the tarball: unexpected EOF",
+		},
+
+		{
+			file: func(t *testing.T) io.Reader {
 				var buffer bytes.Buffer
 				newTsuruAppSource(t, &buffer, map[string]string{
-					"tsuru.yaml": "# Tsuru YAML",
-					"app.yml":    "# Legacy Tsuru YAML",
-					"Procfile":   `web: /path/to/server.sh --address 0.0.0.0:${PORT}`,
+					"Procfile":        `web: /path/to/server.sh --address 0.0.0.0:${PORT}`,
+					"tsuru.yaml":      "# Tsuru YAML",
+					"app.yml":         "# Legacy Tsuru YAML",
+					"demo/tsuru.yaml": "# Other Tsuru YAML",
+					"demo/Procfile":   "web: ./path/to/other.sh\nworker: ./my/worker.sh\n",
 				})
 				return &buffer
 			},
@@ -115,13 +207,6 @@ func TestExtractTsuruAppFilesFromAppSourceContext(t *testing.T) {
 				TsuruYaml: "# Tsuru YAML",
 				Procfile:  `web: /path/to/server.sh --address 0.0.0.0:${PORT}`,
 			},
-		},
-
-		{
-			file: func(t *testing.T) io.Reader {
-				return strings.NewReader(`not gzip`)
-			},
-			expectedError: "app source data must be a GZIP compressed file: unexpected EOF",
 		},
 	}
 
@@ -139,11 +224,73 @@ func TestExtractTsuruAppFilesFromAppSourceContext(t *testing.T) {
 	}
 }
 
-func newTsuruAppSource(t *testing.T, b *bytes.Buffer, files map[string]string) {
-	z := gzip.NewWriter(b)
+func TestExtractTsuruAppFilesFromContainerImageTarball(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		file          func(t *testing.T) io.Reader
+		expected      *pb.TsuruConfig
+		expectedError string
+	}{
+		{
+			file: func(t *testing.T) io.Reader {
+				return strings.NewReader(`not tarball`)
+			},
+			expectedError: "failed to read next file in the tarball: unexpected EOF",
+		},
+
+		{
+			file: func(t *testing.T) io.Reader {
+				var buffer bytes.Buffer
+				makeTarballFile(t, &buffer, map[string]string{
+					"/home/application/current/Procfile":      "Awesome Procfile",
+					"/home/application/current/demo/Procfile": "bad Procfile",
+					"/app/user/Procfile":                      "bad Procfile",
+					"/tmp/Procfile":                           "bad Procfile",
+					"/Procfile":                               "bad Procfile",
+
+					"/home/application/current/tsuru.yml":      "Awesome Tsuru YAML",
+					"/home/application/current/demo/tsuru.yml": "bad Tsuru YAML",
+					"/app/user/tsuru.yml":                      "bad Tsuru YAML",
+					"/tsuru.yml":                               "bad Tsuru YAML",
+				})
+				return &buffer
+			},
+			expected: &pb.TsuruConfig{
+				TsuruYaml: "Awesome Tsuru YAML",
+				Procfile:  `Awesome Procfile`,
+			},
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run("", func(t *testing.T) {
+			require.NotNil(t, tt.file)
+			tsuruFiles, err := ExtractTsuruAppFilesFromContainerImageTarball(context.TODO(), tt.file(t))
+			if err != nil {
+				require.EqualError(t, err, tt.expectedError)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tsuruFiles, tt.expected)
+		})
+	}
+}
+
+func newTsuruAppSource(t *testing.T, w io.Writer, files map[string]string) {
+	t.Helper()
+
+	z := gzip.NewWriter(w)
 	defer z.Close()
 
-	tr := tar.NewWriter(z)
+	makeTarballFile(t, z, files)
+}
+
+func makeTarballFile(t *testing.T, w io.Writer, files map[string]string) {
+	t.Helper()
+
+	tr := tar.NewWriter(w)
+	defer tr.Close()
 
 	for name, content := range files {
 		err := tr.WriteHeader(&tar.Header{

@@ -13,22 +13,27 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"strings"
 	"sync"
 	"text/template"
 
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 )
 
+const (
+	DefaultTsuruPlatformWorkingDir = "/home/application/current"
+	ProcfileName                   = "Procfile"
+)
+
 var (
-	ProcfileName    = "Procfile"
 	TsuruYamlNames  = []string{"tsuru.yml", "tsuru.yaml", "app.yml", "app.yaml"}
 	TsuruConfigDirs = []string{"/home/application/current", "/app/user", "/"}
 )
 
-func IsTsuruYaml(name string) bool {
+func IsTsuruYaml(filename string) bool {
+	baseName := filepath.Base(filename)
+
 	for _, n := range TsuruYamlNames {
-		if n == name {
+		if n == baseName {
 			return true
 		}
 	}
@@ -39,8 +44,29 @@ func IsTsuruYaml(name string) bool {
 type TsuruYamlCandidates map[string]string
 
 func (c TsuruYamlCandidates) String() string {
-	for _, n := range TsuruYamlNames {
-		if s, found := c[n]; found {
+	for _, dir := range TsuruConfigDirs {
+		for _, baseName := range TsuruYamlNames {
+			filename := filepath.Join(dir, baseName)
+
+			if s, found := c[filename]; found {
+				return s
+			}
+		}
+	}
+
+	return ""
+}
+
+func IsProcfile(filename string) bool {
+	return filepath.Base(filename) == ProcfileName
+}
+
+type ProcfileCandidates map[string]string
+
+func (c ProcfileCandidates) String() string {
+	for _, dir := range TsuruConfigDirs {
+		filename := filepath.Join(dir, ProcfileName)
+		if s, found := c[filename]; found {
 			return s
 		}
 	}
@@ -61,7 +87,7 @@ func ExtractTsuruAppFilesFromAppSourceContext(ctx context.Context, r io.Reader) 
 
 	t := tar.NewReader(z)
 
-	var procfile string
+	procfile := make(ProcfileCandidates)
 	tsuruYaml := make(TsuruYamlCandidates)
 
 	for {
@@ -78,30 +104,19 @@ func ExtractTsuruAppFilesFromAppSourceContext(ctx context.Context, r io.Reader) 
 			continue
 		}
 
-		name := strings.TrimPrefix(h.Name, "./") // e.g. "./Procfile" to "Procfile"
-		if IsTsuruYaml(name) {
-			data, err := io.ReadAll(t)
-			if err != nil {
-				return nil, err
-			}
+		filename := filepath.Join(DefaultTsuruPlatformWorkingDir, h.Name)
 
-			tsuruYaml[name] = string(data)
-			continue
+		if err = copyTsuruYamlToCandidate(filename, t, tsuruYaml); err != nil {
+			return nil, err
 		}
 
-		if name == ProcfileName {
-			data, err := io.ReadAll(t)
-			if err != nil {
-				return nil, err
-			}
-
-			procfile = string(data)
-			continue
+		if err = copyProcfileToCandidate(filename, t, procfile); err != nil {
+			return nil, err
 		}
 	}
 
 	return &pb.TsuruConfig{
-		Procfile:  procfile,
+		Procfile:  procfile.String(),
 		TsuruYaml: tsuruYaml.String(),
 	}, nil
 }
@@ -111,7 +126,7 @@ func ExtractTsuruAppFilesFromContainerImageTarball(ctx context.Context, r io.Rea
 		return nil, err
 	}
 
-	var procfile string
+	procfile := make(ProcfileCandidates)
 	tsuruYaml := make(TsuruYamlCandidates)
 
 	t := tar.NewReader(r)
@@ -129,32 +144,49 @@ func ExtractTsuruAppFilesFromContainerImageTarball(ctx context.Context, r io.Rea
 			continue
 		}
 
-		name := filepath.Base(h.Name)
-		if IsTsuruYaml(name) {
-			data, err := io.ReadAll(t)
-			if err != nil {
-				return nil, err
-			}
+		filename := filepath.Join(string(filepath.Separator), h.Name)
 
-			tsuruYaml[name] = string(data)
-			continue
+		if err = copyTsuruYamlToCandidate(filename, t, tsuruYaml); err != nil {
+			return nil, err
 		}
 
-		if name == ProcfileName {
-			data, err := io.ReadAll(t)
-			if err != nil {
-				return nil, err
-			}
-
-			procfile = string(data)
-			continue
+		if err = copyProcfileToCandidate(filename, t, procfile); err != nil {
+			return nil, err
 		}
 	}
 
 	return &pb.TsuruConfig{
-		Procfile:  procfile,
+		Procfile:  procfile.String(),
 		TsuruYaml: tsuruYaml.String(),
 	}, nil
+}
+
+func copyTsuruYamlToCandidate(filename string, r io.Reader, dst TsuruYamlCandidates) error {
+	if !IsTsuruYaml(filename) {
+		return nil
+	}
+
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+
+	dst[filename] = string(data)
+	return nil
+}
+
+func copyProcfileToCandidate(filename string, r io.Reader, dst ProcfileCandidates) error {
+	if !IsProcfile(filename) {
+		return nil
+	}
+
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+
+	dst[filename] = string(data)
+	return nil
 }
 
 type BuildContainerfileParams struct {
