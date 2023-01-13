@@ -80,8 +80,12 @@ func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
 	req := &pb.BuildRequest{
 		Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD,
 		App: &pb.TsuruApp{
-			Name:    "my-app",
-			EnvVars: map[string]string{"MY_ENV_VAR": "my awesome env var :P"},
+			Name: "my-app",
+			EnvVars: map[string]string{
+				"MY_ENV_VAR":           "my awesome env var :P",
+				"PYTHON_VERSION":       "3.10.4",
+				"TSURU_PLATFORM_DEBUG": "true",
+			},
 		},
 		SourceImage:       "tsuru/python:latest",
 		DestinationImages: []string{destImage},
@@ -222,6 +226,38 @@ func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
 		_, err = dockerstdcopy.StdCopy(&stdout, &stderr, hijackedResp.Reader)
 		require.NoError(t, err)
 		assert.Regexp(t, `(.*)tcpdump version (.*)`, stdout.String())
+		assert.Empty(t, stderr.String())
+
+		execInspectResp, err := dc.ContainerExecInspect(context.TODO(), execID)
+		require.NoError(t, err)
+		assert.Equal(t, execID, execInspectResp.ExecID)
+		assert.Equal(t, containerID, execInspectResp.ContainerID)
+		assert.False(t, execInspectResp.Running)
+		assert.Empty(t, execInspectResp.ExitCode)
+		assert.NotEmpty(t, execInspectResp.Pid)
+	})
+
+	t.Run("ensure the specific python version was installed", func(t *testing.T) {
+		execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
+			Tty:          true,
+			AttachStderr: true,
+			AttachStdout: true,
+			Cmd:          []string{"bash", "-lc", "python --version"}, // bash -l is mandatory to force loading the ~/.profile file which includes python in the PATH
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, execCreateResp.ID, "exec ID cannot be empty")
+
+		execID := execCreateResp.ID
+
+		hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+		require.NoError(t, err)
+		require.NotNil(t, hijackedResp.Reader)
+		defer hijackedResp.Close()
+
+		var stderr, stdout bytes.Buffer
+		_, err = dockerstdcopy.StdCopy(&stdout, &stderr, hijackedResp.Reader)
+		require.NoError(t, err)
+		assert.Regexp(t, `Python 3.10.4\s`, stdout.String())
 		assert.Empty(t, stderr.String())
 
 		execInspectResp, err := dc.ContainerExecInspect(context.TODO(), execID)
