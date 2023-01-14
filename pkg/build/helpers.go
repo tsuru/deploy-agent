@@ -106,7 +106,7 @@ func ExtractTsuruAppFilesFromAppSourceContext(ctx context.Context, r io.Reader) 
 			continue
 		}
 
-		filename := filepath.Join(DefaultTsuruPlatformWorkingDir, h.Name)
+		filename := filepath.Join(DefaultTsuruPlatformWorkingDir, h.Name) // nolint
 
 		if err = copyTsuruYamlToCandidate(filename, t, tsuruYaml); err != nil {
 			return nil, err
@@ -146,7 +146,7 @@ func ExtractTsuruAppFilesFromContainerImageTarball(ctx context.Context, r io.Rea
 			continue
 		}
 
-		filename := filepath.Join(string(filepath.Separator), h.Name)
+		filename := filepath.Join(string(filepath.Separator), h.Name) // nolint
 
 		if err = copyTsuruYamlToCandidate(filename, t, tsuruYaml); err != nil {
 			return nil, err
