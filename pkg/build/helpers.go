@@ -16,6 +16,8 @@ import (
 	"sync"
 	"text/template"
 
+	"github.com/alessio/shellescape"
+
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 )
 
@@ -203,7 +205,11 @@ func BuildContainerfile(p BuildContainerfileParams) (string, error) {
 	return w.String(), nil
 }
 
-var containerfileTemplate = template.Must(template.New("containerfile").Parse(`
+var containerfileTemplate = template.Must(template.New("containerfile").
+	Funcs(template.FuncMap{
+		"shellQuote": shellescape.Quote,
+	}).
+	Parse(`
 FROM {{ .Image }}
 
 COPY ./application.tar.gz /home/application/archive.tar.gz
@@ -212,7 +218,7 @@ RUN --mount=type=secret,id=tsuru-app-envvars,target=/var/run/secrets/envs.sh,uid
     [ -f /var/run/secrets/envs.sh ] && . /var/run/secrets/envs.sh \
     && /var/lib/tsuru/deploy archive file:///home/application/archive.tar.gz \
 {{- range $_, $hook := .BuildHooks }}
-    && { {{ . }}; } \
+    && { sh -lc {{ shellQuote . }}; } \
 {{- end }}
     && :
 

@@ -82,9 +82,8 @@ func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
 		App: &pb.TsuruApp{
 			Name: "my-app",
 			EnvVars: map[string]string{
-				"MY_ENV_VAR":           "my awesome env var :P",
-				"PYTHON_VERSION":       "3.10.4",
-				"TSURU_PLATFORM_DEBUG": "true",
+				"MY_ENV_VAR":     "my awesome env var :P",
+				"PYTHON_VERSION": "3.10.4",
 			},
 		},
 		SourceImage:       "tsuru/python:latest",
@@ -102,7 +101,7 @@ func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, &pb.TsuruConfig{
 		Procfile:  "web: python app.py\n",
-		TsuruYaml: "hooks:\n  build:\n  - touch /tmp/foo\n  - |-\n    mkdir -p /tmp/tsuru \\\n    && echo \"MY_ENV_VAR=${MY_ENV_VAR}\" > /tmp/tsuru/envs\n\nhealthcheck:\n  path: /\n",
+		TsuruYaml: "hooks:\n  build:\n  - touch /tmp/foo\n  - |-\n    mkdir -p /tmp/tsuru \\\n    && echo \"MY_ENV_VAR=${MY_ENV_VAR}\" > /tmp/tsuru/envs\n  - python --version\n\nhealthcheck:\n  path: /\n",
 	}, appFiles)
 
 	dc := newDockerClient(t)

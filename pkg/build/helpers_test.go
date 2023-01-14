@@ -343,8 +343,8 @@ COPY ./application.tar.gz /home/application/archive.tar.gz
 RUN --mount=type=secret,id=tsuru-app-envvars,target=/var/run/secrets/envs.sh,uid=1000,gid=1000 \
     [ -f /var/run/secrets/envs.sh ] && . /var/run/secrets/envs.sh \
     && /var/lib/tsuru/deploy archive file:///home/application/archive.tar.gz \
-    && { mkdir -p /tmp/foo; } \
-    && { echo "Hello world" > /tmp/foo/bar; } \
+    && { sh -lc 'mkdir -p /tmp/foo'; } \
+    && { sh -lc 'echo "Hello world" > /tmp/foo/bar'; } \
     && :
 
 WORKDIR /home/application/current

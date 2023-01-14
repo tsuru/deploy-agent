@@ -3,6 +3,7 @@ module github.com/tsuru/deploy-agent
 go 1.19
 
 require (
+	github.com/alessio/shellescape v1.4.1
 	github.com/containerd/console v1.0.3
 	github.com/docker/docker v20.10.20+incompatible
 	github.com/google/go-containerregistry v0.12.0
