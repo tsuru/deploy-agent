@@ -212,6 +212,8 @@ var containerfileTemplate = template.Must(template.New("containerfile").
 	Parse(`
 FROM {{ .Image }}
 
+WORKDIR /home/application/current
+
 COPY ./application.tar.gz /home/application/archive.tar.gz
 
 RUN --mount=type=secret,id=tsuru-app-envvars,target=/var/run/secrets/envs.sh,uid=1000,gid=1000 \
@@ -221,8 +223,6 @@ RUN --mount=type=secret,id=tsuru-app-envvars,target=/var/run/secrets/envs.sh,uid
     && { sh -lc {{ shellQuote . }}; } \
 {{- end }}
     && :
-
-WORKDIR /home/application/current
 `))
 
 type BuildResponseOutputWriter struct {
