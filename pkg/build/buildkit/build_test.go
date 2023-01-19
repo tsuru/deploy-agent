@@ -82,8 +82,9 @@ func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
 		App: &pb.TsuruApp{
 			Name: "my-app",
 			EnvVars: map[string]string{
-				"MY_ENV_VAR":     "my awesome env var :P",
-				"PYTHON_VERSION": "3.10.4",
+				"MY_ENV_VAR":        "my awesome env var :P",
+				"PYTHON_VERSION":    "3.10.4",
+				"DATABASE_PASSWORD": "a@3a`fo@&$(ls -lah)",
 			},
 		},
 		SourceImage:       "tsuru/python:latest",
@@ -101,7 +102,7 @@ func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, &pb.TsuruConfig{
 		Procfile:  "web: python app.py\n",
-		TsuruYaml: "hooks:\n  build:\n  - touch /tmp/foo\n  - |-\n    mkdir -p /tmp/tsuru \\\n    && echo \"MY_ENV_VAR=${MY_ENV_VAR}\" > /tmp/tsuru/envs\n  - python --version\n\nhealthcheck:\n  path: /\n",
+		TsuruYaml: "hooks:\n  build:\n  - touch /tmp/foo\n  - |-\n    mkdir -p /tmp/tsuru \\\n    && echo \"MY_ENV_VAR=${MY_ENV_VAR}\" > /tmp/tsuru/envs \\\n    && echo \"DATABASE_PASSWORD=${DATABASE_PASSWORD}\" >> /tmp/tsuru/envs\n  - python --version\n\nhealthcheck:\n  path: /\n",
 	}, appFiles)
 
 	dc := newDockerClient(t)
@@ -192,7 +193,7 @@ func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
 		var stderr, stdout bytes.Buffer
 		_, err = dockerstdcopy.StdCopy(&stdout, &stderr, hijackedResp.Reader)
 		require.NoError(t, err)
-		assert.Equal(t, "MY_ENV_VAR=my awesome env var :P\r\n", stdout.String())
+		assert.Equal(t, "MY_ENV_VAR=my awesome env var :P\r\nDATABASE_PASSWORD=a@3a`fo@&$(ls -lah)\r\n", stdout.String())
 		assert.Empty(t, stderr.String())
 
 		execInspectResp, err := dc.ContainerExecInspect(context.TODO(), execID)
