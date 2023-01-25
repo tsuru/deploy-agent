@@ -1,0 +1,2 @@
+web: /path/to/webserver.sh --port 8888
+worker: /path/to/worker.sh

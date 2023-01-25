@@ -34,6 +34,7 @@ import (
 
 	"github.com/tsuru/deploy-agent/pkg/build"
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
+	"github.com/tsuru/deploy-agent/pkg/util"
 )
 
 var _ build.Builder = (*BuildKit)(nil)
@@ -68,6 +69,9 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 	case "BUILD_KIND_APP_BUILD_WITH_CONTAINER_IMAGE":
 		return b.buildFromContainerImage(ctx, r, ow)
 
+	case "BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE":
+		return b.buildFromContainerFile(ctx, r, ow)
+
 	case "BUILD_KIND_PLATFORM_WITH_CONTAINER_FILE":
 		return nil, b.buildPlatform(ctx, r, ow)
 	}
@@ -95,7 +99,7 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, r *pb.BuildReque
 		envs = r.App.EnvVars
 	}
 
-	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, dockerfile.String(), bytes.NewBuffer(r.Data), envs)
+	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, dockerfile.String(), bytes.NewBuffer(r.Data), envs, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +155,7 @@ func (b *BuildKit) buildFromContainerImage(ctx context.Context, r *pb.BuildReque
 		return nil, err
 	}
 
-	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, fmt.Sprintf("FROM %s", r.SourceImage), nil, nil)
+	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, fmt.Sprintf("FROM %s", r.SourceImage), nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +185,7 @@ func (b *BuildKit) buildFromContainerImage(ctx context.Context, r *pb.BuildReque
 }
 
 func (b *BuildKit) extractTsuruConfigsFromContainerImage(ctx context.Context, image string) (*pb.TsuruConfig, error) {
-	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, fmt.Sprintf("FROM %s", image), nil, nil)
+	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, fmt.Sprintf("FROM %s", image), nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +201,7 @@ func (b *BuildKit) callBuildKitToExtractTsuruConfigs(ctx context.Context, localC
 	eg.Go(func() error {
 		opts := client.SolveOpt{
 			LocalDirs: map[string]string{
-				"context":    localContextDir,
+				"context":    filepath.Join(localContextDir, "context"),
 				"dockerfile": localContextDir,
 			},
 			Exports: []client.ExportEntry{
@@ -271,24 +275,45 @@ func extractContainerImageConfigFromImageManifest(ctx context.Context, imageStr 
 	}, nil
 }
 
-func generateBuildLocalDir(ctx context.Context, baseDir, dockerfile string, appArchiveData io.Reader, envs map[string]string) (string, func(), error) {
+func generateBuildLocalDir(ctx context.Context, baseDir, dockerfile string, appArchiveData io.Reader, envs map[string]string, files io.Reader) (string, func(), error) {
 	noopFunc := func() {}
 
 	if err := ctx.Err(); err != nil {
 		return "", noopFunc, err
 	}
 
-	contextRootDir, err := os.MkdirTemp(baseDir, "deploy-agent-*")
+	// Layout design
+	//
+	// ./                       # Root dir
+	//   Dockerfile
+	//   secrets/
+	//     envs.sh              # Tsuru app's env vars
+	//   context/
+	//     application.tar.gz   # Tsuru app's deploy data
+	//     ...
+	//     [other files]
+
+	rootDir, err := os.MkdirTemp(baseDir, "deploy-agent-*")
 	if err != nil {
 		return "", noopFunc, status.Errorf(codes.Internal, "failed to create temp dir: %s", err)
 	}
 
-	eg, _ := errgroup.WithContext(ctx)
+	contextDir := filepath.Join(rootDir, "context")
+	if err = os.Mkdir(contextDir, 0755); err != nil {
+		return "", noopFunc, err
+	}
+
+	secretsDir := filepath.Join(rootDir, "secrets")
+	if err = os.Mkdir(secretsDir, 0700); err != nil {
+		return "", noopFunc, err
+	}
+
+	eg, nctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		d, nerr := os.Create(filepath.Join(contextRootDir, "Dockerfile"))
+		d, nerr := os.Create(filepath.Join(rootDir, "Dockerfile"))
 		if nerr != nil {
-			return status.Errorf(codes.Internal, "cannot create Dockerfile in %s: %s", contextRootDir, nerr)
+			return status.Errorf(codes.Internal, "cannot create Dockerfile in %s: %s", rootDir, nerr)
 		}
 		defer d.Close()
 		_, nerr = io.WriteString(d, dockerfile)
@@ -299,7 +324,7 @@ func generateBuildLocalDir(ctx context.Context, baseDir, dockerfile string, appA
 		if appArchiveData == nil { // there's no application.tar.gz file, skipping it
 			return nil
 		}
-		appArchive, nerr := os.Create(filepath.Join(contextRootDir, "application.tar.gz"))
+		appArchive, nerr := os.Create(filepath.Join(contextDir, "application.tar.gz"))
 		if nerr != nil {
 			return status.Errorf(codes.Internal, "cannot create application archive: %s", nerr)
 		}
@@ -309,7 +334,7 @@ func generateBuildLocalDir(ctx context.Context, baseDir, dockerfile string, appA
 	})
 
 	eg.Go(func() error {
-		envsFile, nerr := os.Create(filepath.Join(contextRootDir, "envs.sh"))
+		envsFile, nerr := os.Create(filepath.Join(secretsDir, "envs.sh"))
 		if nerr != nil {
 			return nerr
 		}
@@ -321,15 +346,57 @@ func generateBuildLocalDir(ctx context.Context, baseDir, dockerfile string, appA
 		return nil
 	})
 
+	eg.Go(func() error {
+		if files == nil {
+			return nil
+		}
+
+		return util.ExtractGZIPFileToDir(nctx, files, contextDir)
+	})
+
 	if err = eg.Wait(); err != nil {
 		return "", noopFunc, err
 	}
 
-	return contextRootDir, func() { os.RemoveAll(contextRootDir) }, nil
+	return rootDir, func() { os.RemoveAll(rootDir) }, nil
+}
+
+func (b *BuildKit) buildFromContainerFile(ctx context.Context, r *pb.BuildRequest, w console.File) (*pb.TsuruConfig, error) {
+	var files io.Reader
+	if len(r.Data) > 0 {
+		files = bytes.NewReader(r.Data)
+	}
+
+	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, r.Containerfile, nil, r.App.EnvVars, files)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanFunc()
+
+	if err = b.callBuildKitBuild(ctx, tmpDir, r, w); err != nil {
+		return nil, err
+	}
+
+	tc, err := b.extractTsuruConfigsFromContainerImage(ctx, r.DestinationImages[0])
+	if err != nil {
+		return nil, err
+	}
+
+	var insecureRegistry bool
+	if r.PushOptions != nil {
+		insecureRegistry = r.PushOptions.InsecureRegistry
+	}
+
+	tc.ImageConfig, err = extractContainerImageConfigFromImageManifest(ctx, r.DestinationImages[0], insecureRegistry)
+	if err != nil {
+		return nil, err
+	}
+
+	return tc, nil
 }
 
 func (b *BuildKit) buildPlatform(ctx context.Context, r *pb.BuildRequest, w console.File) error {
-	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, r.Containerfile, nil, nil)
+	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, r.Containerfile, nil, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -343,7 +410,7 @@ func (b *BuildKit) callBuildKitBuild(ctx context.Context, buildContextDir string
 	if r.App != nil {
 		secretSources = append(secretSources, secretsprovider.Source{
 			ID:       "tsuru-app-envvars",
-			FilePath: filepath.Join(buildContextDir, "envs.sh"),
+			FilePath: filepath.Join(buildContextDir, "secrets", "envs.sh"),
 		})
 	}
 
@@ -370,7 +437,7 @@ func (b *BuildKit) callBuildKitBuild(ctx context.Context, buildContextDir string
 
 		opts := client.SolveOpt{
 			LocalDirs: map[string]string{
-				"context":    buildContextDir,
+				"context":    filepath.Join(buildContextDir, "context"),
 				"dockerfile": buildContextDir,
 			},
 			Exports: []client.ExportEntry{

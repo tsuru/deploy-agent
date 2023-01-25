@@ -247,6 +247,21 @@ func TestBuild(t *testing.T) {
 				assert.Regexp(t, `(.*)BUILDING PLATFORM(.*)`, output)
 			},
 		},
+
+		"app deploy with containerfile, empty containerfile": {
+			req: &pb.BuildRequest{
+				SourceImage:       "...",
+				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
+				App:               &pb.TsuruApp{Name: "my-app"},
+				Kind:              pb.BuildKind_BUILD_KIND_APP_DEPLOY_WITH_CONTAINER_FILE,
+			},
+			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, stream)
+				_, _, err = readResponse(t, stream)
+				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "containerfile cannot be empty").Error())
+			},
+		},
 	}
 
 	for name, tt := range cases {

@@ -5,16 +5,14 @@
 package buildkit_test
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	dockertypes "github.com/docker/docker/api/types"
@@ -28,6 +26,7 @@ import (
 
 	. "github.com/tsuru/deploy-agent/pkg/build/buildkit"
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
+	"github.com/tsuru/deploy-agent/pkg/util"
 )
 
 var (
@@ -75,7 +74,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
-	destImage := baseRegistry(t, "python", "latest")
+	destImage := baseRegistry(t, "python", "")
 
 	req := &pb.BuildRequest{
 		Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD,
@@ -89,7 +88,7 @@ func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
 		},
 		SourceImage:       "tsuru/python:latest",
 		DestinationImages: []string{destImage},
-		Data:              appArchiveData(t, "./testdata/python/"),
+		Data:              compressGZIP(t, "./testdata/python/"),
 		PushOptions:       &pb.PushOptions{InsecureRegistry: registryHTTP},
 	}
 
@@ -99,7 +98,7 @@ func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
 	appFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).
 		Build(context.TODO(), req, os.Stdout)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, &pb.TsuruConfig{
 		Procfile:  "web: python app.py\n",
 		TsuruYaml: "hooks:\n  build:\n  - touch /tmp/foo\n  - |-\n    mkdir -p /tmp/tsuru \\\n    && echo \"MY_ENV_VAR=${MY_ENV_VAR}\" > /tmp/tsuru/envs \\\n    && echo \"DATABASE_PASSWORD=${DATABASE_PASSWORD}\" >> /tmp/tsuru/envs\n  - python --version\n\nhealthcheck:\n  path: /\n",
@@ -271,7 +270,7 @@ func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
 }
 
 func TestBuildKit_Build_AppDeployFromSourceFiles_NoUserDefinedProcfile(t *testing.T) {
-	destImage := baseRegistry(t, "my-static-app", "latest")
+	destImage := baseRegistry(t, "my-static-app", "")
 
 	req := &pb.BuildRequest{
 		Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD,
@@ -280,7 +279,7 @@ func TestBuildKit_Build_AppDeployFromSourceFiles_NoUserDefinedProcfile(t *testin
 		},
 		SourceImage:       "tsuru/static:2.3",
 		DestinationImages: []string{destImage},
-		Data:              appArchiveData(t, "./testdata/static/"),
+		Data:              compressGZIP(t, "./testdata/static/"),
 		PushOptions:       &pb.PushOptions{InsecureRegistry: registryHTTP},
 	}
 
@@ -306,7 +305,7 @@ func TestBuildKit_Build_FromContainerImages(t *testing.T) {
 	t.Run("container image that contains Tsuru app files (tsuru.yaml, Procfile)", func(t *testing.T) {
 		srcImage := baseRegistry(t, "my-container", "latest")
 
-		data := appArchiveData(t, "./testdata/container_image/")
+		data := compressGZIP(t, "./testdata/container_image/")
 		r := bytes.NewReader(data)
 
 		buildResp, err := dc.ImageBuild(context.TODO(), r, dockertypes.ImageBuildOptions{
@@ -336,7 +335,7 @@ func TestBuildKit_Build_FromContainerImages(t *testing.T) {
 				Name: "my-app",
 			},
 			SourceImage:       srcImage,
-			DestinationImages: []string{baseRegistry(t, "app-my-app", "v1")},
+			DestinationImages: []string{baseRegistry(t, "app-my-app", "")},
 			PushOptions:       &pb.PushOptions{InsecureRegistry: registryHTTP},
 		}
 
@@ -360,7 +359,7 @@ func TestBuildKit_Build_FromContainerImages(t *testing.T) {
 				Name: "my-app",
 			},
 			SourceImage:       "nginx:1.22-alpine",
-			DestinationImages: []string{baseRegistry(t, "app-my-app", "v2")},
+			DestinationImages: []string{baseRegistry(t, "app-my-app", "")},
 			PushOptions:       &pb.PushOptions{InsecureRegistry: registryHTTP},
 		}
 
@@ -378,46 +377,224 @@ func TestBuildKit_Build_FromContainerImages(t *testing.T) {
 	})
 }
 
-func appArchiveData(t *testing.T, dir string) []byte {
-	t.Helper()
+func TestBuildKit_Build_FromContainerFile(t *testing.T) {
+	bc := newBuildKitClient(t)
+	defer bc.Close()
 
-	var buffer bytes.Buffer
-	z, err := gzip.NewWriterLevel(&buffer, gzip.BestCompression)
-	require.NoError(t, err)
+	t.Run("Dockerfile w/ build context (adds tsuru.yaml and Procfile)", func(t *testing.T) {
+		destImage := baseRegistry(t, "my-app", "")
 
-	tw := tar.NewWriter(z)
-
-	dirs, err := os.ReadDir(dir)
-	require.NoError(t, err)
-
-	for _, d := range dirs {
-		fi, err := d.Info()
+		dockerfile, err := os.ReadFile("./testdata/container_file/Dockerfile")
 		require.NoError(t, err)
 
-		if !fi.Mode().IsRegular() {
-			continue
+		req := &pb.BuildRequest{
+			Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE,
+			App: &pb.TsuruApp{
+				Name: "my-app",
+			},
+			DestinationImages: []string{destImage},
+			Containerfile:     string(dockerfile),
+			Data:              compressGZIP(t, "./testdata/container_file/"),
+			PushOptions: &pb.PushOptions{
+				InsecureRegistry: registryHTTP,
+			},
 		}
 
-		f, err := os.Open(filepath.Join(dir, d.Name()))
+		appFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).Build(context.TODO(), req, os.Stdout)
 		require.NoError(t, err)
-		require.NoError(t, tw.WriteHeader(&tar.Header{
-			Name: d.Name(),
-			Mode: int64(fi.Mode()),
-			Size: fi.Size(),
-		}))
+		assert.Equal(t, &pb.TsuruConfig{
+			Procfile: "web: /path/to/webserver.sh --port 8888\nworker: /path/to/worker.sh\n",
+			TsuruYaml: `healthcheck:
+  command:
+  - /usr/bin/true
 
-		_, err = io.Copy(tw, f)
+hooks:
+  restart:
+    before:
+    - /path/to/pre_start.sh
+    after:
+    - /path/to/shutdown.sh
+
+kubernetes:
+  groups:
+    my-app:
+      web:
+        ports:
+        - name: http
+          port: 80
+          target_port: 8888
+          protocol: TCP
+`,
+			ImageConfig: &pb.ContainerImageConfig{
+				Cmd:        []string{"/bin/sh"},
+				WorkingDir: "/app/user",
+			},
+		}, appFiles)
+	})
+
+	t.Run("Dockerfile mounting the app's env vars", func(t *testing.T) {
+		destImage := baseRegistry(t, "my-app", "")
+
+		dockerfile := `FROM busybox:latest
+
+RUN --mount=type=secret,id=tsuru-app-envvars,target=/var/run/secrets/envs.sh \
+    . /var/run/secrets/envs.sh \
+    && echo ${MY_ENV_VAR} > /tmp/envs \
+    && echo ${DATABASE_PASSWORD} >> /tmp/envs
+
+ENV MY_ANOTHER_VAR="another var"
+`
+
+		req := &pb.BuildRequest{
+			Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE,
+			App: &pb.TsuruApp{
+				Name: "my-app",
+				EnvVars: map[string]string{
+					"MY_ENV_VAR":        "hello world",
+					"DATABASE_PASSWORD": "aw3some`p4ss!",
+				},
+			},
+			DestinationImages: []string{destImage},
+			Containerfile:     string(dockerfile),
+			PushOptions: &pb.PushOptions{
+				InsecureRegistry: registryHTTP,
+			},
+		}
+
+		appFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).Build(context.TODO(), req, os.Stdout)
 		require.NoError(t, err)
-	}
+		assert.Equal(t, &pb.TsuruConfig{
+			ImageConfig: &pb.ContainerImageConfig{
+				Cmd: []string{"sh"},
+			},
+		}, appFiles)
 
-	require.NoError(t, tw.Close())
-	require.NoError(t, z.Close())
+		dc := newDockerClient(t)
+		defer dc.Close()
 
-	return buffer.Bytes()
+		r, err := dc.ImagePull(context.TODO(), destImage, dockertypes.ImagePullOptions{})
+		require.NoError(t, err)
+		defer r.Close()
+
+		fmt.Println("Pulling container image", destImage)
+		_, err = io.Copy(os.Stdout, r)
+		require.NoError(t, err)
+
+		defer func() {
+			fmt.Printf("Removing container image %s\n", destImage)
+			_, nerr := dc.ImageRemove(context.TODO(), destImage, dockertypes.ImageRemoveOptions{Force: true})
+			require.NoError(t, nerr)
+		}()
+
+		t.Run("should not store the env vars in the container image manifest", func(t *testing.T) {
+			is, _, err := dc.ImageInspectWithRaw(context.TODO(), destImage)
+			require.NoError(t, err)
+			require.NotNil(t, is.Config)
+			assert.NotEmpty(t, is.Config.Env)
+			for _, env := range is.Config.Env {
+				assert.False(t, strings.HasPrefix(env, "MY_ENV_VAR="), "Env MY_ENV_VAR should not be exported to image manifest")
+				assert.False(t, strings.HasPrefix(env, "DATABASE_PASSWORD="), "Env DATABASE_PASSWORD shold not be exported to image manifest")
+
+				if strings.HasPrefix(env, "MY_ANOTHER_VAR=") {
+					assert.Equal(t, "MY_ANOTHER_VAR=another var", env)
+				}
+			}
+		})
+
+		t.Run("should be able to see env vars during the build", func(t *testing.T) {
+			containerCreateResp, err := dc.ContainerCreate(context.TODO(), &dockertypescontainer.Config{
+				Image: destImage,
+				Cmd:   dockerstrslice.StrSlice{"sleep", "Inf"},
+			}, nil, nil, nil, "")
+			require.NoError(t, err)
+			require.NotEmpty(t, containerCreateResp.ID, "container ID cannot be empty")
+
+			containerID := containerCreateResp.ID
+			fmt.Printf("Container created (ID=%s)\n", containerID)
+
+			defer func() {
+				fmt.Printf("Removing container (ID=%s)\n", containerID)
+				require.NoError(t, dc.ContainerRemove(context.TODO(), containerID, dockertypes.ContainerRemoveOptions{Force: true, RemoveVolumes: true}))
+			}()
+
+			err = dc.ContainerStart(context.TODO(), containerID, dockertypes.ContainerStartOptions{})
+			require.NoError(t, err)
+			fmt.Printf("Starting container (ID=%s)\n", containerID)
+
+			execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
+				Tty:          true,
+				AttachStderr: true,
+				AttachStdout: true,
+				Cmd:          []string{"cat", "/tmp/envs"},
+			})
+			require.NoError(t, err)
+			require.NotEmpty(t, execCreateResp.ID, "exec ID cannot be empty")
+
+			execID := execCreateResp.ID
+
+			hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+			require.NoError(t, err)
+			require.NotNil(t, hijackedResp.Reader)
+			defer hijackedResp.Close()
+
+			var stderr, stdout bytes.Buffer
+			_, err = dockerstdcopy.StdCopy(&stdout, &stderr, hijackedResp.Reader)
+			require.NoError(t, err)
+			assert.Equal(t, "hello world\r\naw3some`p4ss!\r\n", stdout.String())
+			assert.Empty(t, stderr.String())
+		})
+	})
+
+	t.Run("neither Procfile nor tsuru.yaml, should use command from image manifest", func(t *testing.T) {
+		destImage := baseRegistry(t, "my-app", "")
+
+		dockerfile := `FROM busybox
+
+EXPOSE 8080/tcp
+
+ENTRYPOINT ["/path/to/my/server.sh"]
+
+CMD ["--port", "8080"]
+`
+
+		req := &pb.BuildRequest{
+			Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE,
+			App: &pb.TsuruApp{
+				Name: "my-app",
+			},
+			DestinationImages: []string{destImage},
+			Containerfile:     string(dockerfile),
+			PushOptions: &pb.PushOptions{
+				InsecureRegistry: registryHTTP,
+			},
+		}
+
+		appFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).Build(context.TODO(), req, os.Stdout)
+		require.NoError(t, err)
+		assert.Equal(t, &pb.TsuruConfig{
+			ImageConfig: &pb.ContainerImageConfig{
+				Entrypoint:   []string{"/path/to/my/server.sh"},
+				Cmd:          []string{"--port", "8080"},
+				ExposedPorts: []string{"8080/tcp"},
+			},
+		}, appFiles)
+	})
+}
+
+func compressGZIP(t *testing.T, path string) []byte {
+	t.Helper()
+	var data bytes.Buffer
+	require.NoError(t, util.CompressGZIPFile(context.TODO(), &data, path))
+	return data.Bytes()
 }
 
 func baseRegistry(t *testing.T, repository, tag string) string {
 	t.Helper()
+
+	if tag == "" {
+		tag = fmt.Sprintf("%x", sha256.Sum256([]byte(t.Name())))
+	}
+
 	return fmt.Sprintf("%s/%s/%s:%s", registryAddress, registryNamespace, repository, tag)
 }
 

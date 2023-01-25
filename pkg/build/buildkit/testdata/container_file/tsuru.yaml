@@ -1,0 +1,20 @@
+healthcheck:
+  command:
+  - /usr/bin/true
+
+hooks:
+  restart:
+    before:
+    - /path/to/pre_start.sh
+    after:
+    - /path/to/shutdown.sh
+
+kubernetes:
+  groups:
+    my-app:
+      web:
+        ports:
+        - name: http
+          port: 80
+          target_port: 8888
+          protocol: TCP

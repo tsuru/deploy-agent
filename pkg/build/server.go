@@ -95,6 +95,9 @@ func validateBuildRequest(r *pb.BuildRequest) error {
 			return err
 		}
 
+	case "BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE":
+		fallthrough
+
 	case "BUILD_KIND_PLATFORM_WITH_CONTAINER_FILE":
 		if err := validateBuildRequestFromContainerfile(r); err != nil {
 			return err
