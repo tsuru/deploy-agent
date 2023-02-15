@@ -17,12 +17,13 @@ import (
 
 	"github.com/alessio/shellescape"
 	"github.com/containerd/console"
+	"github.com/docker/cli/cli/config"
 	containerregistryauthn "github.com/google/go-containerregistry/pkg/authn"
 	containerregistryname "github.com/google/go-containerregistry/pkg/name"
 	containerregistrygoogle "github.com/google/go-containerregistry/pkg/v1/google"
 	containerregistryremote "github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/moby/buildkit/client"
-	"github.com/moby/buildkit/frontend/dockerfile/builder"
+	gateway "github.com/moby/buildkit/frontend/gateway/client"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/auth/authprovider"
 	"github.com/moby/buildkit/session/secrets/secretsprovider"
@@ -200,6 +201,7 @@ func (b *BuildKit) callBuildKitToExtractTsuruConfigs(ctx context.Context, localC
 
 	eg.Go(func() error {
 		opts := client.SolveOpt{
+			Frontend: "dockerfile.v0",
 			LocalDirs: map[string]string{
 				"context":    filepath.Join(localContextDir, "context"),
 				"dockerfile": localContextDir,
@@ -212,9 +214,16 @@ func (b *BuildKit) callBuildKitToExtractTsuruConfigs(ctx context.Context, localC
 					},
 				},
 			},
-			Session: []session.Attachable{authprovider.NewDockerAuthProvider(io.Discard)},
+			Session: []session.Attachable{
+				authprovider.NewDockerAuthProvider(config.LoadDefaultConfigFile(os.Stderr)),
+			},
 		}
-		_, err := b.cli.Build(ctx, opts, "deploy-agent", builder.Build, nil)
+		_, err := b.cli.Build(ctx, opts, "deploy-agent", func(ctx context.Context, c gateway.Client) (*gateway.Result, error) {
+			return c.Solve(ctx, gateway.SolveRequest{
+				Frontend:    opts.Frontend,
+				FrontendOpt: opts.FrontendAttrs,
+			})
+		}, nil)
 		return err
 	})
 
@@ -436,6 +445,7 @@ func (b *BuildKit) callBuildKitBuild(ctx context.Context, buildContextDir string
 		}
 
 		opts := client.SolveOpt{
+			Frontend: "dockerfile.v0",
 			LocalDirs: map[string]string{
 				"context":    filepath.Join(buildContextDir, "context"),
 				"dockerfile": buildContextDir,
@@ -451,11 +461,17 @@ func (b *BuildKit) callBuildKitBuild(ctx context.Context, buildContextDir string
 				},
 			},
 			Session: []session.Attachable{
-				authprovider.NewDockerAuthProvider(w),
+				authprovider.NewDockerAuthProvider(config.LoadDefaultConfigFile(os.Stderr)),
 				secretsprovider.NewSecretProvider(secrets),
 			},
 		}
-		_, err = b.cli.Build(nctx, opts, "deploy-agent", builder.Build, progresswriter.ResetTime(pw).Status())
+
+		_, err = b.cli.Build(nctx, opts, "deploy-agent", func(ctx context.Context, c gateway.Client) (*gateway.Result, error) {
+			return c.Solve(ctx, gateway.SolveRequest{
+				Frontend:    opts.Frontend,
+				FrontendOpt: opts.FrontendAttrs,
+			})
+		}, progresswriter.ResetTime(pw).Status())
 		return err
 	})
 

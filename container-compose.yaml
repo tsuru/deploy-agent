@@ -2,7 +2,7 @@ version: "2.4"
 
 services:
   buildkit:
-    image: moby/buildkit:v0.10.5
+    image: moby/buildkit:v0.11.3
     command: --addr tcp://0.0.0.0:7777 --config /etc/buildkit/buildkitd.toml
     privileged: true
     ports:
