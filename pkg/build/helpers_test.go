@@ -321,6 +321,8 @@ WORKDIR /home/application/current
 
 COPY ./application.tar.gz /home/application/archive.tar.gz
 
+ARG tsuru_deploy_cache=1
+
 RUN --mount=type=secret,id=tsuru-app-envvars,target=/var/run/secrets/envs.sh,uid=1000,gid=1000 \
     [ -f /var/run/secrets/envs.sh ] && . /var/run/secrets/envs.sh \
     && [ -f ~/.profile ] && . ~/.profile \
@@ -342,6 +344,8 @@ FROM tsuru/scratch:latest
 WORKDIR /home/application/current
 
 COPY ./application.tar.gz /home/application/archive.tar.gz
+
+ARG tsuru_deploy_cache=1
 
 RUN --mount=type=secret,id=tsuru-app-envvars,target=/var/run/secrets/envs.sh,uid=1000,gid=1000 \
     [ -f /var/run/secrets/envs.sh ] && . /var/run/secrets/envs.sh \

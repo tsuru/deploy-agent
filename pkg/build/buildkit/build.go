@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alessio/shellescape"
 	"github.com/containerd/console"
@@ -446,6 +447,11 @@ func (b *BuildKit) callBuildKitBuild(ctx context.Context, buildContextDir string
 
 		opts := client.SolveOpt{
 			Frontend: "dockerfile.v0",
+			FrontendAttrs: map[string]string{
+				// NOTE: we should always run the deploy's script command as user might
+				// need to regenerate assets, for example.
+				"build-arg:tsuru_deploy_cache": strconv.FormatInt(time.Now().Unix(), 10),
+			},
 			LocalDirs: map[string]string{
 				"context":    filepath.Join(buildContextDir, "context"),
 				"dockerfile": buildContextDir,
