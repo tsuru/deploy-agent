@@ -21,16 +21,6 @@ import (
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 )
 
-const (
-	DefaultTsuruPlatformWorkingDir = "/home/application/current"
-	ProcfileName                   = "Procfile"
-)
-
-var (
-	TsuruYamlNames  = []string{"tsuru.yml", "tsuru.yaml", "app.yml", "app.yaml"}
-	TsuruConfigDirs = []string{"/home/application/current", "/app/user", "/"}
-)
-
 func IsTsuruYaml(filename string) bool {
 	baseName := filepath.Base(filename)
 
