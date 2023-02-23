@@ -20,7 +20,7 @@ services:
   docker:
     container_name: docker
     image: docker:20.10.3-dind
-    command: dockerd -H tcp://0.0.0.0:2375 --insecure-registry 169.196.255.254:5000
+    command: dockerd -H tcp://0.0.0.0:2375 --insecure-registry 169.196.255.254:5000 --storage-driver overlay2
     privileged: true
     ports:
     - 2375:2375
