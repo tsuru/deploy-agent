@@ -111,12 +111,12 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, r *pb.BuildReque
 		return nil, err
 	}
 
-	// NOTE(nettoclaudio): Some platforms doesn't require an user-defined Procfile (e.g. go, java, static, etc).
+	// NOTE(nettoclaudio): Some platforms don't require an user-defined Procfile (e.g. go, java, static, etc).
 	// So we need to retrieve the default Procfile from the platform image.
 	if appFiles.Procfile == "" {
 		fmt.Fprintln(w, "User-defined Procfile not found, trying to extract it from platform's container image")
 
-		tc, err := b.extractTsuruConfigsFromContainerImage(ctx, r.DestinationImages[0])
+		tc, err := b.extractTsuruConfigsFromContainerImage(ctx, r.DestinationImages[0], build.DefaultTsuruPlatformWorkingDir)
 		if err != nil {
 			return nil, err
 		}
@@ -177,7 +177,7 @@ func (b *BuildKit) buildFromContainerImage(ctx context.Context, r *pb.BuildReque
 		return nil, err
 	}
 
-	appFiles, err := b.callBuildKitToExtractTsuruConfigs(ctx, tmpDir)
+	appFiles, err := b.callBuildKitToExtractTsuruConfigs(ctx, tmpDir, imageConfig.WorkingDir)
 	if err != nil {
 		return nil, err
 	}
@@ -186,17 +186,17 @@ func (b *BuildKit) buildFromContainerImage(ctx context.Context, r *pb.BuildReque
 	return appFiles, nil
 }
 
-func (b *BuildKit) extractTsuruConfigsFromContainerImage(ctx context.Context, image string) (*pb.TsuruConfig, error) {
+func (b *BuildKit) extractTsuruConfigsFromContainerImage(ctx context.Context, image, workingDir string) (*pb.TsuruConfig, error) {
 	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, fmt.Sprintf("FROM %s", image), nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer cleanFunc()
 
-	return b.callBuildKitToExtractTsuruConfigs(ctx, tmpDir)
+	return b.callBuildKitToExtractTsuruConfigs(ctx, tmpDir, workingDir)
 }
 
-func (b *BuildKit) callBuildKitToExtractTsuruConfigs(ctx context.Context, localContextDir string) (*pb.TsuruConfig, error) {
+func (b *BuildKit) callBuildKitToExtractTsuruConfigs(ctx context.Context, localContextDir, workingDir string) (*pb.TsuruConfig, error) {
 	eg, ctx := errgroup.WithContext(ctx)
 	pr, pw := io.Pipe() // reader/writer for tar output
 
@@ -231,7 +231,7 @@ func (b *BuildKit) callBuildKitToExtractTsuruConfigs(ctx context.Context, localC
 	var tc *pb.TsuruConfig
 	eg.Go(func() error {
 		var err error
-		tc, err = build.ExtractTsuruAppFilesFromContainerImageTarball(ctx, pr)
+		tc, err = build.ExtractTsuruAppFilesFromContainerImageTarball(ctx, pr, workingDir)
 		return err
 	})
 
@@ -387,20 +387,22 @@ func (b *BuildKit) buildFromContainerFile(ctx context.Context, r *pb.BuildReques
 		return nil, err
 	}
 
-	tc, err := b.extractTsuruConfigsFromContainerImage(ctx, r.DestinationImages[0])
-	if err != nil {
-		return nil, err
-	}
-
 	var insecureRegistry bool
 	if r.PushOptions != nil {
 		insecureRegistry = r.PushOptions.InsecureRegistry
 	}
 
-	tc.ImageConfig, err = extractContainerImageConfigFromImageManifest(ctx, r.DestinationImages[0], insecureRegistry)
+	ic, err := extractContainerImageConfigFromImageManifest(ctx, r.DestinationImages[0], insecureRegistry)
 	if err != nil {
 		return nil, err
 	}
+
+	tc, err := b.extractTsuruConfigsFromContainerImage(ctx, r.DestinationImages[0], ic.WorkingDir)
+	if err != nil {
+		return nil, err
+	}
+
+	tc.ImageConfig = ic
 
 	return tc, nil
 }

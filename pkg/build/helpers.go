@@ -45,11 +45,18 @@ func IsTsuruYaml(filename string) bool {
 
 type TsuruYamlCandidates map[string]string
 
-func (c TsuruYamlCandidates) String() string {
-	for _, dir := range TsuruConfigDirs {
+func (c TsuruYamlCandidates) Pick(workingDir string) string {
+	dirs := make([]string, 0, (len(TsuruConfigDirs) + 1))
+
+	if workingDir != "" {
+		dirs = append(dirs, workingDir) // added first to get higher precedence
+	}
+
+	dirs = append(dirs, TsuruConfigDirs...)
+
+	for _, dir := range dirs {
 		for _, baseName := range TsuruYamlNames {
 			filename := filepath.Join(dir, baseName)
-
 			if s, found := c[filename]; found {
 				return s
 			}
@@ -65,8 +72,16 @@ func IsProcfile(filename string) bool {
 
 type ProcfileCandidates map[string]string
 
-func (c ProcfileCandidates) String() string {
-	for _, dir := range TsuruConfigDirs {
+func (c ProcfileCandidates) Pick(workingDir string) string {
+	dirs := make([]string, 0, (len(TsuruConfigDirs) + 1))
+
+	if workingDir != "" {
+		dirs = append(dirs, workingDir) // added first to get higher precedence
+	}
+
+	dirs = append(dirs, TsuruConfigDirs...)
+
+	for _, dir := range dirs {
 		filename := filepath.Join(dir, ProcfileName)
 		if s, found := c[filename]; found {
 			return s
@@ -118,12 +133,12 @@ func ExtractTsuruAppFilesFromAppSourceContext(ctx context.Context, r io.Reader) 
 	}
 
 	return &pb.TsuruConfig{
-		Procfile:  procfile.String(),
-		TsuruYaml: tsuruYaml.String(),
+		Procfile:  procfile.Pick(DefaultTsuruPlatformWorkingDir),
+		TsuruYaml: tsuruYaml.Pick(DefaultTsuruPlatformWorkingDir),
 	}, nil
 }
 
-func ExtractTsuruAppFilesFromContainerImageTarball(ctx context.Context, r io.Reader) (*pb.TsuruConfig, error) {
+func ExtractTsuruAppFilesFromContainerImageTarball(ctx context.Context, r io.Reader, workingDir string) (*pb.TsuruConfig, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -158,8 +173,8 @@ func ExtractTsuruAppFilesFromContainerImageTarball(ctx context.Context, r io.Rea
 	}
 
 	return &pb.TsuruConfig{
-		Procfile:  procfile.String(),
-		TsuruYaml: tsuruYaml.String(),
+		Procfile:  procfile.Pick(workingDir),
+		TsuruYaml: tsuruYaml.Pick(workingDir),
 	}, nil
 }
 

@@ -47,11 +47,12 @@ func TestIsTsuruYaml(t *testing.T) {
 	}
 }
 
-func TestTsuruYamlCandidates_String(t *testing.T) {
+func TestTsuruYamlCandidates_Pick(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		candidates TsuruYamlCandidates
+		workingDir string
 		expected   string
 	}{
 		{},
@@ -112,20 +113,41 @@ func TestTsuruYamlCandidates_String(t *testing.T) {
 			},
 			expected: "# Tsuru YAML from tsuru.yaml",
 		},
+		{
+			workingDir: "/var/www/html",
+			candidates: TsuruYamlCandidates{
+				"/var/www/html/tsuru.yaml":             "# Tsuru YAML from tsuru.yaml",
+				"/home/application/current/tsuru.yaml": "--------------------",
+				"/app/user/tsuru.yaml":                 "--------------------",
+				"/tsuru.yaml":                          "--------------------",
+			},
+			expected: "# Tsuru YAML from tsuru.yaml",
+		},
+		{
+			workingDir: "/not/found",
+			candidates: TsuruYamlCandidates{
+				"/var/www/html/tsuru.yaml":             "--------------------",
+				"/home/application/current/tsuru.yaml": "# Tsuru YAML from tsuru.yaml",
+				"/app/user/tsuru.yaml":                 "--------------------",
+				"/tsuru.yaml":                          "--------------------",
+			},
+			expected: "# Tsuru YAML from tsuru.yaml",
+		},
 	}
 
 	for _, tt := range cases {
 		t.Run("", func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.candidates.String())
+			assert.Equal(t, tt.expected, tt.candidates.Pick(tt.workingDir))
 		})
 	}
 }
 
-func TestProcfileCandidates_String(t *testing.T) {
+func TestProcfileCandidates_Pick(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		candidates ProcfileCandidates
+		workingDir string
 		expected   string
 	}{
 		{},
@@ -158,10 +180,32 @@ func TestProcfileCandidates_String(t *testing.T) {
 				"/home/application/current/demo/Procfile": "--------------------",
 			},
 		},
+		{
+			workingDir: "/var/www/html",
+			candidates: ProcfileCandidates{
+				"/var/www/html/Procfile":             "web: ./path/to/server.sh --port ${PORT}",
+				"/home/application/current/Procfile": "--------------------",
+				"/app/user/Procfile":                 "--------------------",
+				"/Procfile":                          "--------------------",
+			},
+			expected: "web: ./path/to/server.sh --port ${PORT}",
+		},
+		{
+			workingDir: "/not/found",
+			candidates: ProcfileCandidates{
+				"/var/www/html/Procfile":             "--------------------",
+				"/home/application/current/Procfile": "web: ./path/to/server.sh --port ${PORT}",
+				"/app/user/Procfile":                 "--------------------",
+				"/Procfile":                          "--------------------",
+			},
+			expected: "web: ./path/to/server.sh --port ${PORT}",
+		},
 	}
 
 	for _, tt := range cases {
-		assert.Equal(t, tt.expected, tt.candidates.String())
+		t.Run("", func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.candidates.Pick(tt.workingDir))
+		})
 	}
 }
 
@@ -266,7 +310,7 @@ func TestExtractTsuruAppFilesFromContainerImageTarball(t *testing.T) {
 	for _, tt := range cases {
 		t.Run("", func(t *testing.T) {
 			require.NotNil(t, tt.file)
-			tsuruFiles, err := ExtractTsuruAppFilesFromContainerImageTarball(context.TODO(), tt.file(t))
+			tsuruFiles, err := ExtractTsuruAppFilesFromContainerImageTarball(context.TODO(), tt.file(t), "")
 			if err != nil {
 				require.EqualError(t, err, tt.expectedError)
 				return

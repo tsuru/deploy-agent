@@ -579,6 +579,46 @@ CMD ["--port", "8080"]
 			},
 		}, appFiles)
 	})
+
+	t.Run("using a different working directory, should get Procfile and Tsuru YAML from that", func(t *testing.T) {
+		destImage := baseRegistry(t, "my-app", "")
+
+		dockerfile := `FROM busybox
+
+RUN set -xef \
+    && mkdir -p /var/my-app \
+    && echo "web: /path/to/server.sh --port 8888" > /var/my-app/Procfile \
+    && echo -e "healthcheck:\n  path: /healthz\n" > /var/my-app/tsuru.yaml
+
+WORKDIR /var/my-app
+
+EXPOSE 8888/tcp
+`
+
+		req := &pb.BuildRequest{
+			Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE,
+			App: &pb.TsuruApp{
+				Name: "my-app",
+			},
+			DestinationImages: []string{destImage},
+			Containerfile:     string(dockerfile),
+			PushOptions: &pb.PushOptions{
+				InsecureRegistry: registryHTTP,
+			},
+		}
+
+		appFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).Build(context.TODO(), req, os.Stdout)
+		require.NoError(t, err)
+		assert.Equal(t, &pb.TsuruConfig{
+			Procfile:  "web: /path/to/server.sh --port 8888\n",
+			TsuruYaml: "healthcheck:\n  path: /healthz\n\n",
+			ImageConfig: &pb.ContainerImageConfig{
+				Cmd:          []string{"sh"},
+				ExposedPorts: []string{"8888/tcp"},
+				WorkingDir:   "/var/my-app",
+			},
+		}, appFiles)
+	})
 }
 
 func compressGZIP(t *testing.T, path string) []byte {
