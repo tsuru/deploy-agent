@@ -13,8 +13,11 @@ import (
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
@@ -24,15 +27,33 @@ import (
 const (
 	TsuruAppNameLabelKey = "tsuru.io/app-name"
 	TsuruIsBuildLabelKey = "tsuru.io/is-build"
+	TsuruAppNamespace    = "tsuru"
 )
 
-var noopFunc = func() {}
+var (
+	noopFunc = func() {}
 
-func discoverBuildKitClient(ctx context.Context, cs *kubernetes.Clientset, opts KubernertesDiscoveryOptions, req *pb.BuildRequest) (*client.Client, func(), error) {
-	return discoverBuildKitClientFromApp(ctx, cs, opts, req.App.Name)
+	tsuruAppGVR = schema.GroupVersionResource{
+		Group:    "tsuru.io",
+		Version:  "v1",
+		Resource: "apps",
+	}
+)
+
+type k8sDiscoverer struct {
+	cs  *kubernetes.Clientset
+	dcs dynamic.Interface
 }
 
-func discoverBuildKitClientFromApp(ctx context.Context, cs *kubernetes.Clientset, opts KubernertesDiscoveryOptions, app string) (*client.Client, func(), error) {
+func (d *k8sDiscoverer) Discover(ctx context.Context, opts KubernertesDiscoveryOptions, req *pb.BuildRequest) (*client.Client, func(), error) {
+	if req.App == nil {
+		return nil, noopFunc, fmt.Errorf("there's only support for discovering BuildKit pods from Tsuru apps")
+	}
+
+	return d.discoverBuildKitClientFromApp(ctx, opts, req.App.Name)
+}
+
+func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts KubernertesDiscoveryOptions, app string) (*client.Client, func(), error) {
 	leaderCtx, leaderCancel := context.WithCancel(ctx)
 	cfns := []func(){
 		func() {
@@ -41,7 +62,7 @@ func discoverBuildKitClientFromApp(ctx context.Context, cs *kubernetes.Clientset
 		},
 	}
 
-	pod, err := discoverBuildKitPod(leaderCtx, cs, opts, app)
+	pod, err := d.discoverBuildKitPod(leaderCtx, opts, app)
 	if err != nil {
 		return nil, cleanUps(cfns...), err
 	}
@@ -49,14 +70,14 @@ func discoverBuildKitClientFromApp(ctx context.Context, cs *kubernetes.Clientset
 	if opts.SetTsuruAppLabel {
 		klog.V(4).Infoln("Setting Tsuru app labels in the pod", pod.Name)
 
-		err = setTsuruAppLabelOnBuildKitPod(ctx, cs, pod.Name, pod.Namespace, app)
+		err = setTsuruAppLabelOnBuildKitPod(ctx, d.cs, pod.Name, pod.Namespace, app)
 		if err != nil {
 			return nil, cleanUps(cfns...), fmt.Errorf("failed to set Tsuru app labels on BuildKit's pod: %w", err)
 		}
 
 		cfns = append(cfns, func() {
 			klog.V(4).Infoln("Removing Tsuru app labels in the pod", pod.Name)
-			unsetTsuruAppLabelOnBuildKitPod(context.Background(), cs, pod.Name, pod.Namespace)
+			unsetTsuruAppLabelOnBuildKitPod(context.Background(), d.cs, pod.Name, pod.Namespace)
 		})
 	}
 
@@ -77,9 +98,12 @@ func discoverBuildKitClientFromApp(ctx context.Context, cs *kubernetes.Clientset
 	return c, cleanUps(cfns...), nil
 }
 
-func discoverBuildKitPod(ctx context.Context, cs *kubernetes.Clientset, opts KubernertesDiscoveryOptions, app string) (*corev1.Pod, error) {
-	// TODO: missing to implement the namespace discovery based on app's pods.
+func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts KubernertesDiscoveryOptions, app string) (*corev1.Pod, error) {
 	// TODO: respect deadline to discover pods.
+	ns, err := d.buildkitPodNamespace(ctx, opts, app)
+	if err != nil {
+		return nil, err
+	}
 
 	pods := make(chan *corev1.Pod)
 	defer close(pods)
@@ -87,7 +111,7 @@ func discoverBuildKitPod(ctx context.Context, cs *kubernetes.Clientset, opts Kub
 	watchCtx, watchCancel := context.WithCancel(ctx)
 	defer watchCancel() // watch cancellation must happen before than closing the pods channel
 
-	go watchBuildKitPods(watchCtx, cs, opts.PodSelector, opts.Namespace, pods)
+	go watchBuildKitPods(watchCtx, d.cs, opts.PodSelector, ns, pods)
 
 	selected := make(chan *corev1.Pod, 1)
 	defer close(selected)
@@ -103,7 +127,7 @@ func discoverBuildKitPod(ctx context.Context, cs *kubernetes.Clientset, opts Kub
 			leaseCtx, leaseCancel := context.WithCancel(ctx)
 			leaseCancelByPod[pod.Name] = leaseCancel
 
-			go acquireLeaseForPod(leaseCtx, cs, selected, pod, opts)
+			go acquireLeaseForPod(leaseCtx, d.cs, selected, pod, opts)
 		}
 	}()
 
@@ -119,6 +143,33 @@ func discoverBuildKitPod(ctx context.Context, cs *kubernetes.Clientset, opts Kub
 	}
 
 	return pod, nil
+}
+
+func (d *k8sDiscoverer) buildkitPodNamespace(ctx context.Context, opts KubernertesDiscoveryOptions, app string) (string, error) {
+	if !opts.UseSameNamespaceAsApp {
+		return opts.Namespace, nil
+	}
+
+	klog.V(4).Infof("Discovering the namespace where app %s is running on...", app)
+
+	tsuruApp, err := d.dcs.Resource(tsuruAppGVR).Namespace(TsuruAppNamespace).Get(ctx, app, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	// See more about App resource at: https://github.com/tsuru/tsuru/blob/main/provision/kubernetes/pkg/apis/tsuru/v1/types.go#L24
+	ns, found, err := unstructured.NestedString(tsuruApp.Object, "spec", "namespaceName")
+	if err != nil {
+		return "", err
+	}
+
+	if !found {
+		return "", fmt.Errorf("failed to fetch namespace in the App resource")
+	}
+
+	klog.V(4).Infof("App %s is running on namespace %s...", app, ns)
+
+	return ns, nil
 }
 
 func watchBuildKitPods(ctx context.Context, cs *kubernetes.Clientset, labelSelector, ns string, pods chan<- *corev1.Pod) error {

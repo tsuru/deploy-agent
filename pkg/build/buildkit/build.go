@@ -34,6 +34,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v3"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/tsuru/deploy-agent/pkg/build"
@@ -51,6 +52,7 @@ type BuildKitOptions struct {
 type BuildKit struct {
 	cli    *client.Client
 	k8s    *kubernetes.Clientset
+	dk8s   dynamic.Interface
 	kdopts *KubernertesDiscoveryOptions
 	opts   BuildKitOptions
 	m      sync.RWMutex
@@ -70,8 +72,9 @@ type KubernertesDiscoveryOptions struct {
 	Timeout               time.Duration
 }
 
-func (b *BuildKit) WithKubernetesDiscovery(cs *kubernetes.Clientset, opts KubernertesDiscoveryOptions) *BuildKit {
+func (b *BuildKit) WithKubernetesDiscovery(cs *kubernetes.Clientset, dcs dynamic.Interface, opts KubernertesDiscoveryOptions) *BuildKit {
 	b.k8s = cs
+	b.dk8s = dcs
 	b.kdopts = &opts
 	return b
 }
@@ -537,7 +540,11 @@ func (b *BuildKit) client(ctx context.Context, req *pb.BuildRequest) (*client.Cl
 	isBuildForApp := strings.HasPrefix(pb.BuildKind_name[int32(req.Kind)], "BUILD_KIND_APP_")
 
 	if isBuildForApp && b.opts.DiscoverBuildKitClientForApp {
-		return discoverBuildKitClient(ctx, b.k8s, *b.kdopts, req)
+		d := &k8sDiscoverer{
+			cs:  b.k8s,
+			dcs: b.dk8s,
+		}
+		return d.Discover(ctx, *b.kdopts, req)
 	}
 
 	return b.cli, noopFunc, nil

@@ -18,6 +18,7 @@ import (
 	"github.com/moby/buildkit/client"
 	"google.golang.org/grpc"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
@@ -134,34 +135,45 @@ func newBuildKit() (*buildkit.BuildKit, error) {
 		DiscoverBuildKitClientForApp: cfg.BuildKitAutoDiscovery,
 	}
 
+	b := buildkit.NewBuildKit(nil, opts)
+
 	if cfg.BuildkitAddress != "" {
 		c, err := client.New(context.Background(), cfg.BuildkitAddress, client.WithFailFast())
 		if err != nil {
 			return nil, fmt.Errorf("failed to create buildkit client: %w", err)
 		}
 
-		return buildkit.NewBuildKit(c, opts), nil
+		b = buildkit.NewBuildKit(c, opts)
 	}
 
-	config, err := clientcmd.BuildConfigFromFlags("", cfg.KubernetesConfig)
-	if err != nil {
-		return nil, err
+	if cfg.BuildKitAutoDiscovery {
+		config, err := clientcmd.BuildConfigFromFlags("", cfg.KubernetesConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		cs, err := kubernetes.NewForConfig(config)
+		if err != nil {
+			return nil, err
+		}
+
+		dcs, err := dynamic.NewForConfig(config)
+		if err != nil {
+			return nil, err
+		}
+
+		kdopts := buildkit.KubernertesDiscoveryOptions{
+			Timeout:               cfg.BuildKitAutoDiscoveryTimeout,
+			PodSelector:           cfg.BuildKitAutoDiscoveryKubernetesPodSelector,
+			Namespace:             cfg.BuildKitAutoDiscoveryKubernetesNamespace,
+			Port:                  cfg.BuildKitAutoDiscoveryKubernetesPort,
+			SetTsuruAppLabel:      cfg.BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels,
+			UseSameNamespaceAsApp: cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp,
+			LeasePrefix:           cfg.BuildKitAutoDiscoveryKubernetesLeasePrefix,
+		}
+
+		return b.WithKubernetesDiscovery(cs, dcs, kdopts), nil
 	}
 
-	cs, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, err
-	}
-
-	kdopts := buildkit.KubernertesDiscoveryOptions{
-		Timeout:               cfg.BuildKitAutoDiscoveryTimeout,
-		PodSelector:           cfg.BuildKitAutoDiscoveryKubernetesPodSelector,
-		Namespace:             cfg.BuildKitAutoDiscoveryKubernetesNamespace,
-		Port:                  cfg.BuildKitAutoDiscoveryKubernetesPort,
-		SetTsuruAppLabel:      cfg.BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels,
-		UseSameNamespaceAsApp: cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp,
-		LeasePrefix:           cfg.BuildKitAutoDiscoveryKubernetesLeasePrefix,
-	}
-
-	return buildkit.NewBuildKit(nil, opts).WithKubernetesDiscovery(cs, kdopts), nil
+	return b, nil
 }
