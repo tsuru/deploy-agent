@@ -35,20 +35,18 @@ const (
 )
 
 var cfg struct {
-	BuildkitAddress      string
-	BuildkitTmpDir       string
-	KubernetesConfig     string
-	Port                 int
-	ServerMaxRecvMsgSize int
-	ServerMaxSendMsgSize int
-
-	BuildKitAutoDiscovery        bool
-	BuildKitAutoDiscoveryTimeout time.Duration
-
+	BuildkitAddress                                           string
+	BuildkitTmpDir                                            string
 	BuildKitAutoDiscoveryKubernetesPodSelector                string
 	BuildKitAutoDiscoveryKubernetesNamespace                  string
 	BuildKitAutoDiscoveryKubernetesLeasePrefix                string
+	KubernetesConfig                                          string
+	BuildKitAutoDiscoveryTimeout                              time.Duration
 	BuildKitAutoDiscoveryKubernetesPort                       int
+	Port                                                      int
+	ServerMaxRecvMsgSize                                      int
+	ServerMaxSendMsgSize                                      int
+	BuildKitAutoDiscovery                                     bool
 	BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels          bool
 	BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp bool
 }

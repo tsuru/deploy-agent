@@ -1,3 +1,7 @@
+// Copyright 2023 tsuru authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package buildkit
 
 import (
@@ -77,7 +81,10 @@ func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 
 		cfns = append(cfns, func() {
 			klog.V(4).Infoln("Removing Tsuru app labels in the pod", pod.Name)
-			unsetTsuruAppLabelOnBuildKitPod(context.Background(), d.cs, pod.Name, pod.Namespace)
+			nerr := unsetTsuruAppLabelOnBuildKitPod(context.Background(), d.cs, pod.Name, pod.Namespace)
+			if nerr != nil {
+				klog.Errorf("failed to unset Tsuru app labels: %s", nerr)
+			}
 		})
 	}
 
@@ -105,13 +112,21 @@ func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 		return nil, err
 	}
 
+	errCh := make(chan error, 1)
+	defer close(errCh)
+
 	pods := make(chan *corev1.Pod)
 	defer close(pods)
 
 	watchCtx, watchCancel := context.WithCancel(ctx)
 	defer watchCancel() // watch cancellation must happen before than closing the pods channel
 
-	go watchBuildKitPods(watchCtx, d.cs, opts.PodSelector, ns, pods)
+	go func() {
+		nerr := watchBuildKitPods(watchCtx, d.cs, opts.PodSelector, ns, pods)
+		if nerr != nil {
+			errCh <- nerr
+		}
+	}()
 
 	selected := make(chan *corev1.Pod, 1)
 	defer close(selected)
@@ -131,7 +146,14 @@ func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 		}
 	}()
 
-	pod := <-selected
+	var pod *corev1.Pod
+
+	select {
+	case err = <-errCh:
+		return nil, err
+
+	case pod = <-selected:
+	}
 
 	for name, leaseCancel := range leaseCancelByPod {
 		if pod.Name == name {
