@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alessio/shellescape"
@@ -33,6 +34,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v3"
+	"k8s.io/client-go/kubernetes"
 
 	"github.com/tsuru/deploy-agent/pkg/build"
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
@@ -42,16 +44,47 @@ import (
 var _ build.Builder = (*BuildKit)(nil)
 
 type BuildKitOptions struct {
-	TempDir string
+	TempDir                      string
+	DiscoverBuildKitClientForApp bool
 }
 
 type BuildKit struct {
-	cli  *client.Client
-	opts BuildKitOptions
+	cli    *client.Client
+	k8s    *kubernetes.Clientset
+	kdopts *KubernertesDiscoveryOptions
+	opts   BuildKitOptions
+	m      sync.RWMutex
 }
 
 func NewBuildKit(c *client.Client, opts BuildKitOptions) *BuildKit {
 	return &BuildKit{cli: c, opts: opts}
+}
+
+type KubernertesDiscoveryOptions struct {
+	PodSelector           string
+	Namespace             string
+	LeasePrefix           string
+	Port                  int
+	UseSameNamespaceAsApp bool
+	SetTsuruAppLabel      bool
+	Timeout               time.Duration
+}
+
+func (b *BuildKit) WithKubernetesDiscovery(cs *kubernetes.Clientset, opts KubernertesDiscoveryOptions) *BuildKit {
+	b.k8s = cs
+	b.kdopts = &opts
+	return b
+}
+
+func (b *BuildKit) Close() error {
+	b.m.Lock()
+	defer b.m.Unlock()
+
+	if b.cli == nil {
+		return nil
+	}
+
+	return b.cli.Close()
 }
 
 func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (*pb.TsuruConfig, error) {
@@ -64,24 +97,33 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 		return nil, errors.New("writer must implement console.File")
 	}
 
+	c, clientCleanUp, err := b.client(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+
+	if clientCleanUp != nil {
+		defer clientCleanUp()
+	}
+
 	switch pb.BuildKind_name[int32(r.Kind)] {
 	case "BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD":
-		return b.buildFromAppSourceFiles(ctx, r, ow)
+		return b.buildFromAppSourceFiles(ctx, c, r, ow)
 
 	case "BUILD_KIND_APP_BUILD_WITH_CONTAINER_IMAGE":
-		return b.buildFromContainerImage(ctx, r, ow)
+		return b.buildFromContainerImage(ctx, c, r, ow)
 
 	case "BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE":
-		return b.buildFromContainerFile(ctx, r, ow)
+		return b.buildFromContainerFile(ctx, c, r, ow)
 
 	case "BUILD_KIND_PLATFORM_WITH_CONTAINER_FILE":
-		return nil, b.buildPlatform(ctx, r, ow)
+		return nil, b.buildPlatform(ctx, c, r, ow)
 	}
 
 	return nil, status.Errorf(codes.Unimplemented, "build kind not supported")
 }
 
-func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, r *pb.BuildRequest, w console.File) (*pb.TsuruConfig, error) {
+func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, c *client.Client, r *pb.BuildRequest, w console.File) (*pb.TsuruConfig, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -107,7 +149,7 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, r *pb.BuildReque
 	}
 	defer cleanFunc()
 
-	if err = b.callBuildKitBuild(ctx, tmpDir, r, w); err != nil {
+	if err = callBuildKitBuild(ctx, c, tmpDir, r, w); err != nil {
 		return nil, err
 	}
 
@@ -116,7 +158,7 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, r *pb.BuildReque
 	if appFiles.Procfile == "" {
 		fmt.Fprintln(w, "User-defined Procfile not found, trying to extract it from platform's container image")
 
-		tc, err := b.extractTsuruConfigsFromContainerImage(ctx, r.DestinationImages[0], build.DefaultTsuruPlatformWorkingDir)
+		tc, err := b.extractTsuruConfigsFromContainerImage(ctx, c, r.DestinationImages[0], build.DefaultTsuruPlatformWorkingDir)
 		if err != nil {
 			return nil, err
 		}
@@ -152,7 +194,7 @@ func generateContainerfile(w io.Writer, image string, tsuruAppFiles *pb.TsuruCon
 	return err
 }
 
-func (b *BuildKit) buildFromContainerImage(ctx context.Context, r *pb.BuildRequest, w console.File) (*pb.TsuruConfig, error) {
+func (b *BuildKit) buildFromContainerImage(ctx context.Context, c *client.Client, r *pb.BuildRequest, w console.File) (*pb.TsuruConfig, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -163,7 +205,7 @@ func (b *BuildKit) buildFromContainerImage(ctx context.Context, r *pb.BuildReque
 	}
 	defer cleanFunc()
 
-	if err = b.callBuildKitBuild(ctx, tmpDir, r, w); err != nil {
+	if err = callBuildKitBuild(ctx, c, tmpDir, r, w); err != nil {
 		return nil, err
 	}
 
@@ -177,7 +219,7 @@ func (b *BuildKit) buildFromContainerImage(ctx context.Context, r *pb.BuildReque
 		return nil, err
 	}
 
-	appFiles, err := b.callBuildKitToExtractTsuruConfigs(ctx, tmpDir, imageConfig.WorkingDir)
+	appFiles, err := callBuildKitToExtractTsuruConfigs(ctx, c, tmpDir, imageConfig.WorkingDir)
 	if err != nil {
 		return nil, err
 	}
@@ -186,60 +228,14 @@ func (b *BuildKit) buildFromContainerImage(ctx context.Context, r *pb.BuildReque
 	return appFiles, nil
 }
 
-func (b *BuildKit) extractTsuruConfigsFromContainerImage(ctx context.Context, image, workingDir string) (*pb.TsuruConfig, error) {
+func (b *BuildKit) extractTsuruConfigsFromContainerImage(ctx context.Context, c *client.Client, image, workingDir string) (*pb.TsuruConfig, error) {
 	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, fmt.Sprintf("FROM %s", image), nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer cleanFunc()
 
-	return b.callBuildKitToExtractTsuruConfigs(ctx, tmpDir, workingDir)
-}
-
-func (b *BuildKit) callBuildKitToExtractTsuruConfigs(ctx context.Context, localContextDir, workingDir string) (*pb.TsuruConfig, error) {
-	eg, ctx := errgroup.WithContext(ctx)
-	pr, pw := io.Pipe() // reader/writer for tar output
-
-	eg.Go(func() error {
-		opts := client.SolveOpt{
-			Frontend: "dockerfile.v0",
-			LocalDirs: map[string]string{
-				"context":    filepath.Join(localContextDir, "context"),
-				"dockerfile": localContextDir,
-			},
-			Exports: []client.ExportEntry{
-				{
-					Type: client.ExporterTar,
-					Output: func(_ map[string]string) (io.WriteCloser, error) {
-						return pw, nil
-					},
-				},
-			},
-			Session: []session.Attachable{
-				authprovider.NewDockerAuthProvider(config.LoadDefaultConfigFile(os.Stderr)),
-			},
-		}
-		_, err := b.cli.Build(ctx, opts, "deploy-agent", func(ctx context.Context, c gateway.Client) (*gateway.Result, error) {
-			return c.Solve(ctx, gateway.SolveRequest{
-				Frontend:    opts.Frontend,
-				FrontendOpt: opts.FrontendAttrs,
-			})
-		}, nil)
-		return err
-	})
-
-	var tc *pb.TsuruConfig
-	eg.Go(func() error {
-		var err error
-		tc, err = build.ExtractTsuruAppFilesFromContainerImageTarball(ctx, pr, workingDir)
-		return err
-	})
-
-	if err := eg.Wait(); err != nil {
-		return nil, err
-	}
-
-	return tc, nil
+	return callBuildKitToExtractTsuruConfigs(ctx, c, tmpDir, workingDir)
 }
 
 func extractContainerImageConfigFromImageManifest(ctx context.Context, imageStr string, insecureRegistry bool) (*pb.ContainerImageConfig, error) {
@@ -371,7 +367,7 @@ func generateBuildLocalDir(ctx context.Context, baseDir, dockerfile string, appA
 	return rootDir, func() { os.RemoveAll(rootDir) }, nil
 }
 
-func (b *BuildKit) buildFromContainerFile(ctx context.Context, r *pb.BuildRequest, w console.File) (*pb.TsuruConfig, error) {
+func (b *BuildKit) buildFromContainerFile(ctx context.Context, c *client.Client, r *pb.BuildRequest, w console.File) (*pb.TsuruConfig, error) {
 	var files io.Reader
 	if len(r.Data) > 0 {
 		files = bytes.NewReader(r.Data)
@@ -383,7 +379,7 @@ func (b *BuildKit) buildFromContainerFile(ctx context.Context, r *pb.BuildReques
 	}
 	defer cleanFunc()
 
-	if err = b.callBuildKitBuild(ctx, tmpDir, r, w); err != nil {
+	if err = callBuildKitBuild(ctx, c, tmpDir, r, w); err != nil {
 		return nil, err
 	}
 
@@ -397,7 +393,7 @@ func (b *BuildKit) buildFromContainerFile(ctx context.Context, r *pb.BuildReques
 		return nil, err
 	}
 
-	tc, err := b.extractTsuruConfigsFromContainerImage(ctx, r.DestinationImages[0], ic.WorkingDir)
+	tc, err := b.extractTsuruConfigsFromContainerImage(ctx, c, r.DestinationImages[0], ic.WorkingDir)
 	if err != nil {
 		return nil, err
 	}
@@ -407,17 +403,17 @@ func (b *BuildKit) buildFromContainerFile(ctx context.Context, r *pb.BuildReques
 	return tc, nil
 }
 
-func (b *BuildKit) buildPlatform(ctx context.Context, r *pb.BuildRequest, w console.File) error {
+func (b *BuildKit) buildPlatform(ctx context.Context, c *client.Client, r *pb.BuildRequest, w console.File) error {
 	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, r.Containerfile, nil, nil, nil)
 	if err != nil {
 		return err
 	}
 	defer cleanFunc()
 
-	return b.callBuildKitBuild(ctx, tmpDir, r, w)
+	return callBuildKitBuild(ctx, c, tmpDir, r, w)
 }
 
-func (b *BuildKit) callBuildKitBuild(ctx context.Context, buildContextDir string, r *pb.BuildRequest, w console.File) error {
+func callBuildKitBuild(ctx context.Context, c *client.Client, buildContextDir string, r *pb.BuildRequest, w console.File) error {
 	var secretSources []secretsprovider.Source
 	if r.App != nil {
 		secretSources = append(secretSources, secretsprovider.Source{
@@ -474,7 +470,7 @@ func (b *BuildKit) callBuildKitBuild(ctx context.Context, buildContextDir string
 			},
 		}
 
-		_, err = b.cli.Build(nctx, opts, "deploy-agent", func(ctx context.Context, c gateway.Client) (*gateway.Result, error) {
+		_, err = c.Build(nctx, opts, "deploy-agent", func(ctx context.Context, c gateway.Client) (*gateway.Result, error) {
 			return c.Solve(ctx, gateway.SolveRequest{
 				Frontend:    opts.Frontend,
 				FrontendOpt: opts.FrontendAttrs,
@@ -489,4 +485,60 @@ func (b *BuildKit) callBuildKitBuild(ctx context.Context, buildContextDir string
 	})
 
 	return eg.Wait()
+}
+
+func callBuildKitToExtractTsuruConfigs(ctx context.Context, c *client.Client, localContextDir, workingDir string) (*pb.TsuruConfig, error) {
+	eg, ctx := errgroup.WithContext(ctx)
+	pr, pw := io.Pipe() // reader/writer for tar output
+
+	eg.Go(func() error {
+		opts := client.SolveOpt{
+			Frontend: "dockerfile.v0",
+			LocalDirs: map[string]string{
+				"context":    filepath.Join(localContextDir, "context"),
+				"dockerfile": localContextDir,
+			},
+			Exports: []client.ExportEntry{
+				{
+					Type: client.ExporterTar,
+					Output: func(_ map[string]string) (io.WriteCloser, error) {
+						return pw, nil
+					},
+				},
+			},
+			Session: []session.Attachable{
+				authprovider.NewDockerAuthProvider(config.LoadDefaultConfigFile(os.Stderr)),
+			},
+		}
+		_, err := c.Build(ctx, opts, "deploy-agent", func(ctx context.Context, c gateway.Client) (*gateway.Result, error) {
+			return c.Solve(ctx, gateway.SolveRequest{
+				Frontend:    opts.Frontend,
+				FrontendOpt: opts.FrontendAttrs,
+			})
+		}, nil)
+		return err
+	})
+
+	var tc *pb.TsuruConfig
+	eg.Go(func() error {
+		var err error
+		tc, err = build.ExtractTsuruAppFilesFromContainerImageTarball(ctx, pr, workingDir)
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+
+	return tc, nil
+}
+
+func (b *BuildKit) client(ctx context.Context, req *pb.BuildRequest) (*client.Client, func(), error) {
+	isBuildForApp := strings.HasPrefix(pb.BuildKind_name[int32(req.Kind)], "BUILD_KIND_APP_")
+
+	if isBuildForApp && b.opts.DiscoverBuildKitClientForApp {
+		return discoverBuildKitClient(ctx, b.k8s, *b.kdopts, req)
+	}
+
+	return b.cli, noopFunc, nil
 }
