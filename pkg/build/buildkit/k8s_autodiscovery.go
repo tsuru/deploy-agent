@@ -231,7 +231,9 @@ func acquireLeaseForPod(ctx context.Context, cs *kubernetes.Clientset, ch chan<-
 		podname, _ = os.Hostname()
 	}
 
-	klog.V(4).Infof("Attempting to acquire the lease for pod %s/%s under holder name %q...", pod.Namespace, pod.Name, podname)
+	uniqueHolderName := fmt.Sprintf("%s-%d", podname, time.Now().Unix())
+
+	klog.V(4).Infof("Attempting to acquire the lease for pod %s/%s under holder name %q...", pod.Namespace, pod.Name, uniqueHolderName)
 
 	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
 		Lock: &resourcelock.LeaseLock{
@@ -241,7 +243,7 @@ func acquireLeaseForPod(ctx context.Context, cs *kubernetes.Clientset, ch chan<-
 			},
 			Client: cs.CoordinationV1(),
 			LockConfig: resourcelock.ResourceLockConfig{
-				Identity: podname,
+				Identity: uniqueHolderName,
 			},
 		},
 		ReleaseOnCancel: true,
