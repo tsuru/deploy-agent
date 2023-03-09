@@ -106,8 +106,10 @@ func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 }
 
 func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts KubernertesDiscoveryOptions, app string) (*corev1.Pod, error) {
-	// TODO: respect deadline to discover pods.
-	ns, err := d.buildkitPodNamespace(ctx, opts, app)
+	deadlineCtx, deadlineCancel := context.WithCancel(ctx)
+	defer deadlineCancel()
+
+	ns, err := d.buildkitPodNamespace(deadlineCtx, opts, app)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +120,7 @@ func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 	pods := make(chan *corev1.Pod)
 	defer close(pods)
 
-	watchCtx, watchCancel := context.WithCancel(ctx)
+	watchCtx, watchCancel := context.WithCancel(deadlineCtx)
 	defer watchCancel() // watch cancellation must happen before than closing the pods channel
 
 	go func() {
@@ -131,7 +133,7 @@ func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 	selected := make(chan *corev1.Pod, 1)
 	defer close(selected)
 
-	leaseCancelByPod := make(map[string]func())
+	leaseCancelByPod := make(map[string]context.CancelFunc)
 
 	go func() {
 		for pod := range pods {
@@ -146,23 +148,32 @@ func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 		}
 	}()
 
+	releaseLeaderLock := func(except string) {
+		for name, leaseCancel := range leaseCancelByPod {
+			if except == name {
+				continue
+			}
+
+			klog.V(4).Infof("Releasing lock for %s pod", name)
+			leaseCancel()
+		}
+	}
+
 	var pod *corev1.Pod
 
 	select {
+	case <-time.After(opts.Timeout):
+		releaseLeaderLock("") // release all lease locksa
+		return nil, fmt.Errorf("max deadline exceeded to discover BuildKit pod")
+
 	case err = <-errCh:
+		releaseLeaderLock("") // release all lease locks
 		return nil, err
 
 	case pod = <-selected:
 	}
 
-	for name, leaseCancel := range leaseCancelByPod {
-		if pod.Name == name {
-			continue
-		}
-
-		klog.V(4).Infof("Releasing lock for %s pod", name)
-		leaseCancel()
-	}
+	defer releaseLeaderLock(pod.Name) // release all lease locks except from the choosen pod
 
 	return pod, nil
 }
