@@ -133,16 +133,18 @@ func newBuildKit() (*buildkit.BuildKit, error) {
 		DiscoverBuildKitClientForApp: cfg.BuildKitAutoDiscovery,
 	}
 
-	b := buildkit.NewBuildKit(nil, opts)
+	var c *client.Client
 
 	if cfg.BuildkitAddress != "" {
-		c, err := client.New(context.Background(), cfg.BuildkitAddress, client.WithFailFast())
+		bc, err := client.New(context.Background(), cfg.BuildkitAddress, client.WithFailFast())
 		if err != nil {
 			return nil, fmt.Errorf("failed to create buildkit client: %w", err)
 		}
 
-		b = buildkit.NewBuildKit(c, opts)
+		c = bc
 	}
+
+	b := buildkit.NewBuildKit(c, opts)
 
 	if cfg.BuildKitAutoDiscovery {
 		config, err := clientcmd.BuildConfigFromFlags("", cfg.KubernetesConfig)
