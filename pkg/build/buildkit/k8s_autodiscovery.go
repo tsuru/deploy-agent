@@ -29,9 +29,12 @@ import (
 )
 
 const (
+	DeployAgentLastBuildStartingLabelKey   = "deploy-agent.tsuru.io/last-build-starting-time"
+	DeployAgentLastBuildEndingTimeLabelKey = "deploy-agent.tsuru.io/last-build-ending-time"
+
+	TsuruAppNamespace    = "tsuru"
 	TsuruAppNameLabelKey = "tsuru.io/app-name"
 	TsuruIsBuildLabelKey = "tsuru.io/is-build"
-	TsuruAppNamespace    = "tsuru"
 )
 
 var (
@@ -290,6 +293,15 @@ func setTsuruAppLabelOnBuildKitPod(ctx context.Context, cs *kubernetes.Clientset
 			"path":  fmt.Sprintf("/metadata/labels/%s", normalizeAppLabelForJSONPatch(TsuruIsBuildLabelKey)),
 			"value": strconv.FormatBool(true),
 		},
+		map[string]any{
+			"op":   "remove",
+			"path": fmt.Sprintf("/metadata/annotations/%s", normalizeAppLabelForJSONPatch(DeployAgentLastBuildEndingTimeLabelKey)),
+		},
+		map[string]any{
+			"op":    "replace",
+			"path":  fmt.Sprintf("/metadata/annotations/%s", normalizeAppLabelForJSONPatch(DeployAgentLastBuildStartingLabelKey)),
+			"value": strconv.FormatInt(time.Now().Unix(), 10),
+		},
 	})
 	if err != nil {
 		return err
@@ -308,6 +320,11 @@ func unsetTsuruAppLabelOnBuildKitPod(ctx context.Context, cs *kubernetes.Clients
 		map[string]any{
 			"op":   "remove",
 			"path": fmt.Sprintf("/metadata/labels/%s", normalizeAppLabelForJSONPatch(TsuruIsBuildLabelKey)),
+		},
+		map[string]any{
+			"op":    "replace",
+			"path":  fmt.Sprintf("/metadata/annotations/%s", normalizeAppLabelForJSONPatch(DeployAgentLastBuildEndingTimeLabelKey)),
+			"value": strconv.FormatInt(time.Now().Unix(), 10),
 		},
 	})
 	if err != nil {
