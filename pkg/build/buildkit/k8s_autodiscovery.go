@@ -147,7 +147,7 @@ func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 			leaseCtx, leaseCancel := context.WithCancel(ctx)
 			leaseCancelByPod[pod.Name] = leaseCancel
 
-			go acquireLeaseForPod(leaseCtx, d.cs, selected, pod, opts)
+			go acquireLeaseForPod(leaseCtx, d.cs, selected, pod, errCh, opts)
 		}
 	}()
 
@@ -239,10 +239,15 @@ func watchBuildKitPods(ctx context.Context, cs *kubernetes.Clientset, labelSelec
 	}
 }
 
-func acquireLeaseForPod(ctx context.Context, cs *kubernetes.Clientset, ch chan<- *corev1.Pod, pod *corev1.Pod, opts KubernertesDiscoveryOptions) {
+func acquireLeaseForPod(ctx context.Context, cs *kubernetes.Clientset, ch chan<- *corev1.Pod, pod *corev1.Pod, errCh chan<- error, opts KubernertesDiscoveryOptions) {
 	podname := os.Getenv("POD_NAME")
 	if podname == "" {
-		podname, _ = os.Hostname()
+		hostname, err := os.Hostname()
+		if err != nil {
+			errCh <- err
+		}
+
+		podname = hostname
 	}
 
 	uniqueHolderName := fmt.Sprintf("%s-%d", podname, time.Now().Unix())
