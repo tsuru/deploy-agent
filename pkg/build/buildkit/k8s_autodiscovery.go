@@ -176,7 +176,7 @@ func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 	case pod = <-selected:
 	}
 
-	defer releaseLeaderLock(pod.Name) // release all lease locks except from the choosen pod
+	defer releaseLeaderLock(pod.Name) // release all lease locks except from the chosen pod
 
 	return pod, nil
 }
