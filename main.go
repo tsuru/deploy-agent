@@ -13,11 +13,15 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/moby/buildkit/client"
-	"github.com/moby/buildkit/util/appdefaults"
 	"google.golang.org/grpc"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog"
 
 	"github.com/tsuru/deploy-agent/pkg/build"
 	"github.com/tsuru/deploy-agent/pkg/build/buildkit"
@@ -31,20 +35,43 @@ const (
 )
 
 var cfg struct {
-	BuildkitAddress      string
-	BuildkitTmpDir       string
-	Port                 int
-	ServerMaxRecvMsgSize int
-	ServerMaxSendMsgSize int
+	BuildkitAddress                                           string
+	BuildkitTmpDir                                            string
+	BuildKitAutoDiscoveryKubernetesPodSelector                string
+	BuildKitAutoDiscoveryKubernetesNamespace                  string
+	BuildKitAutoDiscoveryKubernetesLeasePrefix                string
+	KubernetesConfig                                          string
+	BuildKitAutoDiscoveryTimeout                              time.Duration
+	BuildKitAutoDiscoveryKubernetesPort                       int
+	Port                                                      int
+	ServerMaxRecvMsgSize                                      int
+	ServerMaxSendMsgSize                                      int
+	BuildKitAutoDiscovery                                     bool
+	BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels          bool
+	BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp bool
 }
 
 func main() {
+	klog.InitFlags(flag.CommandLine)
+
 	flag.IntVar(&cfg.Port, "port", 8080, "Server TCP port")
 	flag.IntVar(&cfg.ServerMaxRecvMsgSize, "max-receiving-message-size", DefaultServerMaxRecvMsgSize, "Max message size in bytes that server can receive")
 	flag.IntVar(&cfg.ServerMaxSendMsgSize, "max-sending-message-size", DefaultServerMaxSendMsgSize, "Max message size in bytes that server can send")
 
-	flag.StringVar(&cfg.BuildkitAddress, "buildkit-addr", getEnvOrDefault("BUILDKIT_HOST", appdefaults.Address), "Buildkit server address")
+	flag.StringVar(&cfg.KubernetesConfig, "kubeconfig", getEnvOrDefault("KUBECONFIG", ""), "Path to kubeconfig file")
+
+	flag.StringVar(&cfg.BuildkitAddress, "buildkit-addr", getEnvOrDefault("BUILDKIT_HOST", ""), "Buildkit server address")
 	flag.StringVar(&cfg.BuildkitTmpDir, "buildkit-tmp-dir", os.TempDir(), "Directory path to store temp files during container image builds")
+
+	flag.BoolVar(&cfg.BuildKitAutoDiscovery, "buildkit-autodiscovery", false, "Whether should dynamically discover the BuildKit service based on Tsuru app (if any)")
+	flag.DurationVar(&cfg.BuildKitAutoDiscoveryTimeout, "buildkit-autodiscovery-timeout", (5 * time.Minute), "Max duration to discover an available BuildKit")
+	flag.StringVar(&cfg.BuildKitAutoDiscoveryKubernetesPodSelector, "buildkit-autodiscovery-kubernetes-pod-selector", "", "Label selector of BuildKit's pods on Kubernetes")
+	flag.StringVar(&cfg.BuildKitAutoDiscoveryKubernetesNamespace, "buildkit-autodiscovery-kubernetes-namespace", "", "Namespace of BuildKit's pods on Kubernetes")
+	flag.StringVar(&cfg.BuildKitAutoDiscoveryKubernetesLeasePrefix, "buildkit-autodiscovery-kubernetes-lease-prefix", "deploy-agent", "Prefix name for Lease resources")
+	flag.IntVar(&cfg.BuildKitAutoDiscoveryKubernetesPort, "buildkit-autodiscovery-kubernetes-port", 80, "TCP port number which BuldKit's service is listening")
+	flag.BoolVar(&cfg.BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels, "buildkit-autodiscovery-kubernetes-set-tsuru-app-labels", false, "Whether should set the Tsuru app labels in the selected BuildKit pod")
+	flag.BoolVar(&cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp, "buildkit-autodiscovery-kubernetes-use-same-namespace-as-tsuru-app", false, "Whether should look for BuildKit in the Tsuru app's namespace")
+
 	flag.Parse()
 
 	l, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
@@ -53,14 +80,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
-
-	c, err := client.New(ctx, cfg.BuildkitAddress, client.WithFailFast())
+	bk, err := newBuildKit()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create Buildkit client: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to create BuildKit: %v", err)
 		os.Exit(1)
 	}
-	defer c.Close()
+	defer bk.Close()
 
 	serverOpts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(cfg.ServerMaxRecvMsgSize),
@@ -68,7 +93,7 @@ func main() {
 	}
 
 	s := grpc.NewServer(serverOpts...)
-	buildpb.RegisterBuildServer(s, build.NewServer(buildkit.NewBuildKit(c, buildkit.BuildKitOptions{TempDir: cfg.BuildkitTmpDir})))
+	buildpb.RegisterBuildServer(s, build.NewServer(bk))
 	healthpb.RegisterHealthServer(s, health.NewServer())
 
 	go handleGracefulTermination(s)
@@ -100,4 +125,55 @@ func getEnvOrDefault(env, def string) string {
 	}
 
 	return def
+}
+
+func newBuildKit() (*buildkit.BuildKit, error) {
+	opts := buildkit.BuildKitOptions{
+		TempDir:                      cfg.BuildkitTmpDir,
+		DiscoverBuildKitClientForApp: cfg.BuildKitAutoDiscovery,
+	}
+
+	var c *client.Client
+
+	if cfg.BuildkitAddress != "" {
+		bc, err := client.New(context.Background(), cfg.BuildkitAddress, client.WithFailFast())
+		if err != nil {
+			return nil, fmt.Errorf("failed to create buildkit client: %w", err)
+		}
+
+		c = bc
+	}
+
+	b := buildkit.NewBuildKit(c, opts)
+
+	if cfg.BuildKitAutoDiscovery {
+		config, err := clientcmd.BuildConfigFromFlags("", cfg.KubernetesConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		cs, err := kubernetes.NewForConfig(config)
+		if err != nil {
+			return nil, err
+		}
+
+		dcs, err := dynamic.NewForConfig(config)
+		if err != nil {
+			return nil, err
+		}
+
+		kdopts := buildkit.KubernertesDiscoveryOptions{
+			Timeout:               cfg.BuildKitAutoDiscoveryTimeout,
+			PodSelector:           cfg.BuildKitAutoDiscoveryKubernetesPodSelector,
+			Namespace:             cfg.BuildKitAutoDiscoveryKubernetesNamespace,
+			Port:                  cfg.BuildKitAutoDiscoveryKubernetesPort,
+			SetTsuruAppLabel:      cfg.BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels,
+			UseSameNamespaceAsApp: cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp,
+			LeasePrefix:           cfg.BuildKitAutoDiscoveryKubernetesLeasePrefix,
+		}
+
+		return b.WithKubernetesDiscovery(cs, dcs, kdopts), nil
+	}
+
+	return b, nil
 }
