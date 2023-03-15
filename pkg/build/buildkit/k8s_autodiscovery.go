@@ -299,8 +299,9 @@ func setTsuruAppLabelOnBuildKitPod(ctx context.Context, cs *kubernetes.Clientset
 			"value": strconv.FormatBool(true),
 		},
 		map[string]any{
-			"op":   "remove",
-			"path": fmt.Sprintf("/metadata/annotations/%s", normalizeAppLabelForJSONPatch(DeployAgentLastBuildEndingTimeLabelKey)),
+			"op":    "replace",
+			"path":  fmt.Sprintf("/metadata/annotations/%s", normalizeAppLabelForJSONPatch(DeployAgentLastBuildEndingTimeLabelKey)),
+			"value": "", // set annotation value to empty rather than removing it, since it might not exist at first run
 		},
 		map[string]any{
 			"op":    "replace",
