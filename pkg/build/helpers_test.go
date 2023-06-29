@@ -410,3 +410,28 @@ RUN --mount=type=secret,id=tsuru-app-envvars,target=/var/run/secrets/envs.sh,uid
 		})
 	}
 }
+
+func TestSortExposedPorts(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		ports    map[string]struct{}
+		expected []string
+	}{
+		{},
+		{
+			ports:    map[string]struct{}{"8888/tcp": {}},
+			expected: []string{"8888/tcp"},
+		},
+		{
+			ports:    map[string]struct{}{"8888/tcp": {}, "80/tcp": {}, "53/udp": {}, "80/udp": {}, "8000/tcp": {}},
+			expected: []string{"53/udp", "80/tcp", "80/udp", "8000/tcp", "8888/tcp"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run("", func(t *testing.T) {
+			assert.Equal(t, tt.expected, SortExposedPorts(tt.ports))
+		})
+	}
+}

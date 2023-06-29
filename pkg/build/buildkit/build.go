@@ -271,16 +271,11 @@ func extractContainerImageConfigFromImageManifest(ctx context.Context, imageStr 
 		return nil, err
 	}
 
-	var exposedPorts []string
-	for k := range cf.Config.ExposedPorts {
-		exposedPorts = append(exposedPorts, k)
-	}
-
 	return &pb.ContainerImageConfig{
 		Entrypoint:   cf.Config.Entrypoint,
 		Cmd:          cf.Config.Cmd,
 		WorkingDir:   cf.Config.WorkingDir,
-		ExposedPorts: exposedPorts,
+		ExposedPorts: build.SortExposedPorts(cf.Config.ExposedPorts),
 	}, nil
 }
 

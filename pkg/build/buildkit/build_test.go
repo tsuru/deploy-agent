@@ -619,6 +619,36 @@ EXPOSE 8888/tcp
 			},
 		}, appFiles)
 	})
+
+	t.Run("multiple exposed ports, should ensure the ascending order of ports", func(t *testing.T) {
+		destImage := baseRegistry(t, "my-app", "")
+
+		dockerfile := `FROM busybox
+
+EXPOSE 100/udp 53/udp 443/udp
+EXPOSE 8080/tcp 80/tcp 8000/tcp 9090 8888
+`
+		req := &pb.BuildRequest{
+			Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE,
+			App: &pb.TsuruApp{
+				Name: "my-app",
+			},
+			DestinationImages: []string{destImage},
+			Containerfile:     string(dockerfile),
+			PushOptions: &pb.PushOptions{
+				InsecureRegistry: registryHTTP,
+			},
+		}
+
+		appFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).Build(context.TODO(), req, os.Stdout)
+		require.NoError(t, err)
+		assert.Equal(t, &pb.TsuruConfig{
+			ImageConfig: &pb.ContainerImageConfig{
+				Cmd:          []string{"sh"},
+				ExposedPorts: []string{"53/udp", "80/tcp", "100/udp", "443/udp", "8000/tcp", "8080/tcp", "8888/tcp", "9090/tcp"},
+			},
+		}, appFiles)
+	})
 }
 
 func compressGZIP(t *testing.T, path string) []byte {

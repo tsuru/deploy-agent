@@ -13,6 +13,9 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"text/template"
 
@@ -263,4 +266,30 @@ func (w *BuildResponseOutputWriter) Fd() uintptr { // required to implement cons
 
 func (w *BuildResponseOutputWriter) Name() string { // required to implement console.File
 	return ""
+}
+
+func SortExposedPorts(ports map[string]struct{}) []string {
+	var ps []string
+	for p := range ports {
+		ps = append(ps, p)
+	}
+
+	sort.Slice(ps, func(i, j int) bool {
+		a, b := ps[i], ps[j]
+
+		// Example of exposed port: "8080/tcp"
+		portAStr, protoAStr, _ := strings.Cut(a, "/")
+		portBStr, protoBStr, _ := strings.Cut(b, "/")
+
+		portA, _ := strconv.Atoi(portAStr)
+		portB, _ := strconv.Atoi(portBStr)
+
+		if portA == portB {
+			return protoAStr < protoBStr
+		}
+
+		return portA < portB
+	})
+
+	return ps
 }
