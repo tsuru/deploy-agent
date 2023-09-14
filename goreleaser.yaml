@@ -18,8 +18,7 @@ dockers:
 - id: deploy-agent-linux-amd64
   dockerfile: Dockerfile.goreleaser
   goos: linux
-  goarch:
-  - amd64
+  goarch: amd64
   build_flag_templates:
   - --pull
   - --label=org.opencontainers.image.created={{ .Date }}
@@ -34,8 +33,7 @@ dockers:
 - id: deploy-agent-linux-arm64
   dockerfile: Dockerfile.goreleaser
   goos: linux
-  goarch:
-  - arm64
+  goarch: arm64
   build_flag_templates:
   - --pull
   - --label=org.opencontainers.image.created={{ .Date }}
