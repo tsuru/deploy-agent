@@ -62,6 +62,7 @@ jobs:
       with:
         push: true
         tags: tsuru/deploy-agent:latest
+        platforms: linux/amd64,linux/arm64
 
   release:
     if: github.event_name != 'pull_request' && github.repository == 'tsuru/deploy-agent' && startsWith(github.ref, 'refs/tags/')

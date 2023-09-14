@@ -15,10 +15,12 @@ builds:
   - 7
 
 dockers:
-- id: deploy-agent-linux-amd64
+- id: deploy-agent-linux
   dockerfile: Dockerfile.goreleaser
   goos: linux
-  goarch: amd64
+  goarch:
+  - amd64
+  - arm64
   build_flag_templates:
   - --pull
   - --label=org.opencontainers.image.created={{ .Date }}
