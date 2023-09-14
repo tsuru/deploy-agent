@@ -15,11 +15,26 @@ builds:
   - 7
 
 dockers:
-- id: deploy-agent-linux
+- id: deploy-agent-linux-amd64
   dockerfile: Dockerfile.goreleaser
   goos: linux
   goarch:
   - amd64
+  build_flag_templates:
+  - --pull
+  - --label=org.opencontainers.image.created={{ .Date }}
+  - --label=org.opencontainers.image.title={{ .ProjectName }}
+  - --label=org.opencontainers.image.revision={{ .FullCommit }}
+  - --label=org.opencontainers.image.version={{ .Version }}
+  image_templates:
+  - tsuru/deploy-agent:{{ .Tag }}
+  - tsuru/deploy-agent:v{{ .Major }}
+  - tsuru/deploy-agent:v{{ .Major }}.{{ .Minor }}
+  - tsuru/deploy-agent:latest
+- id: deploy-agent-linux-arm64
+  dockerfile: Dockerfile.goreleaser
+  goos: linux
+  goarch:
   - arm64
   build_flag_templates:
   - --pull
