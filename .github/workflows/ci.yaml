@@ -60,7 +60,6 @@ jobs:
         username: ${{ secrets.REGISTRY_USERNAME }}
         password: ${{ secrets.REGISTRY_PASSWORD }}
     - name: push image tag to Docker Hub (tsuru/deploy-agent)
-      if: contains(github.ref, 'refs/heads/main')
       uses: docker/build-push-action@v5
       with:
         context: .
