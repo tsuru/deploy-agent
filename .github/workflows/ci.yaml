@@ -58,7 +58,7 @@ jobs:
 
     - name: push "latest" image tag to Docker Hub (tsuru/deploy-agent)
       if: contains(github.ref, 'refs/heads/main')
-      uses: docker/build-push-action@v3
+      uses: docker/build-push-action@v5
       with:
         push: true
         tags: tsuru/deploy-agent:latest
