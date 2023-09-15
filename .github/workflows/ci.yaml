@@ -54,6 +54,14 @@ jobs:
         docker_image: tsuru/deploy-agent
         default_branch: main
         tag_with_sha: 'true'
+    - name: Handle smart-tag to proper tag var
+      uses: actions/github-script@v6
+      id: handle_tag
+      with:
+        script: |
+          var tag_re = /deploy-agent:([0-9])/g
+          var orig_tags = `${{steps.smarttag.outputs.tag}}`
+          return orig_tags.replace(tag_re,"deploy-agent:v$1")
     - name: docker login
       uses: docker/login-action@v3
       with:
@@ -64,5 +72,24 @@ jobs:
       with:
         context: .
         push: true
-        tags: ${{ steps.smarttag.outputs.tag }}
+        tags: ${{ steps.handle_tag.outputs.result }}
         platforms: linux/amd64,linux/arm64
+
+  release:
+    if: github.event_name != 'pull_request' && github.repository == 'tsuru/deploy-agent' && startsWith(github.ref, 'refs/tags/')
+    needs:
+    - lint
+    - test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v2
+    - uses: actions/setup-go@v3
+      with:
+        go-version: '1.19'
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - uses: goreleaser/goreleaser-action@v2
+      with:
+        args: release --rm-dist
