@@ -11,6 +11,8 @@ option go_package = "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1";
 service Build {
     // Builds (and pushes) container images.
     rpc Build(BuildRequest) returns (stream BuildResponse) {};
+    // Push pushes an already existing image to another image registry
+    rpc Push(PushRequest) returns (stream PushResponse) {};
 }
 
 message BuildRequest {
@@ -52,6 +54,15 @@ message BuildRequest {
   PushOptions push_options = 10;
 }
 
+message PushRequest {
+    // SourceImage is the source container image name.
+    string source_image = 1;
+    // DestinationImages are the tags of the container image after build.
+    repeated string destination_images = 2;
+    // PushOptions contains the options push the generated images.
+    PushOptions push_options = 3;
+}
+
 enum BuildKind {
   option allow_alias = true;
 
@@ -73,6 +84,15 @@ message BuildResponse {
     string output = 1;
     // TsuruConfig is the configuration of the application.
     TsuruConfig tsuru_config = 2;
+  }
+}
+
+message PushResponse{
+  oneof data {
+    // Output is the progress messages during the push phase.
+    string output = 1;
+    // ImageSha is the sha256 of the pushed image.
+    string image_sha = 2;
   }
 }
 
