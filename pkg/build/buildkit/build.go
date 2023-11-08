@@ -116,6 +116,9 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 	case "BUILD_KIND_APP_BUILD_WITH_CONTAINER_IMAGE":
 		return b.buildFromContainerImage(ctx, c, r, ow)
 
+	case "BUILD_KIND_JOB_CREATE_WITH_CONTAINER_IMAGE":
+		return b.buildFromContainerImage(ctx, c, r, ow)
+
 	case "BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE":
 		return b.buildFromContainerFile(ctx, c, r, ow)
 
@@ -416,6 +419,11 @@ func callBuildKitBuild(ctx context.Context, c *client.Client, buildContextDir st
 	if r.App != nil {
 		secretSources = append(secretSources, secretsprovider.Source{
 			ID:       "tsuru-app-envvars",
+			FilePath: filepath.Join(buildContextDir, "secrets", "envs.sh"),
+		})
+	} else if r.Job != nil {
+		secretSources = append(secretSources, secretsprovider.Source{
+			ID:       "tsuru-job-envvars",
 			FilePath: filepath.Join(buildContextDir, "secrets", "envs.sh"),
 		})
 	}

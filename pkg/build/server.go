@@ -85,6 +85,10 @@ func validateBuildRequest(r *pb.BuildRequest) error {
 		return status.Error(codes.InvalidArgument, "app cannot be nil")
 	}
 
+	if strings.HasPrefix(kind, "BUILD_KIND_JOB_") && r.Job == nil {
+		return status.Error(codes.InvalidArgument, "job cannot be nil")
+	}
+
 	if strings.HasPrefix(kind, "BUILD_KIND_PLATFORM_") && r.Platform == nil {
 		return status.Error(codes.InvalidArgument, "platform cannot be nil")
 	}

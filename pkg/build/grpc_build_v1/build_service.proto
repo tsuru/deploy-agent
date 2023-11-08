@@ -50,6 +50,11 @@ message BuildRequest {
 
   // PushOptions contains the options push the generated images.
   PushOptions push_options = 10;
+
+  // Job is the Tsuru job which is being deployed, if any.
+  //
+  // NOTE: mandatory field when build kind starts with BUILD_KIND_JOB_.
+  TsuruJob job = 11;
 }
 
 enum BuildKind {
@@ -65,6 +70,8 @@ enum BuildKind {
 
   BUILD_KIND_PLATFORM_WITH_CONTAINER_IMAGE   = 5; // tsuru platform add/update ... -i registry.example.com/tsuru/python:latest
   BUILD_KIND_PLATFORM_WITH_CONTAINER_FILE    = 6; // tsuru platform add/update ... --dockerfile Dockerfile
+
+  BUILD_KIND_JOB_CREATE_WITH_CONTAINER_IMAGE = 7; // tsuru job create ... -i registry.example.com/tsuru/my-job:latest
 }
 
 message BuildResponse {
@@ -80,6 +87,13 @@ message TsuruApp {
   // Name is the Tsuru app name.
   string name = 1;
   // EnvVars are the enviroment variables set on app.
+  map<string, string> env_vars = 3;
+}
+
+message TsuruJob {
+  // Name is the Tsuru job name.
+  string name = 1;
+  // EnvVars are the enviroment variables set on the job.
   map<string, string> env_vars = 3;
 }
 

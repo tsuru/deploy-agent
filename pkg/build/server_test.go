@@ -114,6 +114,20 @@ func TestBuild(t *testing.T) {
 			},
 		},
 
+		"missing job, when kind is from job": {
+			req: &pb.BuildRequest{
+				SourceImage:       "tsuru/scratch:latest",
+				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
+				Kind:              pb.BuildKind_BUILD_KIND_JOB_CREATE_WITH_CONTAINER_IMAGE,
+			},
+			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, stream)
+				_, _, err = readResponse(t, stream)
+				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "job cannot be nil").Error())
+			},
+		},
+
 		"deploy from source code, empty source image": {
 			req: &pb.BuildRequest{
 				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},

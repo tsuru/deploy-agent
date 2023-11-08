@@ -375,6 +375,30 @@ func TestBuildKit_Build_FromContainerImages(t *testing.T) {
 			},
 		}, appFiles)
 	})
+
+	t.Run("container image without Tsuru app files (tsuru.yaml, Procfile) + job image push", func(t *testing.T) {
+		req := &pb.BuildRequest{
+			Kind: pb.BuildKind_BUILD_KIND_JOB_CREATE_WITH_CONTAINER_IMAGE,
+			Job: &pb.TsuruJob{
+				Name: "my-job",
+			},
+			SourceImage:       "nginx:1.22-alpine",
+			DestinationImages: []string{baseRegistry(t, "job-my-job", "")},
+			PushOptions:       &pb.PushOptions{InsecureRegistry: registryHTTP},
+		}
+
+		appFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).
+			Build(context.TODO(), req, os.Stdout)
+
+		require.NoError(t, err)
+		assert.Equal(t, &pb.TsuruConfig{
+			ImageConfig: &pb.ContainerImageConfig{
+				Entrypoint:   []string{"/docker-entrypoint.sh"},
+				Cmd:          []string{"nginx", "-g", "daemon off;"},
+				ExposedPorts: []string{"80/tcp"},
+			},
+		}, appFiles)
+	})
 }
 
 func TestBuildKit_Build_FromContainerFile(t *testing.T) {
