@@ -113,11 +113,14 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 	case "BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD":
 		return b.buildFromAppSourceFiles(ctx, c, r, ow)
 
+	case "BUILD_KIND_JOB_CREATE_WITH_CONTAINER_IMAGE":
+		fallthrough
+
 	case "BUILD_KIND_APP_BUILD_WITH_CONTAINER_IMAGE":
 		return b.buildFromContainerImage(ctx, c, r, ow)
 
-	case "BUILD_KIND_JOB_CREATE_WITH_CONTAINER_IMAGE":
-		return b.buildFromContainerImage(ctx, c, r, ow)
+	case "BUILD_KIND_JOB_CREATE_WITH_CONTAINER_FILE":
+		fallthrough
 
 	case "BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE":
 		return b.buildFromContainerFile(ctx, c, r, ow)

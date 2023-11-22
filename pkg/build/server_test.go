@@ -128,6 +128,20 @@ func TestBuild(t *testing.T) {
 			},
 		},
 
+		"missing job, when kind is from job with Dockerfile": {
+			req: &pb.BuildRequest{
+				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
+				Kind:              pb.BuildKind_BUILD_KIND_JOB_CREATE_WITH_CONTAINER_IMAGE,
+				Containerfile:     "FROM tsuru/scratch:latest",
+			},
+			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, stream)
+				_, _, err = readResponse(t, stream)
+				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "job cannot be nil").Error())
+			},
+		},
+
 		"deploy from source code, empty source image": {
 			req: &pb.BuildRequest{
 				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
@@ -205,6 +219,33 @@ func TestBuild(t *testing.T) {
 				require.NoError(t, err)
 				require.NotNil(t, tsuruConfig)
 				assert.Equal(t, &pb.TsuruConfig{Procfile: "web: ./path/to/server.sh --addr :${PORT}", TsuruYaml: "healthcheck:\n  path: /healthz"}, tsuruConfig)
+				assert.Regexp(t, `(.*)--- EXECUTING BUILD ---(.*)`, output)
+			},
+		},
+
+		"job build successful": {
+			builder: &fake.FakeBuilder{
+				OnBuild: func(ctx context.Context, r *pb.BuildRequest, w io.Writer) (*pb.TsuruConfig, error) {
+					assert.NotNil(t, ctx)
+					assert.NotNil(t, r)
+					assert.NotNil(t, w)
+					fmt.Fprintln(w, "--- EXECUTING BUILD ---")
+					return nil, nil
+				},
+			},
+			req: &pb.BuildRequest{
+				Containerfile:     "FROM tsuru/scratch:latest",
+				DestinationImages: []string{"registry.example.com/tsuru/job-my-job:latest"},
+				Kind:              pb.BuildKind_BUILD_KIND_JOB_DEPLOY_WITH_CONTAINER_FILE,
+				Job:               &pb.TsuruJob{Name: "my-job"},
+				Data:              []byte("fake data :P"),
+			},
+			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, stream)
+				tsuruConfig, output, err := readResponse(t, stream)
+				require.NoError(t, err)
+				require.Nil(t, tsuruConfig)
 				assert.Regexp(t, `(.*)--- EXECUTING BUILD ---(.*)`, output)
 			},
 		},
