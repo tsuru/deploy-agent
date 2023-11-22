@@ -595,7 +595,10 @@ ENV MY_ANOTHER_VAR="another var"
 			},
 		}
 
-		jobFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).Build(context.TODO(), req, os.Stdout)
+		b := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()})
+		jobFiles, err := b.Build(context.TODO(), req, os.Stdout)
+
+		//jobFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).Build(context.TODO(), req, os.Stdout)
 		require.NoError(t, err)
 		assert.Equal(t, &pb.TsuruConfig{
 			ImageConfig: &pb.ContainerImageConfig{
