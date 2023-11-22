@@ -377,7 +377,16 @@ func (b *BuildKit) buildFromContainerFile(ctx context.Context, c *client.Client,
 		files = bytes.NewReader(r.Data)
 	}
 
-	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, r.Containerfile, nil, r.App.EnvVars, files)
+	var tmpDir string
+	var cleanFunc func()
+	var err error
+	if r.App != nil {
+		tmpDir, cleanFunc, err = generateBuildLocalDir(ctx, b.opts.TempDir, r.Containerfile, nil, r.App.EnvVars, files)
+	} else if r.Job != nil {
+		tmpDir, cleanFunc, err = generateBuildLocalDir(ctx, b.opts.TempDir, r.Containerfile, nil, r.Job.EnvVars, files)
+	} else {
+		return nil, status.Errorf(codes.InvalidArgument, "build request must have either an app or a job")
+	}
 	if err != nil {
 		return nil, err
 	}
