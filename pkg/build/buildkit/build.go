@@ -113,11 +113,14 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 	case "BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD":
 		return b.buildFromAppSourceFiles(ctx, c, r, ow)
 
+	case "BUILD_KIND_JOB_CREATE_WITH_CONTAINER_IMAGE":
+		fallthrough
+
 	case "BUILD_KIND_APP_BUILD_WITH_CONTAINER_IMAGE":
 		return b.buildFromContainerImage(ctx, c, r, ow)
 
-	case "BUILD_KIND_JOB_CREATE_WITH_CONTAINER_IMAGE":
-		return b.buildFromContainerImage(ctx, c, r, ow)
+	case "BUILD_KIND_JOB_CREATE_WITH_CONTAINER_FILE":
+		fallthrough
 
 	case "BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE":
 		return b.buildFromContainerFile(ctx, c, r, ow)
@@ -374,7 +377,16 @@ func (b *BuildKit) buildFromContainerFile(ctx context.Context, c *client.Client,
 		files = bytes.NewReader(r.Data)
 	}
 
-	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, r.Containerfile, nil, r.App.EnvVars, files)
+	var tmpDir string
+	var cleanFunc func()
+	var err error
+	if r.App != nil {
+		tmpDir, cleanFunc, err = generateBuildLocalDir(ctx, b.opts.TempDir, r.Containerfile, nil, r.App.EnvVars, files)
+	} else if r.Job != nil {
+		tmpDir, cleanFunc, err = generateBuildLocalDir(ctx, b.opts.TempDir, r.Containerfile, nil, r.Job.EnvVars, files)
+	} else {
+		return nil, status.Errorf(codes.InvalidArgument, "build request must have either an app or a job")
+	}
 	if err != nil {
 		return nil, err
 	}
