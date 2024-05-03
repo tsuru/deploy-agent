@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -52,15 +53,15 @@ type k8sDiscoverer struct {
 	dcs dynamic.Interface
 }
 
-func (d *k8sDiscoverer) Discover(ctx context.Context, opts KubernertesDiscoveryOptions, req *pb.BuildRequest) (*client.Client, func(), error) {
+func (d *k8sDiscoverer) Discover(ctx context.Context, opts KubernertesDiscoveryOptions, req *pb.BuildRequest, w io.Writer) (*client.Client, func(), error) {
 	if req.App == nil {
 		return nil, noopFunc, fmt.Errorf("there's only support for discovering BuildKit pods from Tsuru apps")
 	}
 
-	return d.discoverBuildKitClientFromApp(ctx, opts, req.App.Name)
+	return d.discoverBuildKitClientFromApp(ctx, opts, req.App.Name, w)
 }
 
-func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts KubernertesDiscoveryOptions, app string) (*client.Client, func(), error) {
+func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts KubernertesDiscoveryOptions, app string, w io.Writer) (*client.Client, func(), error) {
 	leaderCtx, leaderCancel := context.WithCancel(ctx)
 	cfns := []func(){
 		func() {
@@ -69,7 +70,7 @@ func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 		},
 	}
 
-	pod, err := d.discoverBuildKitPod(leaderCtx, opts, app)
+	pod, err := d.discoverBuildKitPod(leaderCtx, opts, app, w)
 	if err != nil {
 		return nil, cleanUps(cfns...), err
 	}
@@ -108,7 +109,7 @@ func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 	return c, cleanUps(cfns...), nil
 }
 
-func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts KubernertesDiscoveryOptions, app string) (*corev1.Pod, error) {
+func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts KubernertesDiscoveryOptions, app string, w io.Writer) (*corev1.Pod, error) {
 	deadlineCtx, deadlineCancel := context.WithCancel(ctx)
 	defer deadlineCancel()
 
@@ -127,7 +128,7 @@ func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 	defer watchCancel() // watch cancellation must happen before than closing the pods channel
 
 	go func() {
-		nerr := watchBuildKitPods(watchCtx, d.cs, opts.PodSelector, ns, pods)
+		nerr := watchBuildKitPods(watchCtx, d.cs, opts, ns, pods, w)
 		if nerr != nil {
 			errCh <- nerr
 		}
@@ -208,9 +209,27 @@ func (d *k8sDiscoverer) buildkitPodNamespace(ctx context.Context, opts Kubernert
 	return ns, nil
 }
 
-func watchBuildKitPods(ctx context.Context, cs *kubernetes.Clientset, labelSelector, ns string, pods chan<- *corev1.Pod) error {
+func watchBuildKitPods(ctx context.Context, cs *kubernetes.Clientset, opts KubernertesDiscoveryOptions, ns string, pods chan<- *corev1.Pod, writer io.Writer) error {
+	if opts.ScaleStatefulset != "" {
+		stfullset, err := cs.AppsV1().StatefulSets(ns).Get(ctx, opts.ScaleStatefulset, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+
+		if stfullset.Spec.Replicas == nil || *stfullset.Spec.Replicas == 0 {
+			fmt.Fprintln(writer, "There is no buildkits available, scaling to one replica")
+			wantedReplicas := int32(1)
+			stfullset.Spec.Replicas = &wantedReplicas
+
+			_, err := cs.AppsV1().StatefulSets(ns).Update(ctx, stfullset, metav1.UpdateOptions{})
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	w, err := cs.CoreV1().Pods(ns).Watch(ctx, metav1.ListOptions{
-		LabelSelector: labelSelector,
+		LabelSelector: opts.PodSelector,
 		Watch:         true,
 	})
 	if err != nil {

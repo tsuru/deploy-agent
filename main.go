@@ -40,6 +40,7 @@ var cfg struct {
 	BuildKitAutoDiscoveryKubernetesPodSelector                string
 	BuildKitAutoDiscoveryKubernetesNamespace                  string
 	BuildKitAutoDiscoveryKubernetesLeasePrefix                string
+	BuildKitAutoDiscoveryScaleStatefulset                     string
 	KubernetesConfig                                          string
 	BuildKitAutoDiscoveryTimeout                              time.Duration
 	BuildKitAutoDiscoveryKubernetesPort                       int
@@ -71,6 +72,7 @@ func main() {
 	flag.IntVar(&cfg.BuildKitAutoDiscoveryKubernetesPort, "buildkit-autodiscovery-kubernetes-port", 80, "TCP port number which BuldKit's service is listening")
 	flag.BoolVar(&cfg.BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels, "buildkit-autodiscovery-kubernetes-set-tsuru-app-labels", false, "Whether should set the Tsuru app labels in the selected BuildKit pod")
 	flag.BoolVar(&cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp, "buildkit-autodiscovery-kubernetes-use-same-namespace-as-tsuru-app", false, "Whether should look for BuildKit in the Tsuru app's namespace")
+	flag.StringVar(&cfg.BuildKitAutoDiscoveryScaleStatefulset, "buildkit-autodiscovery-scale-statefulset", "", "Name of statefulset of buildkit that scale from zero")
 
 	flag.Parse()
 
@@ -170,6 +172,7 @@ func newBuildKit() (*buildkit.BuildKit, error) {
 			SetTsuruAppLabel:      cfg.BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels,
 			UseSameNamespaceAsApp: cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp,
 			LeasePrefix:           cfg.BuildKitAutoDiscoveryKubernetesLeasePrefix,
+			ScaleStatefulset:      cfg.BuildKitAutoDiscoveryScaleStatefulset,
 		}
 
 		return b.WithKubernetesDiscovery(cs, dcs, kdopts), nil

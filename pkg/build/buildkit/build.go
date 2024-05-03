@@ -38,6 +38,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/tsuru/deploy-agent/pkg/build"
+	"github.com/tsuru/deploy-agent/pkg/build/gc"
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 	"github.com/tsuru/deploy-agent/pkg/util"
 )
@@ -66,6 +67,7 @@ type KubernertesDiscoveryOptions struct {
 	PodSelector           string
 	Namespace             string
 	LeasePrefix           string
+	ScaleStatefulset      string
 	Port                  int
 	UseSameNamespaceAsApp bool
 	SetTsuruAppLabel      bool
@@ -76,6 +78,11 @@ func (b *BuildKit) WithKubernetesDiscovery(cs *kubernetes.Clientset, dcs dynamic
 	b.k8s = cs
 	b.dk8s = dcs
 	b.kdopts = &opts
+
+	if opts.ScaleStatefulset != "" {
+		gc.Run(cs, opts.PodSelector, opts.ScaleStatefulset)
+	}
+
 	return b
 }
 
@@ -100,7 +107,7 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 		return nil, errors.New("writer must implement console.File")
 	}
 
-	c, clientCleanUp, err := b.client(ctx, r)
+	c, clientCleanUp, err := b.client(ctx, r, w)
 	if err != nil {
 		return nil, err
 	}
@@ -539,7 +546,7 @@ func callBuildKitToExtractTsuruConfigs(ctx context.Context, c *client.Client, lo
 	return tc, nil
 }
 
-func (b *BuildKit) client(ctx context.Context, req *pb.BuildRequest) (*client.Client, func(), error) {
+func (b *BuildKit) client(ctx context.Context, req *pb.BuildRequest, w io.Writer) (*client.Client, func(), error) {
 	isBuildForApp := strings.HasPrefix(pb.BuildKind_name[int32(req.Kind)], "BUILD_KIND_APP_")
 
 	if isBuildForApp && b.opts.DiscoverBuildKitClientForApp {
@@ -547,7 +554,7 @@ func (b *BuildKit) client(ctx context.Context, req *pb.BuildRequest) (*client.Cl
 			cs:  b.k8s,
 			dcs: b.dk8s,
 		}
-		return d.Discover(ctx, *b.kdopts, req)
+		return d.Discover(ctx, *b.kdopts, req, w)
 	}
 
 	return b.cli, noopFunc, nil
