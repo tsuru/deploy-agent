@@ -1,3 +1,7 @@
+// Copyright 2024 tsuru authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package scaler
 
 import (
@@ -25,7 +29,8 @@ func MayUpscale(ctx context.Context, cs kubernetes.Interface, ns, statefulset st
 	wantedReplicas := int32(1)
 
 	if lastReplicas := stfullset.Annotations[metadata.DeployAgentLastReplicasAnnotationKey]; lastReplicas != "" {
-		replicas, err := strconv.ParseInt(lastReplicas, 10, 32)
+		var replicas int64
+		replicas, err = strconv.ParseInt(lastReplicas, 10, 32)
 		if err != nil {
 			return err
 		}

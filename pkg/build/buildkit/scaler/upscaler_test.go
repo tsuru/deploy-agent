@@ -1,3 +1,6 @@
+// Copyright 2024 tsuru authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 package scaler
 
 import (
@@ -59,7 +62,6 @@ func TestMayScaleStatefulsetScale(t *testing.T) {
 
 	require.Len(t, rs.Items, 1)
 	assert.Equal(t, int32(1), *rs.Items[0].Spec.Replicas)
-
 }
 
 func TestMayScaleStatefulsetScaleFromPreviousReplicas(t *testing.T) {
