@@ -38,7 +38,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/tsuru/deploy-agent/pkg/build"
-	"github.com/tsuru/deploy-agent/pkg/build/gc"
+	"github.com/tsuru/deploy-agent/pkg/build/downscaler"
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 	"github.com/tsuru/deploy-agent/pkg/util"
 )
@@ -80,7 +80,7 @@ func (b *BuildKit) WithKubernetesDiscovery(cs *kubernetes.Clientset, dcs dynamic
 	b.kdopts = &opts
 
 	if opts.ScaleStatefulset != "" {
-		gc.Run(cs, opts.PodSelector, opts.ScaleStatefulset)
+		downscaler.StartWorker(cs, opts.PodSelector, opts.ScaleStatefulset)
 	}
 
 	return b
