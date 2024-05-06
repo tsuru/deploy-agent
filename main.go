@@ -41,8 +41,8 @@ var cfg struct {
 	BuildKitAutoDiscoveryKubernetesNamespace                  string
 	BuildKitAutoDiscoveryKubernetesLeasePrefix                string
 	BuildKitAutoDiscoveryStatefulset                          string
-	BuildKitAutoDiscoveryScaleGracefulPeriod                  time.Duration
 	KubernetesConfig                                          string
+	BuildKitAutoDiscoveryScaleGracefulPeriod                  time.Duration
 	BuildKitAutoDiscoveryTimeout                              time.Duration
 	BuildKitAutoDiscoveryKubernetesPort                       int
 	Port                                                      int
