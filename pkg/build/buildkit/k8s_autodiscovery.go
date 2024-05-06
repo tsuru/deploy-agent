@@ -203,8 +203,8 @@ func (d *k8sDiscoverer) buildkitPodNamespace(ctx context.Context, opts Kubernert
 }
 
 func watchBuildKitPods(ctx context.Context, cs *kubernetes.Clientset, opts KubernertesDiscoveryOptions, ns string, pods chan<- *corev1.Pod, writer io.Writer) error {
-	if opts.ScaleStatefulset != "" {
-		scaleErr := scaler.MayUpscale(ctx, cs, ns, opts.ScaleStatefulset, writer)
+	if opts.Statefulset != "" {
+		scaleErr := scaler.MayUpscale(ctx, cs, ns, opts.Statefulset, writer)
 		if scaleErr != nil {
 			return scaleErr
 		}

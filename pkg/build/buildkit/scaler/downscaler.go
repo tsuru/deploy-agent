@@ -16,12 +16,12 @@ import (
 	"k8s.io/klog"
 )
 
-func StartWorker(clientset *kubernetes.Clientset, podSelector, buildkitStefulset string) {
+func StartWorker(clientset *kubernetes.Clientset, podSelector, statefulSet string, graceful time.Duration) {
 	ctx := context.Background()
 
 	go func() {
 		for {
-			err := RunDownscaler(ctx, clientset, podSelector, buildkitStefulset)
+			err := RunDownscaler(ctx, clientset, podSelector, statefulSet, graceful)
 			if err != nil {
 				klog.Errorf("failed to run downscaler tick: %s", err.Error())
 			}
@@ -30,7 +30,7 @@ func StartWorker(clientset *kubernetes.Clientset, podSelector, buildkitStefulset
 	}()
 }
 
-func RunDownscaler(ctx context.Context, clientset kubernetes.Interface, podSelector, buildkitStefulset string) (err error) {
+func RunDownscaler(ctx context.Context, clientset kubernetes.Interface, podSelector, statefulSet string, graceful time.Duration) (err error) {
 	defer func() {
 		recoverErr := recover()
 		if recoverErr != nil {
@@ -70,7 +70,7 @@ func RunDownscaler(ctx context.Context, clientset kubernetes.Interface, podSelec
 	}
 
 	now := time.Now().Unix()
-	gracefulPeriod := int64(60 * 60 * 2) // 2 Hours
+	gracefulPeriod := int64(graceful.Seconds())
 	zero := int32(0)
 
 	for ns, maxEndtime := range maxEndtimeByNS {
@@ -82,7 +82,7 @@ func RunDownscaler(ctx context.Context, clientset kubernetes.Interface, podSelec
 			continue
 		}
 
-		statefulset, err := clientset.AppsV1().StatefulSets(ns).Get(ctx, buildkitStefulset, v1.GetOptions{})
+		statefulset, err := clientset.AppsV1().StatefulSets(ns).Get(ctx, statefulSet, v1.GetOptions{})
 
 		if err != nil {
 			klog.Errorf("failed to get statefullsets from ns: %s, err: %s", ns, err.Error())

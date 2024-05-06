@@ -67,10 +67,11 @@ type KubernertesDiscoveryOptions struct {
 	PodSelector           string
 	Namespace             string
 	LeasePrefix           string
-	ScaleStatefulset      string
+	Statefulset           string
 	Port                  int
 	UseSameNamespaceAsApp bool
 	SetTsuruAppLabel      bool
+	ScaleGracefulPeriod   time.Duration
 	Timeout               time.Duration
 }
 
@@ -79,8 +80,8 @@ func (b *BuildKit) WithKubernetesDiscovery(cs *kubernetes.Clientset, dcs dynamic
 	b.dk8s = dcs
 	b.kdopts = &opts
 
-	if opts.ScaleStatefulset != "" {
-		scaler.StartWorker(cs, opts.PodSelector, opts.ScaleStatefulset)
+	if opts.Statefulset != "" {
+		scaler.StartWorker(cs, opts.PodSelector, opts.Statefulset, opts.ScaleGracefulPeriod)
 	}
 
 	return b
