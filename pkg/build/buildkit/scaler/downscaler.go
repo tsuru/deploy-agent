@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package downscaler
+package scaler
 
 import (
 	"context"
@@ -21,7 +21,7 @@ func StartWorker(clientset *kubernetes.Clientset, podSelector, buildkitStefulset
 
 	go func() {
 		for {
-			err := Run(ctx, clientset, podSelector, buildkitStefulset)
+			err := RunDownscaler(ctx, clientset, podSelector, buildkitStefulset)
 			if err != nil {
 				klog.Errorf("failed to run downscaler tick: %s", err.Error())
 			}
@@ -30,13 +30,15 @@ func StartWorker(clientset *kubernetes.Clientset, podSelector, buildkitStefulset
 	}()
 }
 
-func Run(ctx context.Context, clientset *kubernetes.Clientset, podSelector, buildkitStefulset string) (err error) {
+func RunDownscaler(ctx context.Context, clientset kubernetes.Interface, podSelector, buildkitStefulset string) (err error) {
 	defer func() {
 		recoverErr := recover()
-		err = fmt.Errorf("panic: %s", recoverErr)
+		if recoverErr != nil {
+			err = fmt.Errorf("panic: %s", recoverErr)
+		}
 	}()
 
-	buildKitPods, err := clientset.CoreV1().Pods("*").List(ctx, v1.ListOptions{
+	buildKitPods, err := clientset.CoreV1().Pods("").List(ctx, v1.ListOptions{
 		LabelSelector: podSelector,
 	})
 
@@ -68,7 +70,7 @@ func Run(ctx context.Context, clientset *kubernetes.Clientset, podSelector, buil
 	}
 
 	now := time.Now().Unix()
-	gracefulPeriod := int64(60 * 30)
+	gracefulPeriod := int64(60 * 60 * 2) // 2 Hours
 	zero := int32(0)
 
 	for ns, maxEndtime := range maxEndtimeByNS {

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/moby/buildkit/client"
+	"github.com/tsuru/deploy-agent/pkg/build/buildkit/scaler"
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 	"github.com/tsuru/deploy-agent/pkg/build/metadata"
 	corev1 "k8s.io/api/core/v1"
@@ -203,20 +204,9 @@ func (d *k8sDiscoverer) buildkitPodNamespace(ctx context.Context, opts Kubernert
 
 func watchBuildKitPods(ctx context.Context, cs *kubernetes.Clientset, opts KubernertesDiscoveryOptions, ns string, pods chan<- *corev1.Pod, writer io.Writer) error {
 	if opts.ScaleStatefulset != "" {
-		stfullset, err := cs.AppsV1().StatefulSets(ns).Get(ctx, opts.ScaleStatefulset, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-
-		if stfullset.Spec.Replicas == nil || *stfullset.Spec.Replicas == 0 {
-			fmt.Fprintln(writer, "There is no buildkits available, scaling to one replica")
-			wantedReplicas := int32(1)
-			stfullset.Spec.Replicas = &wantedReplicas
-
-			_, err := cs.AppsV1().StatefulSets(ns).Update(ctx, stfullset, metav1.UpdateOptions{})
-			if err != nil {
-				return err
-			}
+		scaleErr := scaler.MayUpscale(ctx, cs, ns, opts.ScaleStatefulset, writer)
+		if scaleErr != nil {
+			return scaleErr
 		}
 	}
 
