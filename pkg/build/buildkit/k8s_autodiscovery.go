@@ -1,4 +1,4 @@
-// Copyright 2023 tsuru authors. All rights reserved.
+// Copyright 2024 tsuru authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -8,13 +8,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/moby/buildkit/client"
+	"github.com/tsuru/deploy-agent/pkg/build/buildkit/scaler"
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
+	"github.com/tsuru/deploy-agent/pkg/build/metadata"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -26,15 +29,6 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/klog"
-)
-
-const (
-	DeployAgentLastBuildStartingLabelKey   = "deploy-agent.tsuru.io/last-build-starting-time"
-	DeployAgentLastBuildEndingTimeLabelKey = "deploy-agent.tsuru.io/last-build-ending-time"
-
-	TsuruAppNamespace    = "tsuru"
-	TsuruAppNameLabelKey = "tsuru.io/app-name"
-	TsuruIsBuildLabelKey = "tsuru.io/is-build"
 )
 
 var (
@@ -52,15 +46,15 @@ type k8sDiscoverer struct {
 	dcs dynamic.Interface
 }
 
-func (d *k8sDiscoverer) Discover(ctx context.Context, opts KubernertesDiscoveryOptions, req *pb.BuildRequest) (*client.Client, func(), error) {
+func (d *k8sDiscoverer) Discover(ctx context.Context, opts KubernertesDiscoveryOptions, req *pb.BuildRequest, w io.Writer) (*client.Client, func(), error) {
 	if req.App == nil {
 		return nil, noopFunc, fmt.Errorf("there's only support for discovering BuildKit pods from Tsuru apps")
 	}
 
-	return d.discoverBuildKitClientFromApp(ctx, opts, req.App.Name)
+	return d.discoverBuildKitClientFromApp(ctx, opts, req.App.Name, w)
 }
 
-func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts KubernertesDiscoveryOptions, app string) (*client.Client, func(), error) {
+func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts KubernertesDiscoveryOptions, app string, w io.Writer) (*client.Client, func(), error) {
 	leaderCtx, leaderCancel := context.WithCancel(ctx)
 	cfns := []func(){
 		func() {
@@ -69,7 +63,7 @@ func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 		},
 	}
 
-	pod, err := d.discoverBuildKitPod(leaderCtx, opts, app)
+	pod, err := d.discoverBuildKitPod(leaderCtx, opts, app, w)
 	if err != nil {
 		return nil, cleanUps(cfns...), err
 	}
@@ -84,7 +78,7 @@ func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 
 		cfns = append(cfns, func() {
 			klog.V(4).Infoln("Removing Tsuru app labels in the pod", pod.Name)
-			nerr := unsetTsuruAppLabelOnBuildKitPod(context.Background(), d.cs, pod.Name, pod.Namespace)
+			nerr := unsetTsuruAppLabelOnBuildKitPod(ctx, d.cs, pod.Name, pod.Namespace)
 			if nerr != nil {
 				klog.Errorf("failed to unset Tsuru app labels: %s", nerr)
 			}
@@ -108,7 +102,7 @@ func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 	return c, cleanUps(cfns...), nil
 }
 
-func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts KubernertesDiscoveryOptions, app string) (*corev1.Pod, error) {
+func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts KubernertesDiscoveryOptions, app string, w io.Writer) (*corev1.Pod, error) {
 	deadlineCtx, deadlineCancel := context.WithCancel(ctx)
 	defer deadlineCancel()
 
@@ -127,7 +121,7 @@ func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 	defer watchCancel() // watch cancellation must happen before than closing the pods channel
 
 	go func() {
-		nerr := watchBuildKitPods(watchCtx, d.cs, opts.PodSelector, ns, pods)
+		nerr := watchBuildKitPods(watchCtx, d.cs, opts, ns, pods, w)
 		if nerr != nil {
 			errCh <- nerr
 		}
@@ -188,7 +182,7 @@ func (d *k8sDiscoverer) buildkitPodNamespace(ctx context.Context, opts Kubernert
 
 	klog.V(4).Infof("Discovering the namespace where app %s is running on...", app)
 
-	tsuruApp, err := d.dcs.Resource(tsuruAppGVR).Namespace(TsuruAppNamespace).Get(ctx, app, metav1.GetOptions{})
+	tsuruApp, err := d.dcs.Resource(tsuruAppGVR).Namespace(metadata.TsuruAppNamespace).Get(ctx, app, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -208,9 +202,16 @@ func (d *k8sDiscoverer) buildkitPodNamespace(ctx context.Context, opts Kubernert
 	return ns, nil
 }
 
-func watchBuildKitPods(ctx context.Context, cs *kubernetes.Clientset, labelSelector, ns string, pods chan<- *corev1.Pod) error {
+func watchBuildKitPods(ctx context.Context, cs *kubernetes.Clientset, opts KubernertesDiscoveryOptions, ns string, pods chan<- *corev1.Pod, writer io.Writer) error {
+	if opts.Statefulset != "" {
+		scaleErr := scaler.MayUpscale(ctx, cs, ns, opts.Statefulset, writer)
+		if scaleErr != nil {
+			return scaleErr
+		}
+	}
+
 	w, err := cs.CoreV1().Pods(ns).Watch(ctx, metav1.ListOptions{
-		LabelSelector: labelSelector,
+		LabelSelector: opts.PodSelector,
 		Watch:         true,
 	})
 	if err != nil {
@@ -290,22 +291,22 @@ func setTsuruAppLabelOnBuildKitPod(ctx context.Context, cs *kubernetes.Clientset
 	patch, err := json.Marshal([]any{
 		map[string]any{
 			"op":    "replace",
-			"path":  fmt.Sprintf("/metadata/labels/%s", normalizeAppLabelForJSONPatch(TsuruAppNameLabelKey)),
+			"path":  fmt.Sprintf("/metadata/labels/%s", normalizeAppLabelForJSONPatch(metadata.TsuruAppNameLabelKey)),
 			"value": app,
 		},
 		map[string]any{
 			"op":    "replace",
-			"path":  fmt.Sprintf("/metadata/labels/%s", normalizeAppLabelForJSONPatch(TsuruIsBuildLabelKey)),
+			"path":  fmt.Sprintf("/metadata/labels/%s", normalizeAppLabelForJSONPatch(metadata.TsuruIsBuildLabelKey)),
 			"value": strconv.FormatBool(true),
 		},
 		map[string]any{
 			"op":    "replace",
-			"path":  fmt.Sprintf("/metadata/annotations/%s", normalizeAppLabelForJSONPatch(DeployAgentLastBuildEndingTimeLabelKey)),
+			"path":  fmt.Sprintf("/metadata/annotations/%s", normalizeAppLabelForJSONPatch(metadata.DeployAgentLastBuildEndingTimeLabelKey)),
 			"value": "", // set annotation value to empty rather than removing it, since it might not exist at first run
 		},
 		map[string]any{
 			"op":    "replace",
-			"path":  fmt.Sprintf("/metadata/annotations/%s", normalizeAppLabelForJSONPatch(DeployAgentLastBuildStartingLabelKey)),
+			"path":  fmt.Sprintf("/metadata/annotations/%s", normalizeAppLabelForJSONPatch(metadata.DeployAgentLastBuildStartingLabelKey)),
 			"value": strconv.FormatInt(time.Now().Unix(), 10),
 		},
 	})
@@ -321,15 +322,15 @@ func unsetTsuruAppLabelOnBuildKitPod(ctx context.Context, cs *kubernetes.Clients
 	patch, err := json.Marshal([]any{
 		map[string]any{
 			"op":   "remove",
-			"path": fmt.Sprintf("/metadata/labels/%s", normalizeAppLabelForJSONPatch(TsuruAppNameLabelKey)),
+			"path": fmt.Sprintf("/metadata/labels/%s", normalizeAppLabelForJSONPatch(metadata.TsuruAppNameLabelKey)),
 		},
 		map[string]any{
 			"op":   "remove",
-			"path": fmt.Sprintf("/metadata/labels/%s", normalizeAppLabelForJSONPatch(TsuruIsBuildLabelKey)),
+			"path": fmt.Sprintf("/metadata/labels/%s", normalizeAppLabelForJSONPatch(metadata.TsuruIsBuildLabelKey)),
 		},
 		map[string]any{
 			"op":    "replace",
-			"path":  fmt.Sprintf("/metadata/annotations/%s", normalizeAppLabelForJSONPatch(DeployAgentLastBuildEndingTimeLabelKey)),
+			"path":  fmt.Sprintf("/metadata/annotations/%s", normalizeAppLabelForJSONPatch(metadata.DeployAgentLastBuildEndingTimeLabelKey)),
 			"value": strconv.FormatInt(time.Now().Unix(), 10),
 		},
 	})
