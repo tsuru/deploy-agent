@@ -49,14 +49,26 @@ func RunDownscaler(ctx context.Context, clientset kubernetes.Interface, podSelec
 	maxEndtimeByNS := map[string]int64{}
 
 	for _, pod := range buildKitPods.Items {
-		if pod.Annotations[metadata.DeployAgentLastBuildEndingTimeLabelKey] == "" {
-			maxEndtimeByNS[pod.Namespace] = -1 // mark that namespace has least one pod of buildkit running
-			continue
+		usageAt := int64(-1)
+
+		lastBuildStart := pod.Annotations[metadata.DeployAgentLastBuildStartingLabelKey]
+		lastBuildEnd := pod.Annotations[metadata.DeployAgentLastBuildEndingTimeLabelKey]
+
+		// pod re-scheduled and losed starting and ending annotations
+		if lastBuildStart == "" && lastBuildEnd == "" {
+			usageAt = pod.CreationTimestamp.Time.Unix()
 		}
 
-		maxUsage, err := strconv.ParseInt(pod.Annotations[metadata.DeployAgentLastBuildEndingTimeLabelKey], 10, 64)
-		if err != nil {
-			klog.Errorf("failed to parseint: %s", err.Error())
+		if lastBuildStart != "" && lastBuildEnd != "" {
+			var parseErr error
+			usageAt, parseErr = strconv.ParseInt(pod.Annotations[metadata.DeployAgentLastBuildEndingTimeLabelKey], 10, 64)
+			if parseErr != nil {
+				klog.Errorf("failed to parseint: %s", parseErr.Error())
+				continue
+			}
+		}
+
+		if usageAt == -1 {
 			continue
 		}
 
@@ -64,8 +76,8 @@ func RunDownscaler(ctx context.Context, clientset kubernetes.Interface, podSelec
 			continue
 		}
 
-		if maxEndtimeByNS[pod.Namespace] < maxUsage {
-			maxEndtimeByNS[pod.Namespace] = maxUsage
+		if maxEndtimeByNS[pod.Namespace] < usageAt {
+			maxEndtimeByNS[pod.Namespace] = usageAt
 		}
 	}
 
