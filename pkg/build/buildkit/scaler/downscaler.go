@@ -69,6 +69,7 @@ func RunDownscaler(ctx context.Context, clientset kubernetes.Interface, podSelec
 		}
 
 		if usageAt == -1 {
+			maxEndtimeByNS[pod.Namespace] = usageAt
 			continue
 		}
 
