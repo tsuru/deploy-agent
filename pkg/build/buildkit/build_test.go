@@ -675,6 +675,246 @@ EXPOSE 8080/tcp 80/tcp 8000/tcp 9090 8888
 	})
 }
 
+func TestBuildKit_BuildJob_FromContainerFile(t *testing.T) {
+	bc := newBuildKitClient(t)
+	defer bc.Close()
+
+	t.Run("Dockerfile mounting the job's env vars", func(t *testing.T) {
+		destImage := baseRegistry(t, "my-job", "")
+
+		dockerfile := `FROM busybox:latest
+
+RUN --mount=type=secret,id=tsuru-job-envvars,target=/var/run/secrets/envs.sh \
+    . /var/run/secrets/envs.sh \
+    && echo ${MY_ENV_VAR} > /tmp/envs \
+    && echo ${DATABASE_PASSWORD} >> /tmp/envs
+
+ENV MY_ANOTHER_VAR="another var"
+`
+
+		req := &pb.BuildRequest{
+			Kind: pb.BuildKind_BUILD_KIND_JOB_DEPLOY_WITH_CONTAINER_FILE,
+			Job: &pb.TsuruJob{
+				Name: "my-job",
+				EnvVars: map[string]string{
+					"MY_ENV_VAR":        "hello world",
+					"DATABASE_PASSWORD": "aw3some`p4ss!",
+				},
+			},
+			DestinationImages: []string{destImage},
+			Containerfile:     string(dockerfile),
+			PushOptions: &pb.PushOptions{
+				InsecureRegistry: registryHTTP,
+			},
+		}
+
+		jobFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).Build(context.TODO(), req, os.Stdout)
+		require.NoError(t, err)
+		assert.Equal(t, &pb.TsuruConfig{
+			ImageConfig: &pb.ContainerImageConfig{
+				Cmd: []string{"sh"},
+			},
+		}, jobFiles)
+
+		dc := newDockerClient(t)
+		defer dc.Close()
+
+		r, err := dc.ImagePull(context.TODO(), destImage, dockertypes.ImagePullOptions{})
+		require.NoError(t, err)
+		defer r.Close()
+
+		fmt.Println("Pulling container image", destImage)
+		_, err = io.Copy(os.Stdout, r)
+		require.NoError(t, err)
+
+		defer func() {
+			fmt.Printf("Removing container image %s\n", destImage)
+			_, nerr := dc.ImageRemove(context.TODO(), destImage, dockertypes.ImageRemoveOptions{Force: true})
+			require.NoError(t, nerr)
+		}()
+
+		t.Run("should not store the env vars in the container image manifest", func(t *testing.T) {
+			is, _, err := dc.ImageInspectWithRaw(context.TODO(), destImage)
+			require.NoError(t, err)
+			require.NotNil(t, is.Config)
+			assert.NotEmpty(t, is.Config.Env)
+			for _, env := range is.Config.Env {
+				assert.False(t, strings.HasPrefix(env, "MY_ENV_VAR="), "Env MY_ENV_VAR should not be exported to image manifest")
+				assert.False(t, strings.HasPrefix(env, "DATABASE_PASSWORD="), "Env DATABASE_PASSWORD shold not be exported to image manifest")
+
+				if strings.HasPrefix(env, "MY_ANOTHER_VAR=") {
+					assert.Equal(t, "MY_ANOTHER_VAR=another var", env)
+				}
+			}
+		})
+		t.Run("should be able to see env vars during the build", func(t *testing.T) {
+			containerCreateResp, err := dc.ContainerCreate(context.TODO(), &dockertypescontainer.Config{
+				Image: destImage,
+				Cmd:   dockerstrslice.StrSlice{"sleep", "Inf"},
+			}, nil, nil, nil, "")
+			require.NoError(t, err)
+			require.NotEmpty(t, containerCreateResp.ID, "container ID cannot be empty")
+
+			containerID := containerCreateResp.ID
+			fmt.Printf("Container created (ID=%s)\n", containerID)
+
+			defer func() {
+				fmt.Printf("Removing container (ID=%s)\n", containerID)
+				require.NoError(t, dc.ContainerRemove(context.TODO(), containerID, dockertypes.ContainerRemoveOptions{Force: true, RemoveVolumes: true}))
+			}()
+
+			err = dc.ContainerStart(context.TODO(), containerID, dockertypes.ContainerStartOptions{})
+			require.NoError(t, err)
+			fmt.Printf("Starting container (ID=%s)\n", containerID)
+
+			execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
+				Tty:          true,
+				AttachStderr: true,
+				AttachStdout: true,
+				Cmd:          []string{"cat", "/tmp/envs"},
+			})
+			require.NoError(t, err)
+			require.NotEmpty(t, execCreateResp.ID, "exec ID cannot be empty")
+
+			execID := execCreateResp.ID
+
+			hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+			require.NoError(t, err)
+			require.NotNil(t, hijackedResp.Reader)
+			defer hijackedResp.Close()
+
+			var stderr, stdout bytes.Buffer
+			_, err = dockerstdcopy.StdCopy(&stdout, &stderr, hijackedResp.Reader)
+			require.NoError(t, err)
+			assert.Equal(t, "hello world\r\naw3some`p4ss!\r\n", stdout.String())
+			assert.Empty(t, stderr.String())
+		})
+
+		t.Run("job build with Dockerfile", func(t *testing.T) {
+			destImage := baseRegistry(t, "my-job", "")
+
+			dockerfile := `FROM busybox:latest
+		
+		RUN --mount=type=secret,id=tsuru-job-envvars,target=/var/run/secrets/envs.sh \
+			. /var/run/secrets/envs.sh \
+			&& echo ${MY_ENV_VAR} > /tmp/envs \
+			&& echo ${DATABASE_PASSWORD} >> /tmp/envs
+		
+		ENV MY_ANOTHER_VAR="another var"
+		`
+
+			req := &pb.BuildRequest{
+				Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE,
+				Job: &pb.TsuruJob{
+					Name: "my-job",
+					EnvVars: map[string]string{
+						"MY_ENV_VAR":        "hello world",
+						"DATABASE_PASSWORD": "aw3some`p4ss!",
+					},
+				},
+				DestinationImages: []string{destImage},
+				Containerfile:     string(dockerfile),
+				PushOptions: &pb.PushOptions{
+					InsecureRegistry: registryHTTP,
+				},
+			}
+
+			b := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()})
+			jobFiles, err := b.Build(context.TODO(), req, os.Stdout)
+
+			//jobFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).Build(context.TODO(), req, os.Stdout)
+			require.NoError(t, err)
+			assert.Equal(t, &pb.TsuruConfig{
+				ImageConfig: &pb.ContainerImageConfig{
+					Cmd: []string{"sh"},
+				},
+			}, jobFiles)
+
+			dc := newDockerClient(t)
+			defer dc.Close()
+
+			r, err := dc.ImagePull(context.TODO(), destImage, dockertypes.ImagePullOptions{})
+			require.NoError(t, err)
+			defer r.Close()
+
+			fmt.Println("Pulling container image", destImage)
+			_, err = io.Copy(os.Stdout, r)
+			require.NoError(t, err)
+
+			defer func() {
+				fmt.Printf("Removing container image %s\n", destImage)
+				_, nerr := dc.ImageRemove(context.TODO(), destImage, dockertypes.ImageRemoveOptions{Force: true})
+				require.NoError(t, nerr)
+			}()
+		})
+	})
+
+	t.Run("neither Procfile nor tsuru.yaml, should use command from image manifest", func(t *testing.T) {
+		destImage := baseRegistry(t, "my-job", "")
+
+		dockerfile := `FROM busybox
+
+EXPOSE 8080/tcp
+
+ENTRYPOINT ["/path/to/my/server.sh"]
+
+CMD ["--port", "8080"]
+`
+
+		req := &pb.BuildRequest{
+			Kind: pb.BuildKind_BUILD_KIND_JOB_DEPLOY_WITH_CONTAINER_FILE,
+			Job: &pb.TsuruJob{
+				Name: "my-job",
+			},
+			DestinationImages: []string{destImage},
+			Containerfile:     string(dockerfile),
+			PushOptions: &pb.PushOptions{
+				InsecureRegistry: registryHTTP,
+			},
+		}
+
+		jobFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).Build(context.TODO(), req, os.Stdout)
+		require.NoError(t, err)
+		assert.Equal(t, &pb.TsuruConfig{
+			ImageConfig: &pb.ContainerImageConfig{
+				Entrypoint:   []string{"/path/to/my/server.sh"},
+				Cmd:          []string{"--port", "8080"},
+				ExposedPorts: []string{"8080/tcp"},
+			},
+		}, jobFiles)
+	})
+
+	t.Run("multiple exposed ports, should ensure the ascending order of ports", func(t *testing.T) {
+		destImage := baseRegistry(t, "my-job", "")
+
+		dockerfile := `FROM busybox
+
+EXPOSE 100/udp 53/udp 443/udp
+EXPOSE 8080/tcp 80/tcp 8000/tcp 9090 8888
+`
+		req := &pb.BuildRequest{
+			Kind: pb.BuildKind_BUILD_KIND_JOB_DEPLOY_WITH_CONTAINER_FILE,
+			Job: &pb.TsuruJob{
+				Name: "my-job",
+			},
+			DestinationImages: []string{destImage},
+			Containerfile:     string(dockerfile),
+			PushOptions: &pb.PushOptions{
+				InsecureRegistry: registryHTTP,
+			},
+		}
+
+		jobFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).Build(context.TODO(), req, os.Stdout)
+		require.NoError(t, err)
+		assert.Equal(t, &pb.TsuruConfig{
+			ImageConfig: &pb.ContainerImageConfig{
+				Cmd:          []string{"sh"},
+				ExposedPorts: []string{"53/udp", "80/tcp", "100/udp", "443/udp", "8000/tcp", "8080/tcp", "8888/tcp", "9090/tcp"},
+			},
+		}, jobFiles)
+	})
+}
+
 func compressGZIP(t *testing.T, path string) []byte {
 	t.Helper()
 	var data bytes.Buffer
