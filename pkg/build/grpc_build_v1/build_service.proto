@@ -72,6 +72,8 @@ enum BuildKind {
   BUILD_KIND_PLATFORM_WITH_CONTAINER_FILE    = 6; // tsuru platform add/update ... --dockerfile Dockerfile
 
   BUILD_KIND_JOB_CREATE_WITH_CONTAINER_IMAGE = 7; // tsuru job create ... -i registry.example.com/tsuru/my-job:latest
+  BUILD_KIND_JOB_DEPLOY_WITH_CONTAINER_IMAGE = 7; // tsuru job deploy ... -i registry.example.com/tsuru/my-job:latest
+	BUILD_KIND_JOB_DEPLOY_WITH_CONTAINER_FILE  = 8; // tsuru job deploy ... --dockerfile Dockerfile
 }
 
 message BuildResponse {

@@ -130,6 +130,9 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 	case "BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE":
 		return b.buildFromContainerFile(ctx, c, r, ow)
 
+	case "BUILD_KIND_JOB_DEPLOY_WITH_CONTAINER_FILE":
+		return b.buildFromContainerFile(ctx, c, r, ow)
+
 	case "BUILD_KIND_PLATFORM_WITH_CONTAINER_FILE":
 		return nil, b.buildPlatform(ctx, c, r, ow)
 	}
@@ -382,7 +385,14 @@ func (b *BuildKit) buildFromContainerFile(ctx context.Context, c *client.Client,
 		files = bytes.NewReader(r.Data)
 	}
 
-	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, r.Containerfile, nil, r.App.EnvVars, files)
+	envVars := map[string]string{}
+	if r.App != nil {
+		envVars = r.App.EnvVars
+	} else if r.Job != nil {
+		envVars = r.Job.EnvVars
+	}
+
+	tmpDir, cleanFunc, err := generateBuildLocalDir(ctx, b.opts.TempDir, r.Containerfile, nil, envVars, files)
 	if err != nil {
 		return nil, err
 	}
