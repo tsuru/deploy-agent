@@ -103,6 +103,9 @@ func RunDownscaler(ctx context.Context, clientset kubernetes.Interface, podSelec
 		}
 
 		if statefulset.Spec.Replicas != nil {
+			if *statefulset.Spec.Replicas == 0 {
+				continue
+			}
 			statefulset.Annotations[metadata.DeployAgentLastReplicasAnnotationKey] = fmt.Sprintf("%d", *statefulset.Spec.Replicas)
 		}
 
