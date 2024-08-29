@@ -16,7 +16,7 @@ jobs:
         { ip address | grep -q 169.196.255.254; } || sudo ip address add 169.196.255.254 dev lo
 
     - name: Running required services (Builkit, Docker Registry, Docker)
-      run: docker-compose -f ./compose.yaml up -d
+      run: docker compose -f ./compose.yaml up -d
 
     - name: Install protoc and Go compiler plugins
       run: |-

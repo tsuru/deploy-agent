@@ -34,7 +34,7 @@ func MayUpscale(ctx context.Context, cs kubernetes.Interface, ns, statefulset st
 		if err != nil {
 			return err
 		}
-		wantedReplicas = int32(replicas)
+		wantedReplicas = int32(replicas) //nolint
 	}
 
 	fmt.Fprintln(w, "There is no buildkits available, scaling to one replica")
