@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -299,7 +298,7 @@ func TestBuild(t *testing.T) {
 func setupServer(t *testing.T, bs pb.BuildServer) string {
 	t.Helper()
 
-	l, err := net.Listen("unix", filepath.Join(t.TempDir(), "server.sock"))
+	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	s := grpc.NewServer()
@@ -312,7 +311,7 @@ func setupServer(t *testing.T, bs pb.BuildServer) string {
 		require.NoError(t, nerr)
 	}()
 
-	return filepath.Join("unix://", l.Addr().String())
+	return l.Addr().String()
 }
 
 func setupClient(t *testing.T, address string) pb.BuildClient {
