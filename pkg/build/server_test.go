@@ -373,7 +373,7 @@ func setupServer(t *testing.T, bs pb.BuildServer) string {
 func setupClient(t *testing.T, address string) pb.BuildClient {
 	t.Helper()
 
-	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { conn.Close() })
 
