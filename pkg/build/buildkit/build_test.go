@@ -26,6 +26,8 @@ import (
 
 	. "github.com/tsuru/deploy-agent/pkg/build/buildkit"
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
+	"github.com/tsuru/deploy-agent/pkg/repository"
+	"github.com/tsuru/deploy-agent/pkg/repository/fake"
 	"github.com/tsuru/deploy-agent/pkg/util"
 )
 
@@ -374,6 +376,28 @@ func TestBuildKit_Build_FromContainerImages(t *testing.T) {
 				ExposedPorts: []string{"80/tcp"},
 			},
 		}, appFiles)
+	})
+
+	t.Run("creating remote repository", func(t *testing.T) {
+		req := &pb.BuildRequest{
+			Kind: pb.BuildKind_BUILD_KIND_APP_DEPLOY_WITH_CONTAINER_IMAGE,
+			App: &pb.TsuruApp{
+				Name: "my-app",
+			},
+			SourceImage:       "nginx:1.22-alpine",
+			DestinationImages: []string{baseRegistry(t, "app-my-app", "v1")},
+			PushOptions:       &pb.PushOptions{InsecureRegistry: registryHTTP},
+		}
+		opts := &BuildKitOptions{TempDir: t.TempDir(), RemoteRepository: map[string]repository.Repository{registryAddress: &fake.FakeRepository{AuthSuccess: true}}}
+		assert.Equal(t, opts.RemoteRepository[registryAddress].(*fake.FakeRepository).RepoExists, map[string]bool(nil))
+		_, err := NewBuildKit(bc, *opts).
+			Build(context.TODO(), req, os.Stdout)
+		require.NoError(t, err)
+		assert.Equal(t, opts.RemoteRepository[registryAddress].(*fake.FakeRepository).RepoExists, map[string]bool{baseRegistry(t, "app-my-app", "v1"): true})
+		_, err = NewBuildKit(bc, *opts).
+			Build(context.TODO(), req, os.Stdout)
+		require.NoError(t, err)
+		assert.Equal(t, opts.RemoteRepository[registryAddress].(*fake.FakeRepository).RepoExists, map[string]bool{baseRegistry(t, "app-my-app", "v1"): true})
 	})
 
 	t.Run("container image without Tsuru app files (tsuru.yaml, Procfile) + job image push", func(t *testing.T) {

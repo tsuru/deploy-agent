@@ -293,3 +293,17 @@ func SortExposedPorts(ports map[string]struct{}) []string {
 
 	return ps
 }
+
+func GetRegistry(image string) string {
+	defaultRegistry := "docker.io"
+	if !strings.Contains(image, "/") {
+		return defaultRegistry
+	}
+
+	registry := strings.Split(image, "/")[0]
+	if strings.Contains(registry, ".") || strings.Contains(registry, ":") {
+		return registry
+	}
+
+	return defaultRegistry
+}

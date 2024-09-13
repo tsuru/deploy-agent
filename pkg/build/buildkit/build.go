@@ -40,12 +40,14 @@ import (
 	"github.com/tsuru/deploy-agent/pkg/build"
 	"github.com/tsuru/deploy-agent/pkg/build/buildkit/scaler"
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
+	repo "github.com/tsuru/deploy-agent/pkg/repository"
 	"github.com/tsuru/deploy-agent/pkg/util"
 )
 
 var _ build.Builder = (*BuildKit)(nil)
 
 type BuildKitOptions struct {
+	RemoteRepository             map[string]repo.Repository
 	TempDir                      string
 	DiscoverBuildKitClientForApp bool
 }
@@ -166,6 +168,13 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, c *client.Client
 	}
 	defer cleanFunc()
 
+	if b.opts.RemoteRepository != nil {
+		err = b.createRemoteRepository(ctx, r)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if err = callBuildKitBuild(ctx, c, tmpDir, r, w); err != nil {
 		return nil, err
 	}
@@ -222,6 +231,13 @@ func (b *BuildKit) buildFromContainerImage(ctx context.Context, c *client.Client
 	}
 	defer cleanFunc()
 
+	if b.opts.RemoteRepository != nil {
+		err = b.createRemoteRepository(ctx, r)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if err = callBuildKitBuild(ctx, c, tmpDir, r, w); err != nil {
 		return nil, err
 	}
@@ -253,6 +269,29 @@ func (b *BuildKit) extractTsuruConfigsFromContainerImage(ctx context.Context, c 
 	defer cleanFunc()
 
 	return callBuildKitToExtractTsuruConfigs(ctx, c, tmpDir, workingDir)
+}
+
+func (b *BuildKit) createRemoteRepository(ctx context.Context, r *pb.BuildRequest) error {
+	for _, v := range r.DestinationImages {
+		if provider, ok := b.opts.RemoteRepository[build.GetRegistry(v)]; ok {
+			err := provider.Auth(ctx)
+			if err != nil {
+				return err
+			}
+			exists, err := provider.Exists(ctx, v)
+			if err != nil {
+				return err
+			}
+			if exists {
+				continue
+			}
+			err = provider.Create(ctx, v)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func extractContainerImageConfigFromImageManifest(ctx context.Context, imageStr string, insecureRegistry bool) (*pb.ContainerImageConfig, error) {
@@ -398,6 +437,13 @@ func (b *BuildKit) buildFromContainerFile(ctx context.Context, c *client.Client,
 	}
 	defer cleanFunc()
 
+	if b.opts.RemoteRepository != nil {
+		err = b.createRemoteRepository(ctx, r)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if err = callBuildKitBuild(ctx, c, tmpDir, r, w); err != nil {
 		return nil, err
 	}
@@ -428,7 +474,12 @@ func (b *BuildKit) buildPlatform(ctx context.Context, c *client.Client, r *pb.Bu
 		return err
 	}
 	defer cleanFunc()
-
+	if b.opts.RemoteRepository != nil {
+		err = b.createRemoteRepository(ctx, r)
+		if err != nil {
+			return err
+		}
+	}
 	return callBuildKitBuild(ctx, c, tmpDir, r, w)
 }
 
