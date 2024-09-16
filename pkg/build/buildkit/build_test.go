@@ -388,7 +388,7 @@ func TestBuildKit_Build_FromContainerImages(t *testing.T) {
 			DestinationImages: []string{baseRegistry(t, "app-my-app", "v1")},
 			PushOptions:       &pb.PushOptions{InsecureRegistry: registryHTTP},
 		}
-		opts := &BuildKitOptions{TempDir: t.TempDir(), RemoteRepository: map[string]repository.Repository{registryAddress: &fake.FakeRepository{AuthSuccess: true}}}
+		opts := &BuildKitOptions{TempDir: t.TempDir(), RemoteRepository: map[string]repository.Repository{registryAddress: &fake.FakeRepository{}}}
 		assert.Equal(t, opts.RemoteRepository[registryAddress].(*fake.FakeRepository).RepoExists, map[string]bool(nil))
 		_, err := NewBuildKit(bc, *opts).
 			Build(context.TODO(), req, os.Stdout)

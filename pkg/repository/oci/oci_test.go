@@ -43,35 +43,25 @@ func (m *FakeArtifactsClient) ListContainerRepositories(ctx context.Context, req
 	}, nil
 }
 
-func TestOCI_Create(t *testing.T) {
+func TestOCI_Ensure(t *testing.T) {
 	fakeClient := new(FakeArtifactsClient)
 	oci := &OCI{
 		client: fakeClient,
 	}
 	ctx := context.TODO()
 	name := "registry/namespace/test-repo"
-	err := oci.Create(ctx, name)
+	exists, err := oci.exists(ctx, name)
 	assert.NoError(t, err)
-	err = oci.Create(ctx, name)
+	assert.False(t, exists)
+	err = oci.Ensure(ctx, name)
+	assert.NoError(t, err)
+	exists, err = oci.exists(ctx, name)
+	assert.NoError(t, err)
+	assert.True(t, exists)
+	err = oci.create(ctx, name)
 	assert.Error(t, err, "repository already exists")
 }
 
-func TestOCI_Exists(t *testing.T) {
-	fakeClient := new(FakeArtifactsClient)
-	oci := &OCI{
-		client: fakeClient,
-	}
-	ctx := context.TODO()
-	name := "registry/namespace/test-repo"
-	exists, err := oci.Exists(ctx, name)
-	assert.NoError(t, err)
-	assert.False(t, exists)
-	err = oci.Create(ctx, name)
-	assert.NoError(t, err)
-	exists, err = oci.Exists(ctx, name)
-	assert.NoError(t, err)
-	assert.True(t, exists)
-}
 func TestParserRegistryRepository(t *testing.T) {
 	tests := []struct {
 		name        string

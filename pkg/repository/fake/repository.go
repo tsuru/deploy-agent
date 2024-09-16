@@ -12,17 +12,9 @@ import (
 type FakeRepository struct {
 	CreatedRepos map[string]bool
 	RepoExists   map[string]bool
-	AuthSuccess  bool
 }
 
-func (f *FakeRepository) Auth(ctx context.Context) error {
-	if f.AuthSuccess {
-		return nil
-	}
-	return errors.New("auth repository failed")
-}
-
-func (f *FakeRepository) Create(ctx context.Context, name string) error {
+func (f *FakeRepository) create(name string) error {
 	if _, exists := f.RepoExists[name]; exists {
 		return errors.New("repository already exists")
 	}
@@ -37,10 +29,21 @@ func (f *FakeRepository) Create(ctx context.Context, name string) error {
 	return nil
 }
 
-func (f *FakeRepository) Exists(ctx context.Context, name string) (bool, error) {
+func (f *FakeRepository) exists(name string) (bool, error) {
 	if f.RepoExists == nil {
 		f.RepoExists = make(map[string]bool)
 	}
 	exists := f.RepoExists[name]
 	return exists, nil
+}
+
+func (f *FakeRepository) Ensure(ctx context.Context, name string) error {
+	exists, err := f.exists(name)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return f.create(name)
+	}
+	return nil
 }

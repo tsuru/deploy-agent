@@ -14,9 +14,7 @@ import (
 )
 
 type Repository interface {
-	Auth(ctx context.Context) error
-	Create(ctx context.Context, name string) error
-	Exists(ctx context.Context, name string) (bool, error)
+	Ensure(ctx context.Context, name string) error
 }
 
 type RemoteRepositoryProvider map[string]map[string]string

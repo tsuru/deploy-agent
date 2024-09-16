@@ -34,7 +34,22 @@ func NewOCI(data map[string]string) *OCI {
 	}
 }
 
-func (r *OCI) Auth(ctx context.Context) error {
+func (r *OCI) Ensure(ctx context.Context, name string) error {
+	err := r.auth(ctx)
+	if err != nil {
+		return err
+	}
+	exists, err := r.exists(ctx, name)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return r.create(ctx, name)
+	}
+	return nil
+}
+
+func (r *OCI) auth(ctx context.Context) error {
 	if r.client != nil {
 		return nil
 	}
@@ -47,7 +62,7 @@ func (r *OCI) Auth(ctx context.Context) error {
 	return err
 }
 
-func (r *OCI) Create(ctx context.Context, name string) error {
+func (r *OCI) create(ctx context.Context, name string) error {
 	name, err := parserRegistryRepository(name)
 	if err != nil {
 		return err
@@ -65,7 +80,7 @@ func (r *OCI) Create(ctx context.Context, name string) error {
 	return nil
 }
 
-func (r *OCI) Exists(ctx context.Context, name string) (bool, error) {
+func (r *OCI) exists(ctx context.Context, name string) (bool, error) {
 	name, err := parserRegistryRepository(name)
 	if err != nil {
 		return false, err

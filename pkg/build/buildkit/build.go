@@ -274,18 +274,7 @@ func (b *BuildKit) extractTsuruConfigsFromContainerImage(ctx context.Context, c 
 func (b *BuildKit) createRemoteRepository(ctx context.Context, r *pb.BuildRequest) error {
 	for _, v := range r.DestinationImages {
 		if provider, ok := b.opts.RemoteRepository[build.GetRegistry(v)]; ok {
-			err := provider.Auth(ctx)
-			if err != nil {
-				return err
-			}
-			exists, err := provider.Exists(ctx, v)
-			if err != nil {
-				return err
-			}
-			if exists {
-				continue
-			}
-			err = provider.Create(ctx, v)
+			err := provider.Ensure(ctx, v)
 			if err != nil {
 				return err
 			}
