@@ -127,6 +127,20 @@ func TestBuild(t *testing.T) {
 			},
 		},
 
+		"missing job, when kind is job dockerfile": {
+			req: &pb.BuildRequest{
+				SourceImage:       "tsuru/scratch:latest",
+				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
+				Kind:              pb.BuildKind_BUILD_KIND_JOB_DEPLOY_WITH_CONTAINER_IMAGE,
+			},
+			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, stream)
+				_, _, err = readResponse(t, stream)
+				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "job cannot be nil").Error())
+			},
+		},
+
 		"deploy from source code, empty source image": {
 			req: &pb.BuildRequest{
 				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
@@ -208,6 +222,33 @@ func TestBuild(t *testing.T) {
 			},
 		},
 
+		"job build successful": {
+			builder: &fake.FakeBuilder{
+				OnBuild: func(ctx context.Context, r *pb.BuildRequest, w io.Writer) (*pb.TsuruConfig, error) {
+					assert.NotNil(t, ctx)
+					assert.NotNil(t, r)
+					assert.NotNil(t, w)
+					fmt.Fprintln(w, "--- EXECUTING BUILD ---")
+					return nil, nil
+				},
+			},
+			req: &pb.BuildRequest{
+				Containerfile:     "FROM tsuru/scratch:latest",
+				DestinationImages: []string{"registry.example.com/tsuru/job-my-job:latest"},
+				Kind:              pb.BuildKind_BUILD_KIND_JOB_DEPLOY_WITH_CONTAINER_FILE,
+				Job:               &pb.TsuruJob{Name: "my-job"},
+				Data:              []byte("fake data :P"),
+			},
+			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, stream)
+				tsuruConfig, output, err := readResponse(t, stream)
+				require.NoError(t, err)
+				require.Nil(t, tsuruConfig)
+				assert.Regexp(t, `(.*)--- EXECUTING BUILD ---(.*)`, output)
+			},
+		},
+
 		"platform build, missing platform": {
 			req: &pb.BuildRequest{
 				DestinationImages: []string{"registry.example.com/tsuru/app-my-app:v1"},
@@ -275,6 +316,21 @@ func TestBuild(t *testing.T) {
 				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "containerfile cannot be empty").Error())
 			},
 		},
+
+		"job deploy with containerfile, empty containerfile": {
+			req: &pb.BuildRequest{
+				SourceImage:       "...",
+				DestinationImages: []string{"registry.example.com/tsuru/job-my-job:latest"},
+				Job:               &pb.TsuruJob{Name: "my-job"},
+				Kind:              pb.BuildKind_BUILD_KIND_JOB_DEPLOY_WITH_CONTAINER_FILE,
+			},
+			assert: func(t *testing.T, stream pb.Build_BuildClient, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, stream)
+				_, _, err = readResponse(t, stream)
+				assert.EqualError(t, err, status.Error(codes.InvalidArgument, "containerfile cannot be empty").Error())
+			},
+		},
 	}
 
 	for name, tt := range cases {
@@ -317,7 +373,7 @@ func setupServer(t *testing.T, bs pb.BuildServer) string {
 func setupClient(t *testing.T, address string) pb.BuildClient {
 	t.Helper()
 
-	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { conn.Close() })
 
