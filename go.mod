@@ -2,8 +2,6 @@ module github.com/tsuru/deploy-agent
 
 go 1.21
 
-toolchain go1.22.5
-
 require (
 	github.com/alessio/shellescape v1.4.1
 	github.com/containerd/console v1.0.3
