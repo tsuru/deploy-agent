@@ -1,6 +1,6 @@
 module github.com/tsuru/deploy-agent
 
-go 1.19
+go 1.21
 
 require (
 	github.com/alessio/shellescape v1.4.1
@@ -9,7 +9,8 @@ require (
 	github.com/docker/docker v23.0.0-rc.1+incompatible
 	github.com/google/go-containerregistry v0.12.0
 	github.com/moby/buildkit v0.11.3
-	github.com/stretchr/testify v1.8.0
+	github.com/oracle/oci-go-sdk/v65 v65.73.0
+	github.com/stretchr/testify v1.8.4
 	golang.org/x/sync v0.7.0
 	google.golang.org/grpc v1.65.0
 	google.golang.org/protobuf v1.34.1
@@ -61,6 +62,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
+	github.com/sony/gobreaker v0.5.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/tonistiigi/fsutil v0.0.0-20230105215944-fb433841cbfa // indirect
 	github.com/tonistiigi/units v0.0.0-20180711220420-6950e57a87ea // indirect

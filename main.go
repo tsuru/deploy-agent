@@ -27,6 +27,7 @@ import (
 	"github.com/tsuru/deploy-agent/pkg/build/buildkit"
 	buildpb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 	"github.com/tsuru/deploy-agent/pkg/health"
+	"github.com/tsuru/deploy-agent/pkg/repository"
 )
 
 const (
@@ -42,12 +43,13 @@ var cfg struct {
 	BuildKitAutoDiscoveryKubernetesLeasePrefix                string
 	BuildKitAutoDiscoveryStatefulset                          string
 	KubernetesConfig                                          string
-	BuildKitAutoDiscoveryScaleGracefulPeriod                  time.Duration
+	RemoteRepositoryPath                                      string
 	BuildKitAutoDiscoveryTimeout                              time.Duration
 	BuildKitAutoDiscoveryKubernetesPort                       int
 	Port                                                      int
 	ServerMaxRecvMsgSize                                      int
 	ServerMaxSendMsgSize                                      int
+	BuildKitAutoDiscoveryScaleGracefulPeriod                  time.Duration
 	BuildKitAutoDiscovery                                     bool
 	BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels          bool
 	BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp bool
@@ -64,6 +66,8 @@ func main() {
 
 	flag.StringVar(&cfg.BuildkitAddress, "buildkit-addr", getEnvOrDefault("BUILDKIT_HOST", ""), "Buildkit server address")
 	flag.StringVar(&cfg.BuildkitTmpDir, "buildkit-tmp-dir", os.TempDir(), "Directory path to store temp files during container image builds")
+
+	flag.StringVar(&cfg.RemoteRepositoryPath, "remote-repository-path", getEnvOrDefault("REMOTE_REPOSITORY_PATH", ""), "Remote image repository providers config path")
 
 	flag.BoolVar(&cfg.BuildKitAutoDiscovery, "buildkit-autodiscovery", false, "Whether should dynamically discover the BuildKit service based on Tsuru app (if any)")
 	flag.DurationVar(&cfg.BuildKitAutoDiscoveryTimeout, "buildkit-autodiscovery-timeout", (5 * time.Minute), "Max duration to discover an available BuildKit")
@@ -146,6 +150,17 @@ func newBuildKit() (*buildkit.BuildKit, error) {
 		}
 
 		c = bc
+	}
+
+	if cfg.RemoteRepositoryPath != "" {
+		repositoryData, err := os.ReadFile(cfg.RemoteRepositoryPath)
+		if err != nil {
+			return nil, err
+		}
+		opts.RemoteRepository, err = repository.NewRemoteRepository(repositoryData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to handle remote repository cfg: %w", err)
+		}
 	}
 
 	b := buildkit.NewBuildKit(c, opts)
