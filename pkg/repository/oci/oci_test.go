@@ -59,7 +59,8 @@ func TestOCI_Ensure(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, exists)
 	err = oci.create(ctx, name)
-	assert.Error(t, err, "repository already exists")
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, "repository already exists")
 }
 
 func TestParserRegistryRepository(t *testing.T) {

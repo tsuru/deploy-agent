@@ -30,12 +30,11 @@ func NewOCI(data map[string]string) *OCI {
 		CompartmentID: data["compartmentID"],
 		Profile:       data["profile"],
 		ConfigPath:    data["configPath"],
-		client:        &artifacts.ArtifactsClient{},
 	}
 }
 
 func (r *OCI) Ensure(ctx context.Context, name string) error {
-	err := r.auth(ctx)
+	err := r.auth()
 	if err != nil {
 		return err
 	}
@@ -49,7 +48,7 @@ func (r *OCI) Ensure(ctx context.Context, name string) error {
 	return nil
 }
 
-func (r *OCI) auth(ctx context.Context) error {
+func (r *OCI) auth() error {
 	if r.client != nil {
 		return nil
 	}
@@ -59,7 +58,7 @@ func (r *OCI) auth(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return err
+	return nil
 }
 
 func (r *OCI) create(ctx context.Context, name string) error {
