@@ -242,8 +242,6 @@ func watchBuildKitPods(ctx context.Context, cs kubernetes.Interface, opts Kubern
 				continue
 			}
 
-			fmt.Println("****", e.Object)
-
 			pod := e.Object.(*corev1.Pod)
 			if isPodReady(pod) {
 				pods <- pod
@@ -325,11 +323,11 @@ func setTsuruAppLabelOnBuildKitPod(ctx context.Context, cs kubernetes.Interface,
 		},
 	}
 
-	if app.Team != nil {
+	if app.Team != "" {
 		changes = append(changes, map[string]any{
 			"op":    "replace",
 			"path":  fmt.Sprintf("/metadata/labels/%s", normalizeAppLabelForJSONPatch(metadata.TsuruAppTeamLabelKey)),
-			"value": *app.Team,
+			"value": app.Team,
 		})
 	}
 

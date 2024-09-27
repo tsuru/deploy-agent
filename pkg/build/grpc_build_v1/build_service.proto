@@ -92,7 +92,7 @@ message TsuruApp {
   map<string, string> env_vars = 3;
 
   // Team is the Tsuru team name, optional just for compatibility with old tsuru-api versions.
-  optional string team = 4;
+  string team = 4;
 }
 
 message TsuruJob {
@@ -102,7 +102,7 @@ message TsuruJob {
   map<string, string> env_vars = 3;
 
   // Team is the Tsuru team name, optional just for compatibility with old tsuru-api versions.
-  optional string team = 4;
+  string team = 4;
 }
 
 message TsuruPlatform {
