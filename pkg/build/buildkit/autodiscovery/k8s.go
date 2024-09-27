@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package buildkit
+package autodiscovery
 
 import (
 	"context"
@@ -32,7 +32,7 @@ import (
 )
 
 var (
-	noopFunc = func() {}
+	noopCleaner = func() {}
 
 	tsuruAppGVR = schema.GroupVersionResource{
 		Group:    "tsuru.io",
@@ -41,20 +41,32 @@ var (
 	}
 )
 
-type k8sDiscoverer struct {
-	cs  *kubernetes.Clientset
-	dcs dynamic.Interface
+type KubernertesDiscoveryOptions struct {
+	PodSelector           string
+	Namespace             string
+	LeasePrefix           string
+	Statefulset           string
+	Port                  int
+	UseSameNamespaceAsApp bool
+	SetTsuruAppLabel      bool
+	ScaleGracefulPeriod   time.Duration
+	Timeout               time.Duration
 }
 
-func (d *k8sDiscoverer) Discover(ctx context.Context, opts KubernertesDiscoveryOptions, req *pb.BuildRequest, w io.Writer) (*client.Client, func(), error) {
+type K8sDiscoverer struct {
+	KubernetesInterface kubernetes.Interface
+	DynamicInterface    dynamic.Interface
+}
+
+func (d *K8sDiscoverer) Discover(ctx context.Context, opts KubernertesDiscoveryOptions, req *pb.BuildRequest, w io.Writer) (*client.Client, func(), error) {
 	if req.App == nil {
-		return nil, noopFunc, fmt.Errorf("there's only support for discovering BuildKit pods from Tsuru apps")
+		return nil, noopCleaner, fmt.Errorf("there's only support for discovering BuildKit pods from Tsuru apps")
 	}
 
-	return d.discoverBuildKitClientFromApp(ctx, opts, req.App.Name, w)
+	return d.discoverBuildKitClientFromApp(ctx, opts, req.App, w)
 }
 
-func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts KubernertesDiscoveryOptions, app string, w io.Writer) (*client.Client, func(), error) {
+func (d *K8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts KubernertesDiscoveryOptions, app *pb.TsuruApp, w io.Writer) (*client.Client, func(), error) {
 	leaderCtx, leaderCancel := context.WithCancel(ctx)
 	cfns := []func(){
 		func() {
@@ -63,7 +75,7 @@ func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 		},
 	}
 
-	pod, err := d.discoverBuildKitPod(leaderCtx, opts, app, w)
+	pod, err := d.discoverBuildKitPod(leaderCtx, opts, app.Name, w)
 	if err != nil {
 		return nil, cleanUps(cfns...), err
 	}
@@ -71,14 +83,14 @@ func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 	if opts.SetTsuruAppLabel {
 		klog.V(4).Infoln("Setting Tsuru app labels in the pod", pod.Name)
 
-		err = setTsuruAppLabelOnBuildKitPod(ctx, d.cs, pod.Name, pod.Namespace, app)
+		err = setTsuruAppLabelOnBuildKitPod(ctx, d.KubernetesInterface, pod.Name, pod.Namespace, app)
 		if err != nil {
 			return nil, cleanUps(cfns...), fmt.Errorf("failed to set Tsuru app labels on BuildKit's pod: %w", err)
 		}
 
 		cfns = append(cfns, func() {
 			klog.V(4).Infoln("Removing Tsuru app labels in the pod", pod.Name)
-			nerr := unsetTsuruAppLabelOnBuildKitPod(ctx, d.cs, pod.Name, pod.Namespace)
+			nerr := unsetTsuruAppLabelOnBuildKitPod(ctx, d.KubernetesInterface, pod.Name, pod.Namespace)
 			if nerr != nil {
 				klog.Errorf("failed to unset Tsuru app labels: %s", nerr)
 			}
@@ -102,7 +114,7 @@ func (d *k8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 	return c, cleanUps(cfns...), nil
 }
 
-func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts KubernertesDiscoveryOptions, app string, w io.Writer) (*corev1.Pod, error) {
+func (d *K8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts KubernertesDiscoveryOptions, app string, w io.Writer) (*corev1.Pod, error) {
 	deadlineCtx, deadlineCancel := context.WithCancel(ctx)
 	defer deadlineCancel()
 
@@ -121,7 +133,7 @@ func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 	defer watchCancel() // watch cancellation must happen before than closing the pods channel
 
 	go func() {
-		nerr := watchBuildKitPods(watchCtx, d.cs, opts, ns, pods, w)
+		nerr := watchBuildKitPods(watchCtx, d.KubernetesInterface, opts, ns, pods, w)
 		if nerr != nil {
 			errCh <- nerr
 		}
@@ -141,7 +153,7 @@ func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 			leaseCtx, leaseCancel := context.WithCancel(ctx)
 			leaseCancelByPod[pod.Name] = leaseCancel
 
-			go acquireLeaseForPod(leaseCtx, d.cs, selected, pod, errCh, opts)
+			go acquireLeaseForPod(leaseCtx, d.KubernetesInterface, selected, pod, errCh, opts)
 		}
 	}()
 
@@ -175,14 +187,14 @@ func (d *k8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 	return pod, nil
 }
 
-func (d *k8sDiscoverer) buildkitPodNamespace(ctx context.Context, opts KubernertesDiscoveryOptions, app string) (string, error) {
+func (d *K8sDiscoverer) buildkitPodNamespace(ctx context.Context, opts KubernertesDiscoveryOptions, app string) (string, error) {
 	if !opts.UseSameNamespaceAsApp {
 		return opts.Namespace, nil
 	}
 
 	klog.V(4).Infof("Discovering the namespace where app %s is running on...", app)
 
-	tsuruApp, err := d.dcs.Resource(tsuruAppGVR).Namespace(metadata.TsuruAppNamespace).Get(ctx, app, metav1.GetOptions{})
+	tsuruApp, err := d.DynamicInterface.Resource(tsuruAppGVR).Namespace(metadata.TsuruAppNamespace).Get(ctx, app, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -202,7 +214,7 @@ func (d *k8sDiscoverer) buildkitPodNamespace(ctx context.Context, opts Kubernert
 	return ns, nil
 }
 
-func watchBuildKitPods(ctx context.Context, cs *kubernetes.Clientset, opts KubernertesDiscoveryOptions, ns string, pods chan<- *corev1.Pod, writer io.Writer) error {
+func watchBuildKitPods(ctx context.Context, cs kubernetes.Interface, opts KubernertesDiscoveryOptions, ns string, pods chan<- *corev1.Pod, writer io.Writer) error {
 	if opts.Statefulset != "" {
 		scaleErr := scaler.MayUpscale(ctx, cs, ns, opts.Statefulset, writer)
 		if scaleErr != nil {
@@ -230,6 +242,8 @@ func watchBuildKitPods(ctx context.Context, cs *kubernetes.Clientset, opts Kuber
 				continue
 			}
 
+			fmt.Println("****", e.Object)
+
 			pod := e.Object.(*corev1.Pod)
 			if isPodReady(pod) {
 				pods <- pod
@@ -240,7 +254,7 @@ func watchBuildKitPods(ctx context.Context, cs *kubernetes.Clientset, opts Kuber
 	}
 }
 
-func acquireLeaseForPod(ctx context.Context, cs *kubernetes.Clientset, ch chan<- *corev1.Pod, pod *corev1.Pod, errCh chan<- error, opts KubernertesDiscoveryOptions) {
+func acquireLeaseForPod(ctx context.Context, cs kubernetes.Interface, ch chan<- *corev1.Pod, pod *corev1.Pod, errCh chan<- error, opts KubernertesDiscoveryOptions) {
 	podname := os.Getenv("POD_NAME")
 	if podname == "" {
 		hostname, err := os.Hostname()
@@ -280,19 +294,19 @@ func acquireLeaseForPod(ctx context.Context, cs *kubernetes.Clientset, ch chan<-
 					klog.V(4).Infof("Received context cancelation: %s/%s", pod.Namespace, pod.Name)
 				}
 			},
-			OnStoppedLeading: noopFunc,
+			OnStoppedLeading: func() {},
 		},
 	})
 
 	klog.V(4).Infof("Shutting off the lease for %s/%s pod", pod.Namespace, pod.Name)
 }
 
-func setTsuruAppLabelOnBuildKitPod(ctx context.Context, cs *kubernetes.Clientset, pod, ns, app string) error {
-	patch, err := json.Marshal([]any{
+func setTsuruAppLabelOnBuildKitPod(ctx context.Context, cs kubernetes.Interface, pod, ns string, app *pb.TsuruApp) error {
+	changes := []any{
 		map[string]any{
 			"op":    "replace",
 			"path":  fmt.Sprintf("/metadata/labels/%s", normalizeAppLabelForJSONPatch(metadata.TsuruAppNameLabelKey)),
-			"value": app,
+			"value": app.Name,
 		},
 		map[string]any{
 			"op":    "replace",
@@ -309,7 +323,17 @@ func setTsuruAppLabelOnBuildKitPod(ctx context.Context, cs *kubernetes.Clientset
 			"path":  fmt.Sprintf("/metadata/annotations/%s", normalizeAppLabelForJSONPatch(metadata.DeployAgentLastBuildStartingLabelKey)),
 			"value": strconv.FormatInt(time.Now().Unix(), 10),
 		},
-	})
+	}
+
+	if app.Team != nil {
+		changes = append(changes, map[string]any{
+			"op":    "replace",
+			"path":  fmt.Sprintf("/metadata/labels/%s", normalizeAppLabelForJSONPatch(metadata.TsuruAppTeamLabelKey)),
+			"value": *app.Team,
+		})
+	}
+
+	patch, err := json.Marshal(changes)
 	if err != nil {
 		return err
 	}
@@ -318,11 +342,15 @@ func setTsuruAppLabelOnBuildKitPod(ctx context.Context, cs *kubernetes.Clientset
 	return err
 }
 
-func unsetTsuruAppLabelOnBuildKitPod(ctx context.Context, cs *kubernetes.Clientset, pod, ns string) error {
+func unsetTsuruAppLabelOnBuildKitPod(ctx context.Context, cs kubernetes.Interface, pod, ns string) error {
 	patch, err := json.Marshal([]any{
 		map[string]any{
 			"op":   "remove",
 			"path": fmt.Sprintf("/metadata/labels/%s", normalizeAppLabelForJSONPatch(metadata.TsuruAppNameLabelKey)),
+		},
+		map[string]any{
+			"op":   "remove",
+			"path": fmt.Sprintf("/metadata/labels/%s", normalizeAppLabelForJSONPatch(metadata.TsuruAppTeamLabelKey)),
 		},
 		map[string]any{
 			"op":   "remove",
