@@ -38,6 +38,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/tsuru/deploy-agent/pkg/build"
+	"github.com/tsuru/deploy-agent/pkg/build/buildkit/autodiscovery"
 	"github.com/tsuru/deploy-agent/pkg/build/buildkit/scaler"
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 	repo "github.com/tsuru/deploy-agent/pkg/repository"
@@ -56,7 +57,7 @@ type BuildKit struct {
 	cli    *client.Client
 	k8s    *kubernetes.Clientset
 	dk8s   dynamic.Interface
-	kdopts *KubernertesDiscoveryOptions
+	kdopts *autodiscovery.KubernertesDiscoveryOptions
 	opts   BuildKitOptions
 	m      sync.RWMutex
 }
@@ -65,19 +66,7 @@ func NewBuildKit(c *client.Client, opts BuildKitOptions) *BuildKit {
 	return &BuildKit{cli: c, opts: opts}
 }
 
-type KubernertesDiscoveryOptions struct {
-	PodSelector           string
-	Namespace             string
-	LeasePrefix           string
-	Statefulset           string
-	Port                  int
-	UseSameNamespaceAsApp bool
-	SetTsuruAppLabel      bool
-	ScaleGracefulPeriod   time.Duration
-	Timeout               time.Duration
-}
-
-func (b *BuildKit) WithKubernetesDiscovery(cs *kubernetes.Clientset, dcs dynamic.Interface, opts KubernertesDiscoveryOptions) *BuildKit {
+func (b *BuildKit) WithKubernetesDiscovery(cs *kubernetes.Clientset, dcs dynamic.Interface, opts autodiscovery.KubernertesDiscoveryOptions) *BuildKit {
 	b.k8s = cs
 	b.dk8s = dcs
 	b.kdopts = &opts
@@ -597,16 +586,18 @@ func callBuildKitToExtractTsuruConfigs(ctx context.Context, c *client.Client, lo
 	return tc, nil
 }
 
-func (b *BuildKit) client(ctx context.Context, req *pb.BuildRequest, w io.Writer) (*client.Client, func(), error) {
+type clientCleanUp func()
+
+func (b *BuildKit) client(ctx context.Context, req *pb.BuildRequest, w io.Writer) (*client.Client, clientCleanUp, error) {
 	isBuildForApp := strings.HasPrefix(pb.BuildKind_name[int32(req.Kind)], "BUILD_KIND_APP_")
 
 	if isBuildForApp && b.opts.DiscoverBuildKitClientForApp {
-		d := &k8sDiscoverer{
-			cs:  b.k8s,
-			dcs: b.dk8s,
+		d := &autodiscovery.K8sDiscoverer{
+			KubernetesInterface: b.k8s,
+			DynamicInterface:    b.dk8s,
 		}
 		return d.Discover(ctx, *b.kdopts, req, w)
 	}
 
-	return b.cli, noopFunc, nil
+	return b.cli, func() {}, nil
 }

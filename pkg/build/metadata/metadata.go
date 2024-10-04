@@ -11,5 +11,6 @@ const (
 
 	TsuruAppNamespace    = "tsuru"
 	TsuruAppNameLabelKey = "tsuru.io/app-name"
+	TsuruAppTeamLabelKey = "tsuru.io/app-team"
 	TsuruIsBuildLabelKey = "tsuru.io/is-build"
 )

@@ -25,6 +25,7 @@ import (
 
 	"github.com/tsuru/deploy-agent/pkg/build"
 	"github.com/tsuru/deploy-agent/pkg/build/buildkit"
+	"github.com/tsuru/deploy-agent/pkg/build/buildkit/autodiscovery"
 	buildpb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 	"github.com/tsuru/deploy-agent/pkg/health"
 	"github.com/tsuru/deploy-agent/pkg/repository"
@@ -181,7 +182,7 @@ func newBuildKit() (*buildkit.BuildKit, error) {
 			return nil, err
 		}
 
-		kdopts := buildkit.KubernertesDiscoveryOptions{
+		kdopts := autodiscovery.KubernertesDiscoveryOptions{
 			Timeout:               cfg.BuildKitAutoDiscoveryTimeout,
 			PodSelector:           cfg.BuildKitAutoDiscoveryKubernetesPodSelector,
 			Namespace:             cfg.BuildKitAutoDiscoveryKubernetesNamespace,

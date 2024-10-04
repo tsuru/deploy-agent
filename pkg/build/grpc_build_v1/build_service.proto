@@ -73,7 +73,7 @@ enum BuildKind {
 
   BUILD_KIND_JOB_CREATE_WITH_CONTAINER_IMAGE = 7; // tsuru job create ... -i registry.example.com/tsuru/my-job:latest
   BUILD_KIND_JOB_DEPLOY_WITH_CONTAINER_IMAGE = 7; // tsuru job deploy ... -i registry.example.com/tsuru/my-job:latest
-	BUILD_KIND_JOB_DEPLOY_WITH_CONTAINER_FILE  = 8; // tsuru job deploy ... --dockerfile Dockerfile
+    BUILD_KIND_JOB_DEPLOY_WITH_CONTAINER_FILE  = 8; // tsuru job deploy ... --dockerfile Dockerfile
 }
 
 message BuildResponse {
@@ -90,6 +90,9 @@ message TsuruApp {
   string name = 1;
   // EnvVars are the enviroment variables set on app.
   map<string, string> env_vars = 3;
+
+  // Team is the Tsuru team name, optional just for compatibility with old tsuru-api versions.
+  string team = 4;
 }
 
 message TsuruJob {
@@ -97,6 +100,9 @@ message TsuruJob {
   string name = 1;
   // EnvVars are the enviroment variables set on the job.
   map<string, string> env_vars = 3;
+
+  // Team is the Tsuru team name, optional just for compatibility with old tsuru-api versions.
+  string team = 4;
 }
 
 message TsuruPlatform {
