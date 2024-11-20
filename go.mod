@@ -25,7 +25,7 @@ require (
 require (
 	cloud.google.com/go v0.81.0 // indirect
 	github.com/Microsoft/go-winio v0.6.0 // indirect
-	github.com/containerd/containerd v1.6.16 // indirect
+	github.com/containerd/containerd v1.6.18 // indirect
 	github.com/containerd/continuity v0.3.0 // indirect
 	github.com/containerd/typeurl v1.0.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
