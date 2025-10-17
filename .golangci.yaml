@@ -1,5 +1,5 @@
 run:
-  deadline: 5m
+  timeout: 10m
   tests: true
 
 linters:
@@ -28,7 +28,7 @@ linters-settings:
         AUTHOR: tsuru
 
   govet:
-    check-shadowing: true
     enable:
     - fieldalignment
     - unreachable
+    - shadow
