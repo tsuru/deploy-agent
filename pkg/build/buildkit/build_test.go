@@ -299,7 +299,7 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedTsuruYaml(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, &pb.TsuruConfig{
 		Procfile:  "",
-		TsuruYaml: "hooks:\n  build:\n  - touch /tmp/foo\n  - |-\n    mkdir -p /tmp/tsuru \\\n    && echo \"MY_ENV_VAR=${MY_ENV_VAR}\" > /tmp/tsuru/envs \\\n    && echo \"DATABASE_PASSWORD=${DATABASE_PASSWORD}\" >> /tmp/tsuru/envs\n  - python --version\n\nprocesses:  - name: web\n    command:python app.py\n    healthcheck:\n      path: /\n",
+		TsuruYaml: "hooks:\n  build:\n    - touch /tmp/foo\n    - |-\n      mkdir -p /tmp/tsuru \\\n      && echo \"MY_ENV_VAR=${MY_ENV_VAR}\" > /tmp/tsuru/envs \\\n      && echo \"DATABASE_PASSWORD=${DATABASE_PASSWORD}\" >> /tmp/tsuru/envs\n    - python --version\n\nprocesses:\n  - name: web\n    command: python app.py\n    healthcheck:\n      path: /\n",
 	}, appFiles)
 
 	dc := newDockerClient(t)
