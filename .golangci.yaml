@@ -28,7 +28,7 @@ linters-settings:
         AUTHOR: tsuru
 
   govet:
-    check-shadowing: true
     enable:
     - fieldalignment
     - unreachable
+    - shadow
