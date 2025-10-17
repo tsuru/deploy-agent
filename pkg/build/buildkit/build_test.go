@@ -75,7 +75,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
+func TestBuildKit_Build_FromSourceFilesUserDefinedProcfile(t *testing.T) {
 	destImage := baseRegistry(t, "python", "")
 
 	req := &pb.BuildRequest{
@@ -271,7 +271,203 @@ func TestBuildKit_Build_FromSourceFiles(t *testing.T) {
 	})
 }
 
-func TestBuildKit_Build_AppDeployFromSourceFiles_NoUserDefinedProcfile(t *testing.T) {
+func TestBuildKit_Build_FromSourceFilesUserDefinedTsuruYaml(t *testing.T) {
+	destImage := baseRegistry(t, "python-tsuru-yaml", "")
+
+	req := &pb.BuildRequest{
+		Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD,
+		App: &pb.TsuruApp{
+			Name: "my-app",
+			EnvVars: map[string]string{
+				"MY_ENV_VAR":        "my awesome env var :P",
+				"PYTHON_VERSION":    "3.10.4",
+				"DATABASE_PASSWORD": "a@3a`fo@&$(ls -lah)",
+			},
+		},
+		SourceImage:       "tsuru/python:latest",
+		DestinationImages: []string{destImage},
+		Data:              compressGZIP(t, "./testdata/python-tsuru-yaml/"),
+		PushOptions:       &pb.PushOptions{InsecureRegistry: registryHTTP},
+	}
+
+	bc := newBuildKitClient(t)
+	defer bc.Close()
+
+	appFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).
+		Build(context.TODO(), req, os.Stdout)
+
+	require.NoError(t, err)
+	assert.Equal(t, &pb.TsuruConfig{
+		Procfile:  "",
+		TsuruYaml: "hooks:\n  build:\n  - touch /tmp/foo\n  - |-\n    mkdir -p /tmp/tsuru \\\n    && echo \"MY_ENV_VAR=${MY_ENV_VAR}\" > /tmp/tsuru/envs \\\n    && echo \"DATABASE_PASSWORD=${DATABASE_PASSWORD}\" >> /tmp/tsuru/envs\n  - python --version\n\nprocesses:  - name: web\n    command:python app.py\n    healthcheck:\n      path: /\n",
+	}, appFiles)
+
+	dc := newDockerClient(t)
+	defer dc.Close()
+
+	r, err := dc.ImagePull(context.TODO(), destImage, dockertypes.ImagePullOptions{})
+	require.NoError(t, err)
+	defer r.Close()
+
+	fmt.Println("Pulling container image", destImage)
+	_, err = io.Copy(os.Stdout, r)
+	require.NoError(t, err)
+
+	defer func() {
+		fmt.Printf("Removing container image %s\n", destImage)
+		_, nerr := dc.ImageRemove(context.TODO(), destImage, dockertypes.ImageRemoveOptions{Force: true})
+		require.NoError(t, nerr)
+	}()
+
+	containerCreateResp, err := dc.ContainerCreate(context.TODO(), &dockertypescontainer.Config{
+		Image: destImage,
+		Cmd:   dockerstrslice.StrSlice{"sleep", "Inf"},
+	}, nil, nil, nil, "")
+	require.NoError(t, err)
+	require.NotEmpty(t, containerCreateResp.ID, "container ID cannot be empty")
+
+	containerID := containerCreateResp.ID
+	fmt.Printf("Container created (ID=%s)\n", containerID)
+
+	defer func() {
+		fmt.Printf("Removing container (ID=%s)\n", containerID)
+		require.NoError(t, dc.ContainerRemove(context.TODO(), containerID, dockertypes.ContainerRemoveOptions{Force: true, RemoveVolumes: true}))
+	}()
+
+	err = dc.ContainerStart(context.TODO(), containerID, dockertypes.ContainerStartOptions{})
+	require.NoError(t, err)
+	fmt.Printf("Starting container (ID=%s)\n", containerID)
+
+	t.Run("ensure app archive is on expected location", func(t *testing.T) {
+		execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
+			Tty:          true,
+			AttachStderr: true,
+			AttachStdout: true,
+			Cmd:          []string{"sha256sum", "/home/application/archive.tar.gz"},
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, execCreateResp.ID, "exec ID cannot be empty")
+
+		execID := execCreateResp.ID
+
+		hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+		require.NoError(t, err)
+		require.NotNil(t, hijackedResp.Reader)
+		defer hijackedResp.Close()
+
+		var stderr, stdout bytes.Buffer
+		_, err = dockerstdcopy.StdCopy(&stdout, &stderr, hijackedResp.Reader)
+		require.NoError(t, err)
+		assert.Equal(t, fmt.Sprintf("%x  /home/application/archive.tar.gz\r\n", sha256.Sum256(req.Data)), stdout.String())
+		assert.Empty(t, stderr.String())
+
+		execInspectResp, err := dc.ContainerExecInspect(context.TODO(), execID)
+		require.NoError(t, err)
+		assert.Equal(t, execID, execInspectResp.ExecID)
+		assert.Equal(t, containerID, execInspectResp.ContainerID)
+		assert.False(t, execInspectResp.Running)
+		assert.Empty(t, execInspectResp.ExitCode)
+		assert.NotEmpty(t, execInspectResp.Pid)
+	})
+
+	t.Run("ensure build hooks were executed", func(t *testing.T) {
+		execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
+			Tty:          true,
+			AttachStderr: true,
+			AttachStdout: true,
+			Cmd:          []string{"cat", "/tmp/tsuru/envs"},
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, execCreateResp.ID, "exec ID cannot be empty")
+
+		execID := execCreateResp.ID
+
+		hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+		require.NoError(t, err)
+		require.NotNil(t, hijackedResp.Reader)
+		defer hijackedResp.Close()
+
+		var stderr, stdout bytes.Buffer
+		_, err = dockerstdcopy.StdCopy(&stdout, &stderr, hijackedResp.Reader)
+		require.NoError(t, err)
+		assert.Equal(t, "MY_ENV_VAR=my awesome env var :P\r\nDATABASE_PASSWORD=a@3a`fo@&$(ls -lah)\r\n", stdout.String())
+		assert.Empty(t, stderr.String())
+
+		execInspectResp, err := dc.ContainerExecInspect(context.TODO(), execID)
+		require.NoError(t, err)
+		assert.Equal(t, execID, execInspectResp.ExecID)
+		assert.Equal(t, containerID, execInspectResp.ContainerID)
+		assert.False(t, execInspectResp.Running)
+		assert.Empty(t, execInspectResp.ExitCode)
+		assert.NotEmpty(t, execInspectResp.Pid)
+	})
+
+	t.Run("check if system packages were installed", func(t *testing.T) {
+		execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
+			Tty:          true,
+			AttachStderr: true,
+			AttachStdout: true,
+			Cmd:          []string{"tcpdump", "--version"},
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, execCreateResp.ID, "exec ID cannot be empty")
+
+		execID := execCreateResp.ID
+
+		hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+		require.NoError(t, err)
+		require.NotNil(t, hijackedResp.Reader)
+		defer hijackedResp.Close()
+
+		var stderr, stdout bytes.Buffer
+		_, err = dockerstdcopy.StdCopy(&stdout, &stderr, hijackedResp.Reader)
+		require.NoError(t, err)
+		assert.Regexp(t, `(.*)tcpdump version (.*)`, stdout.String())
+		assert.Empty(t, stderr.String())
+
+		execInspectResp, err := dc.ContainerExecInspect(context.TODO(), execID)
+		require.NoError(t, err)
+		assert.Equal(t, execID, execInspectResp.ExecID)
+		assert.Equal(t, containerID, execInspectResp.ContainerID)
+		assert.False(t, execInspectResp.Running)
+		assert.Empty(t, execInspectResp.ExitCode)
+		assert.NotEmpty(t, execInspectResp.Pid)
+	})
+
+	t.Run("ensure the specific python version was installed", func(t *testing.T) {
+		execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
+			Tty:          true,
+			AttachStderr: true,
+			AttachStdout: true,
+			Cmd:          []string{"bash", "-lc", "python --version"}, // bash -l is mandatory to force loading the ~/.profile file which includes python in the PATH
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, execCreateResp.ID, "exec ID cannot be empty")
+
+		execID := execCreateResp.ID
+
+		hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+		require.NoError(t, err)
+		require.NotNil(t, hijackedResp.Reader)
+		defer hijackedResp.Close()
+
+		var stderr, stdout bytes.Buffer
+		_, err = dockerstdcopy.StdCopy(&stdout, &stderr, hijackedResp.Reader)
+		require.NoError(t, err)
+		assert.Regexp(t, `Python 3.10.4\s`, stdout.String())
+		assert.Empty(t, stderr.String())
+
+		execInspectResp, err := dc.ContainerExecInspect(context.TODO(), execID)
+		require.NoError(t, err)
+		assert.Equal(t, execID, execInspectResp.ExecID)
+		assert.Equal(t, containerID, execInspectResp.ContainerID)
+		assert.False(t, execInspectResp.Running)
+		assert.Empty(t, execInspectResp.ExitCode)
+		assert.NotEmpty(t, execInspectResp.Pid)
+	})
+}
+
+func TestBuildKit_Build_AppDeployFromSourceFiles_NoUserDefinedProcfileOrTsuruYaml(t *testing.T) {
 	destImage := baseRegistry(t, "my-static-app", "")
 
 	req := &pb.BuildRequest{
@@ -846,7 +1042,7 @@ ENV MY_ANOTHER_VAR="another var"
 			b := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()})
 			jobFiles, err := b.Build(context.TODO(), req, os.Stdout)
 
-			//jobFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).Build(context.TODO(), req, os.Stdout)
+			// jobFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).Build(context.TODO(), req, os.Stdout)
 			require.NoError(t, err)
 			assert.Equal(t, &pb.TsuruConfig{
 				ImageConfig: &pb.ContainerImageConfig{

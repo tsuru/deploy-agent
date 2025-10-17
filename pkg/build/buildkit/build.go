@@ -30,12 +30,13 @@ import (
 	"github.com/moby/buildkit/session/auth/authprovider"
 	"github.com/moby/buildkit/session/secrets/secretsprovider"
 	"github.com/moby/buildkit/util/progress/progresswriter"
+	tsuruProvisionTypes "github.com/tsuru/tsuru/types/provision"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"gopkg.in/yaml.v3"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/yaml"
 
 	"github.com/tsuru/deploy-agent/pkg/build"
 	"github.com/tsuru/deploy-agent/pkg/build/buildkit/autodiscovery"
@@ -169,10 +170,14 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, c *client.Client
 		return nil, err
 	}
 
+	tsuruYAMLProcessesEmpty, err := tsuruYamlProcessesEmpty(appFiles.TsuruYaml)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check tsuru.yaml processes: %w", err)
+	}
 	// NOTE(nettoclaudio): Some platforms don't require an user-defined Procfile (e.g. go, java, static, etc).
 	// So we need to retrieve the default Procfile from the platform image.
-	if appFiles.Procfile == "" {
-		fmt.Fprintln(w, "User-defined Procfile not found, trying to extract it from platform's container image")
+	if appFiles.Procfile == "" && tsuruYAMLProcessesEmpty {
+		fmt.Fprintln(w, "User-defined Procfile/Tsuru YAML Processes not found, trying to extract it from platform's container image")
 
 		tc, err := b.extractTsuruConfigsFromContainerImage(ctx, c, r.DestinationImages[0], build.DefaultTsuruPlatformWorkingDir)
 		if err != nil {
@@ -183,6 +188,14 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, c *client.Client
 	}
 
 	return appFiles, nil
+}
+
+func tsuruYamlProcessesEmpty(tsuruYAMLContent string) (bool, error) {
+	var tsuruYAML tsuruProvisionTypes.TsuruYamlData
+	if err := yaml.Unmarshal([]byte(tsuruYAMLContent), &tsuruYAML); err != nil {
+		return false, err
+	}
+	return len(tsuruYAML.Processes) == 0, nil
 }
 
 func generateContainerfile(w io.Writer, image string, tsuruAppFiles *pb.TsuruConfig) error {
@@ -335,12 +348,12 @@ func generateBuildLocalDir(ctx context.Context, baseDir, dockerfile string, appA
 	}
 
 	contextDir := filepath.Join(rootDir, "context")
-	if err = os.Mkdir(contextDir, 0755); err != nil {
+	if err = os.Mkdir(contextDir, 0o755); err != nil {
 		return "", noopFunc, err
 	}
 
 	secretsDir := filepath.Join(rootDir, "secrets")
-	if err = os.Mkdir(secretsDir, 0700); err != nil {
+	if err = os.Mkdir(secretsDir, 0o700); err != nil {
 		return "", noopFunc, err
 	}
 
