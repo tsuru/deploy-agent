@@ -463,6 +463,16 @@ func (b *BuildKit) buildPlatform(ctx context.Context, c *client.Client, r *pb.Bu
 }
 
 func callBuildKitBuild(ctx context.Context, c *client.Client, buildContextDir string, r *pb.BuildRequest, w console.File, disableCache bool) error {
+	// Force prune when cache is disabled
+	if disableCache {
+		fmt.Fprintln(w, "Cache disabled, performing remote prune before build...")
+		if err := c.Prune(ctx, nil, client.PruneAll); err != nil {
+			fmt.Fprintf(w, "Warning: Failed to prune remote cache: %v\n", err)
+		} else {
+			fmt.Fprintln(w, "Remote cache pruned successfully")
+		}
+	}
+
 	var secretSources []secretsprovider.Source
 	if r.App != nil {
 		secretSources = append(secretSources, secretsprovider.Source{
