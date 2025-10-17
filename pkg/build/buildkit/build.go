@@ -51,6 +51,7 @@ type BuildKitOptions struct {
 	RemoteRepository             map[string]repo.Repository
 	TempDir                      string
 	DiscoverBuildKitClientForApp bool
+	DisableCache                 bool
 }
 
 type BuildKit struct {
@@ -164,7 +165,7 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, c *client.Client
 		}
 	}
 
-	if err = callBuildKitBuild(ctx, c, tmpDir, r, w); err != nil {
+	if err = callBuildKitBuild(ctx, c, tmpDir, r, w, b.opts.DisableCache); err != nil {
 		return nil, err
 	}
 
@@ -227,7 +228,7 @@ func (b *BuildKit) buildFromContainerImage(ctx context.Context, c *client.Client
 		}
 	}
 
-	if err = callBuildKitBuild(ctx, c, tmpDir, r, w); err != nil {
+	if err = callBuildKitBuild(ctx, c, tmpDir, r, w, b.opts.DisableCache); err != nil {
 		return nil, err
 	}
 
@@ -422,7 +423,7 @@ func (b *BuildKit) buildFromContainerFile(ctx context.Context, c *client.Client,
 		}
 	}
 
-	if err = callBuildKitBuild(ctx, c, tmpDir, r, w); err != nil {
+	if err = callBuildKitBuild(ctx, c, tmpDir, r, w, b.opts.DisableCache); err != nil {
 		return nil, err
 	}
 
@@ -458,10 +459,10 @@ func (b *BuildKit) buildPlatform(ctx context.Context, c *client.Client, r *pb.Bu
 			return err
 		}
 	}
-	return callBuildKitBuild(ctx, c, tmpDir, r, w)
+	return callBuildKitBuild(ctx, c, tmpDir, r, w, b.opts.DisableCache)
 }
 
-func callBuildKitBuild(ctx context.Context, c *client.Client, buildContextDir string, r *pb.BuildRequest, w console.File) error {
+func callBuildKitBuild(ctx context.Context, c *client.Client, buildContextDir string, r *pb.BuildRequest, w console.File, disableCache bool) error {
 	var secretSources []secretsprovider.Source
 	if r.App != nil {
 		secretSources = append(secretSources, secretsprovider.Source{
@@ -496,13 +497,19 @@ func callBuildKitBuild(ctx context.Context, c *client.Client, buildContextDir st
 			insecureRegistry = pots.InsecureRegistry
 		}
 
+		frontendAttrs := map[string]string{
+			// NOTE: we should always run the deploy's script command as user might
+			// need to regenerate assets, for example.
+			"build-arg:tsuru_deploy_cache": strconv.FormatInt(time.Now().Unix(), 10),
+		}
+
+		if disableCache {
+			frontendAttrs["no-cache"] = ""
+		}
+
 		opts := client.SolveOpt{
-			Frontend: "dockerfile.v0",
-			FrontendAttrs: map[string]string{
-				// NOTE: we should always run the deploy's script command as user might
-				// need to regenerate assets, for example.
-				"build-arg:tsuru_deploy_cache": strconv.FormatInt(time.Now().Unix(), 10),
-			},
+			Frontend:      "dockerfile.v0",
+			FrontendAttrs: frontendAttrs,
 			LocalDirs: map[string]string{
 				"context":    filepath.Join(buildContextDir, "context"),
 				"dockerfile": buildContextDir,

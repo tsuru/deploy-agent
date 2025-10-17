@@ -54,6 +54,7 @@ var cfg struct {
 	BuildKitAutoDiscovery                                     bool
 	BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels          bool
 	BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp bool
+	DisableCache                                              bool
 }
 
 func main() {
@@ -80,6 +81,8 @@ func main() {
 	flag.BoolVar(&cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp, "buildkit-autodiscovery-kubernetes-use-same-namespace-as-tsuru-app", false, "Whether should look for BuildKit in the Tsuru app's namespace")
 	flag.StringVar(&cfg.BuildKitAutoDiscoveryStatefulset, "buildkit-autodiscovery-scale-statefulset", "", "Name of statefulset of buildkit that scale from zero")
 	flag.DurationVar(&cfg.BuildKitAutoDiscoveryScaleGracefulPeriod, "buildkit-autodiscovery-scale-graceful-period", (2 * time.Hour), "how long time after a build to retain buildkit running")
+
+	flag.BoolVar(&cfg.DisableCache, "disable-cache", false, "Disable BuildKit cache during container image builds")
 
 	flag.Parse()
 
@@ -140,6 +143,7 @@ func newBuildKit() (*buildkit.BuildKit, error) {
 	opts := buildkit.BuildKitOptions{
 		TempDir:                      cfg.BuildkitTmpDir,
 		DiscoverBuildKitClientForApp: cfg.BuildKitAutoDiscovery,
+		DisableCache:                 cfg.DisableCache,
 	}
 
 	var c *client.Client
