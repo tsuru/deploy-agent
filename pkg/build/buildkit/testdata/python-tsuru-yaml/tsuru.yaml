@@ -12,3 +12,7 @@ processes:
     command: python app.py
     healthcheck:
       path: /
+  - name: secondary
+    command: python app-secondary.py
+    healthcheck:
+      path: /

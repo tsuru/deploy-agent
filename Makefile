@@ -3,7 +3,22 @@ GOLANGCI_LINT ?= golangci-lint
 PROTOC ?= protoc
 DOCKER ?= docker
 
+# check if user uses docker-compose standalone or compose plugin
+DOCKER_COMPOSE := $(shell if $(DOCKER) compose version > /dev/null 2>&1; then echo "$(DOCKER) compose"; else echo "docker-compose"; fi)
+
 INTERNAL_IP ?= 169.196.255.254
+
+LOCAL_DEV ?= ./misc/local-dev.sh
+
+.PHONY: setup
+setup:
+	@$(LOCAL_DEV) setup-loopback $(TSURU_HOST_IP)
+	@$(DOCKER_COMPOSE) up -d
+
+.PHONY: cleanup
+cleanup:
+	@$(DOCKER_COMPOSE) down
+	@$(LOCAL_DEV) cleanup-loopback $(TSURU_HOST_IP)
 
 .PHONY: all
 all: lint test

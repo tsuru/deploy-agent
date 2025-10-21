@@ -7,15 +7,15 @@ services:
     command: --addr tcp://0.0.0.0:7777 --config /etc/buildkit/buildkitd.toml
     privileged: true
     ports:
-    - 7777:7777
+      - 7777:7777
     volumes:
-    - ./pkg/build/buildkit/testdata/buildkitd.toml:/etc/buildkit/buildkitd.toml:ro
+      - ./pkg/build/buildkit/testdata/buildkitd.toml:/etc/buildkit/buildkitd.toml:ro
 
   registry:
     container_name: registry
     image: registry:2
     ports:
-    - 5000:5000
+      - 5000:5000
 
   docker:
     container_name: docker
@@ -23,4 +23,4 @@ services:
     command: dockerd -H tcp://0.0.0.0:2375 --insecure-registry 169.196.255.254:5000 --storage-driver overlay2
     privileged: true
     ports:
-    - 2375:2375
+      - 2375:2375

@@ -7,10 +7,14 @@
 
 package build
 
+import "maps"
+
 type TsuruYamlData struct {
-	Hooks       *TsuruYamlHooks            `json:"hooks,omitempty" bson:",omitempty"`
-	Healthcheck *TsuruYamlHealthcheck      `json:"healthcheck,omitempty" bson:",omitempty"`
-	Kubernetes  *TsuruYamlKubernetesConfig `json:"kubernetes,omitempty" bson:",omitempty"`
+	Hooks        *TsuruYamlHooks            `json:"hooks,omitempty" bson:",omitempty"`
+	Healthcheck  *TsuruYamlHealthcheck      `json:"healthcheck,omitempty" bson:",omitempty"`
+	Startupcheck *TsuruYamlStartupcheck     `json:"startupcheck,omitempty" bson:",omitempty"`
+	Kubernetes   *TsuruYamlKubernetesConfig `json:"kubernetes,omitempty" bson:",omitempty"`
+	Processes    []TsuruYamlProcess         `json:"processes,omitempty" bson:",omitempty"`
 }
 
 type TsuruYamlHooks struct {
@@ -26,18 +30,30 @@ type TsuruYamlRestartHooks struct {
 type TsuruYamlHealthcheck struct {
 	Headers              map[string]string `json:"headers,omitempty" bson:",omitempty"`
 	Path                 string            `json:"path"`
-	Method               string            `json:"method"`
 	Scheme               string            `json:"scheme"`
-	Match                string            `json:"match,omitempty" bson:",omitempty"`
-	RouterBody           string            `json:"router_body,omitempty" yaml:"router_body" bson:"router_body,omitempty"`
 	Command              []string          `json:"command,omitempty" bson:",omitempty"`
-	Status               int               `json:"status"`
 	AllowedFailures      int               `json:"allowed_failures,omitempty" yaml:"allowed_failures" bson:"allowed_failures,omitempty"`
 	IntervalSeconds      int               `json:"interval_seconds,omitempty" yaml:"interval_seconds" bson:"interval_seconds,omitempty"`
 	TimeoutSeconds       int               `json:"timeout_seconds,omitempty" yaml:"timeout_seconds" bson:"timeout_seconds,omitempty"`
 	DeployTimeoutSeconds int               `json:"deploy_timeout_seconds,omitempty" yaml:"deploy_timeout_seconds" bson:"deploy_timeout_seconds,omitempty"`
-	UseInRouter          bool              `json:"use_in_router,omitempty" yaml:"use_in_router" bson:"use_in_router,omitempty"`
 	ForceRestart         bool              `json:"force_restart,omitempty" yaml:"force_restart" bson:"force_restart,omitempty"`
+}
+
+type TsuruYamlStartupcheck struct {
+	Headers         map[string]string `json:"headers,omitempty" bson:",omitempty"`
+	Path            string            `json:"path"`
+	Scheme          string            `json:"scheme"`
+	Command         []string          `json:"command,omitempty" bson:",omitempty"`
+	AllowedFailures int               `json:"allowed_failures,omitempty" yaml:"allowed_failures" bson:"allowed_failures,omitempty"`
+	IntervalSeconds int               `json:"interval_seconds,omitempty" yaml:"interval_seconds" bson:"interval_seconds,omitempty"`
+	TimeoutSeconds  int               `json:"timeout_seconds,omitempty" yaml:"timeout_seconds" bson:"timeout_seconds,omitempty"`
+}
+
+type TsuruYamlProcess struct {
+	Healthcheck  *TsuruYamlHealthcheck  `json:"healthcheck,omitempty" bson:",omitempty"`
+	Startupcheck *TsuruYamlStartupcheck `json:"startupcheck,omitempty" bson:",omitempty"`
+	Name         string                 `json:"name"`
+	Command      string                 `json:"command" yaml:"command" bson:"command"`
 }
 
 type TsuruYamlKubernetesConfig struct {
@@ -51,9 +67,7 @@ func (in *TsuruYamlKubernetesConfig) DeepCopyInto(out *TsuruYamlKubernetesConfig
 	if out.Groups == nil {
 		out.Groups = make(map[string]TsuruYamlKubernetesGroup)
 	}
-	for k, v := range in.Groups {
-		out.Groups[k] = v
-	}
+	maps.Copy(out.Groups, in.Groups)
 }
 
 func (in *TsuruYamlKubernetesConfig) DeepCopy() *TsuruYamlKubernetesConfig {

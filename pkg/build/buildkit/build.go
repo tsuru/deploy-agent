@@ -30,7 +30,6 @@ import (
 	"github.com/moby/buildkit/session/auth/authprovider"
 	"github.com/moby/buildkit/session/secrets/secretsprovider"
 	"github.com/moby/buildkit/util/progress/progresswriter"
-	tsuruProvisionTypes "github.com/tsuru/tsuru/types/provision"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -144,7 +143,12 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, c *client.Client
 	}
 
 	var dockerfile bytes.Buffer
-	if err = generateContainerfile(&dockerfile, r.SourceImage, appFiles); err != nil {
+	tsuruYAML, err := parseTsuruYaml(appFiles.TsuruYaml)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = generateContainerfile(&dockerfile, r.SourceImage, tsuruYAML.Hooks); err != nil {
 		return nil, err
 	}
 
@@ -170,13 +174,9 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, c *client.Client
 		return nil, err
 	}
 
-	tsuruYAMLProcessesEmpty, err := tsuruYamlProcessesEmpty(appFiles.TsuruYaml)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check tsuru.yaml processes: %w", err)
-	}
 	// NOTE(nettoclaudio): Some platforms don't require an user-defined Procfile (e.g. go, java, static, etc).
 	// So we need to retrieve the default Procfile from the platform image.
-	if appFiles.Procfile == "" && tsuruYAMLProcessesEmpty {
+	if appFiles.Procfile == "" && len(tsuruYAML.Processes) == 0 {
 		fmt.Fprintln(w, "User-defined Procfile/Tsuru YAML Processes not found, trying to extract it from platform's container image")
 
 		tc, err := b.extractTsuruConfigsFromContainerImage(ctx, c, r.DestinationImages[0], build.DefaultTsuruPlatformWorkingDir)
@@ -190,25 +190,21 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, c *client.Client
 	return appFiles, nil
 }
 
-func tsuruYamlProcessesEmpty(tsuruYAMLContent string) (bool, error) {
-	var tsuruYAML tsuruProvisionTypes.TsuruYamlData
-	if err := yaml.Unmarshal([]byte(tsuruYAMLContent), &tsuruYAML); err != nil {
-		return false, err
+func parseTsuruYaml(tsuruYAMLContent string) (build.TsuruYamlData, error) {
+	var tsuruYAML build.TsuruYamlData
+	if strings.TrimSpace(tsuruYAMLContent) == "" {
+		return build.TsuruYamlData{}, nil
 	}
-	return len(tsuruYAML.Processes) == 0, nil
+	if err := yaml.Unmarshal([]byte(tsuruYAMLContent), &tsuruYAML); err != nil {
+		return build.TsuruYamlData{}, err
+	}
+	return tsuruYAML, nil
 }
 
-func generateContainerfile(w io.Writer, image string, tsuruAppFiles *pb.TsuruConfig) error {
-	var tsuruYaml build.TsuruYamlData
-	if tsuruAppFiles != nil {
-		if err := yaml.Unmarshal([]byte(tsuruAppFiles.TsuruYaml), &tsuruYaml); err != nil {
-			return err
-		}
-	}
-
+func generateContainerfile(w io.Writer, image string, tsuruYamlHooks *build.TsuruYamlHooks) error {
 	var buildHooks []string
-	if hooks := tsuruYaml.Hooks; hooks != nil {
-		buildHooks = hooks.Build
+	if tsuruYamlHooks != nil {
+		buildHooks = tsuruYamlHooks.Build
 	}
 
 	dockerfile, err := build.BuildContainerfile(build.BuildContainerfileParams{

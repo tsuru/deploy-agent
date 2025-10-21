@@ -298,8 +298,26 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedTsuruYaml(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, &pb.TsuruConfig{
-		Procfile:  "",
-		TsuruYaml: "hooks:\n  build:\n    - touch /tmp/foo\n    - |-\n      mkdir -p /tmp/tsuru \\\n      && echo \"MY_ENV_VAR=${MY_ENV_VAR}\" > /tmp/tsuru/envs \\\n      && echo \"DATABASE_PASSWORD=${DATABASE_PASSWORD}\" >> /tmp/tsuru/envs\n    - python --version\n\nprocesses:\n  - name: web\n    command: python app.py\n    healthcheck:\n      path: /\n",
+		Procfile: "",
+		TsuruYaml: `hooks:
+  build:
+    - touch /tmp/foo
+    - |-
+      mkdir -p /tmp/tsuru \
+      && echo "MY_ENV_VAR=${MY_ENV_VAR}" > /tmp/tsuru/envs \
+      && echo "DATABASE_PASSWORD=${DATABASE_PASSWORD}" >> /tmp/tsuru/envs
+    - python --version
+
+processes:
+  - name: web
+    command: python app.py
+    healthcheck:
+      path: /
+  - name: secondary
+    command: python app-secondary.py
+    healthcheck:
+      path: /
+`,
 	}, appFiles)
 
 	dc := newDockerClient(t)
@@ -467,7 +485,7 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedTsuruYaml(t *testing.T) {
 	})
 }
 
-func TestBuildKit_Build_AppDeployFromSourceFiles_NoUserDefinedProcfileOrTsuruYaml(t *testing.T) {
+func TestBuildKit_Build_AppDeployFromSourceFiles_NoUserDefinedProcfileOrTsuruYamlProcesses(t *testing.T) {
 	destImage := baseRegistry(t, "my-static-app", "")
 
 	req := &pb.BuildRequest{
@@ -490,6 +508,9 @@ func TestBuildKit_Build_AppDeployFromSourceFiles_NoUserDefinedProcfileOrTsuruYam
 	require.NoError(t, err)
 	assert.Equal(t, &pb.TsuruConfig{
 		Procfile: "web: /usr/sbin/nginx -g \"daemon off;\"\n",
+		TsuruYaml: `healthcheck:
+  path: /
+`,
 	}, appFiles)
 }
 
