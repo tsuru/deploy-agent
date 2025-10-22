@@ -4,94 +4,94 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/setup-go@v3
-      with:
-        go-version: '1.24'
+      - uses: actions/setup-go@v3
+        with:
+          go-version: "1.24"
 
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-    # NOTE: using link-local reserved address block in order to avoid conflict.
-    - name: Add fake IP (169.196.255.254) on loopback interface
-      run: |-
-        { ip address | grep -q 169.196.255.254; } || sudo ip address add 169.196.255.254 dev lo
+      # NOTE: using link-local reserved address block in order to avoid conflict.
+      - name: Add fake IP (169.196.255.254) on loopback interface
+        run: |-
+          { ip address | grep -q 169.196.255.254; } || sudo ip address add 169.196.255.254 dev lo
 
-    - name: Running required services (Builkit, Docker Registry, Docker)
-      run: docker compose -f ./compose.yaml up -d
+      - name: Running required services (Builkit, Docker Registry, Docker)
+        run: docker compose -f ./docker-compose.yaml up -d
 
-    - name: Install protoc and Go compiler plugins
-      run: |-
-        sudo apt install -y protobuf-compiler
-        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
-        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
+      - name: Install protoc and Go compiler plugins
+        run: |-
+          sudo apt install -y protobuf-compiler
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
 
-    - run: make test test/integration
+      - run: make test test/integration
 
   lint:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/setup-go@v3
-      with:
-        go-version: '1.24'
-    - uses: actions/checkout@v2
-    - uses: golangci/golangci-lint-action@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version: "1.24"
+      - uses: actions/checkout@v2
+      - uses: golangci/golangci-lint-action@v3
 
   publish:
     if: github.repository == 'tsuru/deploy-agent' && github.event_name != 'pull_request'
     needs:
-    - lint
-    - test
+      - lint
+      - test
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-    - uses: Surgo/docker-smart-tag-action@v1
-      id: smarttag
-      with:
-        docker_image: tsuru/deploy-agent
-        default_branch: main
-        tag_with_sha: 'true'
-    - name: Handle smart-tag to proper tag var
-      uses: actions/github-script@v6
-      id: handle_tag
-      with:
-        script: |
-          var tag_re = /deploy-agent:([0-9])/g
-          var orig_tags = `${{steps.smarttag.outputs.tag}}`
-          return orig_tags.replace(tag_re,"deploy-agent:v$1")
-    - name: docker login
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.REGISTRY_USERNAME }}
-        password: ${{ secrets.REGISTRY_PASSWORD }}
-    - name: push image tag to Docker Hub (tsuru/deploy-agent)
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: true
-        tags: ${{ steps.handle_tag.outputs.result }}
-        platforms: linux/amd64,linux/arm64
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - uses: Surgo/docker-smart-tag-action@v1
+        id: smarttag
+        with:
+          docker_image: tsuru/deploy-agent
+          default_branch: main
+          tag_with_sha: "true"
+      - name: Handle smart-tag to proper tag var
+        uses: actions/github-script@v6
+        id: handle_tag
+        with:
+          script: |
+            var tag_re = /deploy-agent:([0-9])/g
+            var orig_tags = `${{steps.smarttag.outputs.tag}}`
+            return orig_tags.replace(tag_re,"deploy-agent:v$1")
+      - name: docker login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+      - name: push image tag to Docker Hub (tsuru/deploy-agent)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.handle_tag.outputs.result }}
+          platforms: linux/amd64,linux/arm64
 
   release:
     if: github.event_name != 'pull_request' && github.repository == 'tsuru/deploy-agent' && startsWith(github.ref, 'refs/tags/')
     needs:
-    - lint
-    - test
+      - lint
+      - test
     runs-on: ubuntu-latest
     steps:
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
-    - uses: actions/setup-go@v3
-      with:
-        go-version: '1.24'
-    - uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
-    - uses: goreleaser/goreleaser-action@v2
-      with:
-        args: release
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - uses: actions/setup-go@v3
+        with:
+          go-version: "1.24"
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: goreleaser/goreleaser-action@v2
+        with:
+          args: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
