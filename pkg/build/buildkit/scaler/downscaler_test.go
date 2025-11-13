@@ -58,7 +58,7 @@ func TestRunDownscaler(t *testing.T) {
 		},
 	)
 
-	err := RunDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
+	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
 	assert.NoError(t, err)
 
 	rs, err := cli.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
@@ -101,7 +101,7 @@ func TestRunDownscalerWithReplacedBuildkit(t *testing.T) {
 		},
 	)
 
-	err := RunDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
+	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
 	assert.NoError(t, err)
 
 	rs, err := cli.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
@@ -147,7 +147,7 @@ func TestRunDownscalerWithEarlyBuild(t *testing.T) {
 		},
 	)
 
-	err := RunDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
+	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
 	assert.NoError(t, err)
 
 	rs, err := cli.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
@@ -206,7 +206,7 @@ func TestRunDownscalerWithOnePodBuilding(t *testing.T) {
 		},
 	)
 
-	err := RunDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
+	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
 	assert.NoError(t, err)
 
 	rs, err := cli.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
@@ -267,7 +267,7 @@ func TestRunDownscalerWithManyPods(t *testing.T) {
 		},
 	)
 
-	err := RunDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
+	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
 	assert.NoError(t, err)
 
 	rs, err := cli.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
@@ -327,7 +327,7 @@ func TestRunDownscalerWithManyPods2(t *testing.T) {
 		},
 	)
 
-	err := RunDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
+	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
 	assert.NoError(t, err)
 
 	rs, err := cli.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})

@@ -51,6 +51,8 @@ var cfg struct {
 	ServerMaxRecvMsgSize                                      int
 	ServerMaxSendMsgSize                                      int
 	BuildKitAutoDiscoveryScaleGracefulPeriod                  time.Duration
+	BuildKitAutoDiscoveryUpscaleAfterPeriod                   bool
+	BuildKitAutoDiscoveryUpscalePeriod                        time.Duration
 	BuildKitAutoDiscovery                                     bool
 	BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels          bool
 	BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp bool
@@ -81,6 +83,17 @@ func main() {
 	flag.BoolVar(&cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp, "buildkit-autodiscovery-kubernetes-use-same-namespace-as-tsuru-app", false, "Whether should look for BuildKit in the Tsuru app's namespace")
 	flag.StringVar(&cfg.BuildKitAutoDiscoveryStatefulset, "buildkit-autodiscovery-scale-statefulset", "", "Name of statefulset of buildkit that scale from zero")
 	flag.DurationVar(&cfg.BuildKitAutoDiscoveryScaleGracefulPeriod, "buildkit-autodiscovery-scale-graceful-period", (2 * time.Hour), "how long time after a build to retain buildkit running")
+	flag.DurationVar(&cfg.BuildKitAutoDiscoveryUpscalePeriod, "buildkit-autodiscovery-upscale-period", (2 * time.Minute), "how long to wait before upscaling buildkit")
+	flag.BoolVar(&cfg.BuildKitAutoDiscoveryUpscaleAfterPeriod, "buildkit-autodiscovery-upscale-after-period", false, "Whether should upscale buildkit after waiting the upscale period")
+
+	if cfg.BuildKitAutoDiscoveryUpscaleAfterPeriod && cfg.BuildKitAutoDiscoveryStatefulset == "" {
+		fmt.Fprintf(os.Stderr, "buildkit-autodiscovery-scale-statefulset is required when buildkit-autodiscovery-upscale-after-period is enabled")
+		os.Exit(1)
+	}
+	if cfg.BuildKitAutoDiscoveryUpscaleAfterPeriod && cfg.BuildKitAutoDiscoveryUpscalePeriod >= cfg.BuildKitAutoDiscoveryTimeout {
+		fmt.Fprintf(os.Stderr, "buildkit-autodiscovery-upscale-period must be less than buildkit-autodiscovery-timeout")
+		os.Exit(1)
+	}
 
 	flag.BoolVar(&cfg.DisableCache, "disable-cache", false, "Disable BuildKit cache during container image builds")
 
@@ -187,15 +200,17 @@ func newBuildKit() (*buildkit.BuildKit, error) {
 		}
 
 		kdopts := autodiscovery.KubernertesDiscoveryOptions{
-			Timeout:               cfg.BuildKitAutoDiscoveryTimeout,
-			PodSelector:           cfg.BuildKitAutoDiscoveryKubernetesPodSelector,
-			Namespace:             cfg.BuildKitAutoDiscoveryKubernetesNamespace,
-			Port:                  cfg.BuildKitAutoDiscoveryKubernetesPort,
-			SetTsuruAppLabel:      cfg.BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels,
-			UseSameNamespaceAsApp: cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp,
-			LeasePrefix:           cfg.BuildKitAutoDiscoveryKubernetesLeasePrefix,
-			Statefulset:           cfg.BuildKitAutoDiscoveryStatefulset,
-			ScaleGracefulPeriod:   cfg.BuildKitAutoDiscoveryScaleGracefulPeriod,
+			Timeout:                cfg.BuildKitAutoDiscoveryTimeout,
+			PodSelector:            cfg.BuildKitAutoDiscoveryKubernetesPodSelector,
+			Namespace:              cfg.BuildKitAutoDiscoveryKubernetesNamespace,
+			Port:                   cfg.BuildKitAutoDiscoveryKubernetesPort,
+			SetTsuruAppLabel:       cfg.BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels,
+			UseSameNamespaceAsApp:  cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp,
+			LeasePrefix:            cfg.BuildKitAutoDiscoveryKubernetesLeasePrefix,
+			UpscaleAfterWaitPeriod: cfg.BuildKitAutoDiscoveryUpscaleAfterPeriod,
+			UpscaleWaitPeriod:      cfg.BuildKitAutoDiscoveryUpscalePeriod,
+			Statefulset:            cfg.BuildKitAutoDiscoveryStatefulset,
+			ScaleGracefulPeriod:    cfg.BuildKitAutoDiscoveryScaleGracefulPeriod,
 		}
 
 		return b.WithKubernetesDiscovery(cs, dcs, kdopts), nil
