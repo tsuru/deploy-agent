@@ -51,8 +51,8 @@ var cfg struct {
 	ServerMaxRecvMsgSize                                      int
 	ServerMaxSendMsgSize                                      int
 	BuildKitAutoDiscoveryScaleGracefulPeriod                  time.Duration
-	BuildKitAutoDiscoveryUpscaleAfterPeriod                   bool
 	BuildKitAutoDiscoveryUpscalePeriod                        time.Duration
+	BuildKitAutoDiscoveryUpscaleAfterPeriod                   bool
 	BuildKitAutoDiscovery                                     bool
 	BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels          bool
 	BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp bool

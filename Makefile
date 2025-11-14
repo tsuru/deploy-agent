@@ -14,6 +14,8 @@ LOCAL_DEV ?= ./misc/local-dev.sh
 setup:
 	@$(LOCAL_DEV) setup-loopback $(TSURU_HOST_IP)
 	@$(DOCKER_COMPOSE) up -d
+	@$(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.6
+	@$(GO) install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 
 .PHONY: cleanup
 cleanup:
@@ -29,7 +31,7 @@ test: generate
 
 .PHONY: test/integration
 test/integration:
-	DEPLOY_AGENT_INTEGRATION=true \
+		DEPLOY_AGENT_INTEGRATION=true \
 		DEPLOY_AGENT_INTEGRATION_REGISTRY_HOST=$(INTERNAL_IP):5000 \
 		DEPLOY_AGENT_INTEGRATION_REGISTRY_HTTP=true \
 		BUILDKIT_HOST=tcp://0.0.0.0:7777 \

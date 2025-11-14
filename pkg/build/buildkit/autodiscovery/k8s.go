@@ -122,7 +122,7 @@ func (d *K8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 	}
 
 	if opts.Statefulset != "" {
-		err := scaler.MayUpscale(ctx, d.KubernetesInterface, ns, opts.Statefulset, w)
+		err = scaler.MayUpscale(ctx, d.KubernetesInterface, ns, opts.Statefulset, w)
 		if err != nil {
 			return nil, fmt.Errorf("failed trying upscale BuildKit statefulset(%s - %s): %w", ns, opts.Statefulset, err)
 		}
