@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/moby/buildkit/client"
+	"github.com/tsuru/deploy-agent/pkg/build/buildkit/metrics"
 	"github.com/tsuru/deploy-agent/pkg/build/buildkit/scaler"
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 	"github.com/tsuru/deploy-agent/pkg/build/metadata"
@@ -45,8 +46,6 @@ type KubernertesDiscoveryOptions struct {
 	Port                   int
 	UseSameNamespaceAsApp  bool
 	SetTsuruAppLabel       bool
-	UpscaleAfterWaitPeriod bool
-	UpscaleWaitPeriod      time.Duration
 	ScaleGracefulPeriod    time.Duration
 	Timeout                time.Duration
 }
@@ -56,15 +55,24 @@ type K8sDiscoverer struct {
 	DynamicInterface    dynamic.Interface
 }
 
-func (d *K8sDiscoverer) Discover(ctx context.Context, opts KubernertesDiscoveryOptions, req *pb.BuildRequest, w io.Writer) (*client.Client, func(), error) {
+func (d *K8sDiscoverer) Discover(ctx context.Context, opts KubernertesDiscoveryOptions, req *pb.BuildRequest, w io.Writer) (*client.Client, func(), string, error) {
 	if req.App == nil {
-		return nil, noopCleaner, fmt.Errorf("there's only support for discovering BuildKit pods from Tsuru apps")
+		return nil, noopCleaner, "", fmt.Errorf("there's only support for discovering BuildKit pods from Tsuru apps")
 	}
 
-	return d.discoverBuildKitClientFromApp(ctx, opts, req.App, w)
+	ns, err := d.buildkitPodNamespace(ctx, opts, req.App.Name)
+	if err != nil {
+		return nil, noopCleaner, "", err
+	}
+
+	client, cleaner, err := d.discoverBuildKitClientFromApp(ctx, opts, req.App, ns, w)
+	if err != nil {
+		return nil, noopCleaner, ns, err
+	}
+	return client, cleaner, ns, nil
 }
 
-func (d *K8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts KubernertesDiscoveryOptions, app *pb.TsuruApp, w io.Writer) (*client.Client, func(), error) {
+func (d *K8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts KubernertesDiscoveryOptions, app *pb.TsuruApp, namespace string, w io.Writer) (*client.Client, func(), error) {
 	leaderCtx, leaderCancel := context.WithCancel(ctx)
 	cfns := []func(){
 		func() {
@@ -73,7 +81,7 @@ func (d *K8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 		},
 	}
 
-	pod, err := d.discoverBuildKitPod(leaderCtx, opts, app.Name, w)
+	pod, err := d.discoverBuildKitPod(leaderCtx, opts, namespace, w)
 	if err != nil {
 		return nil, cleanUps(cfns...), err
 	}
@@ -112,26 +120,24 @@ func (d *K8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 	return c, cleanUps(cfns...), nil
 }
 
-func (d *K8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts KubernertesDiscoveryOptions, app string, w io.Writer) (*corev1.Pod, error) {
+func (d *K8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts KubernertesDiscoveryOptions, namespace string, w io.Writer) (*corev1.Pod, error) {
 	deadlineCtx, deadlineCancel := context.WithCancel(ctx)
 	defer deadlineCancel()
 
-	ns, err := d.buildkitPodNamespace(deadlineCtx, opts, app)
-	if err != nil {
-		return nil, err
-	}
+	metrics.BuildsWaitingForLease.WithLabelValues(namespace).Inc()
+	defer metrics.BuildsWaitingForLease.WithLabelValues(namespace).Dec()
 
 	if opts.Statefulset != "" {
-		err = scaler.MayUpscale(ctx, d.KubernetesInterface, ns, opts.Statefulset, w)
+		err := scaler.MayUpscale(ctx, d.KubernetesInterface, namespace, opts.Statefulset, w)
 		if err != nil {
-			return nil, fmt.Errorf("failed trying upscale BuildKit statefulset(%s - %s): %w", ns, opts.Statefulset, err)
+			return nil, fmt.Errorf("failed trying upscale BuildKit statefulset(%s - %s): %w", namespace, opts.Statefulset, err)
 		}
 	}
 
 	watchCtx, watchCancel := context.WithCancel(deadlineCtx)
 	defer watchCancel()
 
-	podWatcher, err := d.KubernetesInterface.CoreV1().Pods(ns).Watch(watchCtx, metav1.ListOptions{
+	podWatcher, err := d.KubernetesInterface.CoreV1().Pods(namespace).Watch(watchCtx, metav1.ListOptions{
 		LabelSelector: opts.PodSelector,
 		Watch:         true,
 	})
@@ -153,14 +159,6 @@ func (d *K8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 		case <-time.After(opts.Timeout):
 			leaser.releaseAll()
 			return nil, fmt.Errorf("max deadline exceeded to discover BuildKit pod")
-		case <-time.After(calculateUpscaleWaitPeriod(opts)):
-			if opts.Statefulset == "" {
-				continue
-			}
-			if err := scaler.Upscale(deadlineCtx, d.KubernetesInterface, ns, opts.Statefulset, w); err != nil {
-				leaser.releaseAll()
-				return nil, fmt.Errorf("failed trying upscale BuildKit statefulset(%s - %s): %w", ns, opts.Statefulset, err)
-			}
 		case leasedPod := <-leasedPodsCh:
 			defer leaser.releaseAll(releaseOptions{except: leasedPod.Name})
 			return leasedPod, nil
@@ -193,14 +191,6 @@ func (d *K8sDiscoverer) buildkitPodNamespace(ctx context.Context, opts Kubernert
 	klog.V(4).Infof("App %s is running on namespace %s...", app, ns)
 
 	return ns, nil
-}
-
-func calculateUpscaleWaitPeriod(opts KubernertesDiscoveryOptions) time.Duration {
-	if opts.UpscaleAfterWaitPeriod {
-		return opts.UpscaleWaitPeriod
-	}
-	// NOTE:(ravilock) use a fallback value of Timeout + 1 minute so it will not happen if disabled
-	return time.Minute + opts.Timeout
 }
 
 func isPodReady(pod *corev1.Pod) bool {

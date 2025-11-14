@@ -71,7 +71,7 @@ func TestK8sDiscoverer_Discover(t *testing.T) {
 		DynamicInterface:    fakeDynamicClient,
 	}
 
-	_, _, err := discoverer.Discover(
+	_, _, _, err := discoverer.Discover(
 		context.TODO(),
 		KubernertesDiscoveryOptions{
 			PodSelector:      "app=test-app",
@@ -109,7 +109,7 @@ func TestK8sDiscoverer_DiscoverWithoutApp(t *testing.T) {
 		DynamicInterface:    fakeDynamic.NewSimpleDynamicClient(runtime.NewScheme()),
 	}
 
-	_, cleanup, err := discoverer.Discover(
+	_, cleanup, _, err := discoverer.Discover(
 		context.TODO(),
 		KubernertesDiscoveryOptions{
 			Namespace: "tsuru",
@@ -153,7 +153,7 @@ func TestK8sDiscoverer_DiscoverWithTimeout(t *testing.T) {
 		DynamicInterface:    fakeDynamicClient,
 	}
 
-	_, _, err := discoverer.Discover(
+	_, _, _, err := discoverer.Discover(
 		context.TODO(),
 		KubernertesDiscoveryOptions{
 			PodSelector:      "app=test-app",
@@ -224,7 +224,7 @@ func TestK8sDiscoverer_DiscoverWithStatefulsetInitialUpscale(t *testing.T) {
 		}
 
 		var buf bytes.Buffer
-		_, _, err := discoverer.Discover(
+		_, _, _, err := discoverer.Discover(
 			context.TODO(),
 			KubernertesDiscoveryOptions{
 				PodSelector:      "app=buildkit",
@@ -425,30 +425,6 @@ func TestNormalizeAppLabelForJSONPatch(t *testing.T) {
 	t.Run("empty string", func(t *testing.T) {
 		result := normalizeAppLabelForJSONPatch("")
 		assert.Equal(t, "", result)
-	})
-}
-
-func TestCalculateUpscaleWaitPeriod(t *testing.T) {
-	t.Run("upscale after wait period enabled", func(t *testing.T) {
-		opts := KubernertesDiscoveryOptions{
-			UpscaleAfterWaitPeriod: true,
-			UpscaleWaitPeriod:      time.Second * 30,
-			Timeout:                time.Minute,
-		}
-
-		result := calculateUpscaleWaitPeriod(opts)
-		assert.Equal(t, time.Second*30, result)
-	})
-
-	t.Run("upscale after wait period disabled", func(t *testing.T) {
-		opts := KubernertesDiscoveryOptions{
-			UpscaleAfterWaitPeriod: false,
-			UpscaleWaitPeriod:      time.Second * 30,
-			Timeout:                time.Minute,
-		}
-
-		result := calculateUpscaleWaitPeriod(opts)
-		assert.Equal(t, time.Minute+time.Minute, result)
 	})
 }
 

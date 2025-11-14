@@ -10,12 +10,14 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/moby/buildkit/client"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"k8s.io/client-go/dynamic"
@@ -48,11 +50,10 @@ var cfg struct {
 	BuildKitAutoDiscoveryTimeout                              time.Duration
 	BuildKitAutoDiscoveryKubernetesPort                       int
 	Port                                                      int
+	MetricsPort                                               int
 	ServerMaxRecvMsgSize                                      int
 	ServerMaxSendMsgSize                                      int
 	BuildKitAutoDiscoveryScaleGracefulPeriod                  time.Duration
-	BuildKitAutoDiscoveryUpscalePeriod                        time.Duration
-	BuildKitAutoDiscoveryUpscaleAfterPeriod                   bool
 	BuildKitAutoDiscovery                                     bool
 	BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels          bool
 	BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp bool
@@ -63,6 +64,7 @@ func main() {
 	klog.InitFlags(flag.CommandLine)
 
 	flag.IntVar(&cfg.Port, "port", 8080, "Server TCP port")
+	flag.IntVar(&cfg.MetricsPort, "metrics-port", 9090, "Metrics server TCP port")
 	flag.IntVar(&cfg.ServerMaxRecvMsgSize, "max-receiving-message-size", DefaultServerMaxRecvMsgSize, "Max message size in bytes that server can receive")
 	flag.IntVar(&cfg.ServerMaxSendMsgSize, "max-sending-message-size", DefaultServerMaxSendMsgSize, "Max message size in bytes that server can send")
 
@@ -83,17 +85,6 @@ func main() {
 	flag.BoolVar(&cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp, "buildkit-autodiscovery-kubernetes-use-same-namespace-as-tsuru-app", false, "Whether should look for BuildKit in the Tsuru app's namespace")
 	flag.StringVar(&cfg.BuildKitAutoDiscoveryStatefulset, "buildkit-autodiscovery-scale-statefulset", "", "Name of statefulset of buildkit that scale from zero")
 	flag.DurationVar(&cfg.BuildKitAutoDiscoveryScaleGracefulPeriod, "buildkit-autodiscovery-scale-graceful-period", (2 * time.Hour), "how long time after a build to retain buildkit running")
-	flag.DurationVar(&cfg.BuildKitAutoDiscoveryUpscalePeriod, "buildkit-autodiscovery-upscale-period", (2 * time.Minute), "how long to wait before upscaling buildkit")
-	flag.BoolVar(&cfg.BuildKitAutoDiscoveryUpscaleAfterPeriod, "buildkit-autodiscovery-upscale-after-period", false, "Whether should upscale buildkit after waiting the upscale period")
-
-	if cfg.BuildKitAutoDiscoveryUpscaleAfterPeriod && cfg.BuildKitAutoDiscoveryStatefulset == "" {
-		fmt.Fprintf(os.Stderr, "buildkit-autodiscovery-scale-statefulset is required when buildkit-autodiscovery-upscale-after-period is enabled")
-		os.Exit(1)
-	}
-	if cfg.BuildKitAutoDiscoveryUpscaleAfterPeriod && cfg.BuildKitAutoDiscoveryUpscalePeriod >= cfg.BuildKitAutoDiscoveryTimeout {
-		fmt.Fprintf(os.Stderr, "buildkit-autodiscovery-upscale-period must be less than buildkit-autodiscovery-timeout")
-		os.Exit(1)
-	}
 
 	flag.BoolVar(&cfg.DisableCache, "disable-cache", false, "Disable BuildKit cache during container image builds")
 
@@ -121,6 +112,7 @@ func main() {
 	buildpb.RegisterBuildServer(s, build.NewServer(bk))
 	healthpb.RegisterHealthServer(s, health.NewServer())
 
+	go startMetricsServer(cfg.MetricsPort)
 	go handleGracefulTermination(s)
 
 	fmt.Println("Starting gRPC server at", l.Addr().String())
@@ -131,6 +123,15 @@ func main() {
 	}
 
 	fmt.Println("gRPC server terminated")
+}
+
+func startMetricsServer(port int) {
+	http.Handle("/metrics", promhttp.Handler())
+	addr := fmt.Sprintf(":%d", port)
+	fmt.Println("Starting metrics server at", addr)
+	if err := http.ListenAndServe(addr, nil); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start metrics server: %v\n", err)
+	}
 }
 
 func handleGracefulTermination(s *grpc.Server) {
@@ -207,8 +208,6 @@ func newBuildKit() (*buildkit.BuildKit, error) {
 			SetTsuruAppLabel:       cfg.BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels,
 			UseSameNamespaceAsApp:  cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp,
 			LeasePrefix:            cfg.BuildKitAutoDiscoveryKubernetesLeasePrefix,
-			UpscaleAfterWaitPeriod: cfg.BuildKitAutoDiscoveryUpscaleAfterPeriod,
-			UpscaleWaitPeriod:      cfg.BuildKitAutoDiscoveryUpscalePeriod,
 			Statefulset:            cfg.BuildKitAutoDiscoveryStatefulset,
 			ScaleGracefulPeriod:    cfg.BuildKitAutoDiscoveryScaleGracefulPeriod,
 		}

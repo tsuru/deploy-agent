@@ -47,36 +47,3 @@ func MayUpscale(ctx context.Context, cs kubernetes.Interface, ns, statefulset st
 
 	return nil
 }
-
-func Upscale(ctx context.Context, cs kubernetes.Interface, ns, statefulset string, w io.Writer) error {
-	var currentReplicas int32
-
-	stfullset, err := cs.AppsV1().StatefulSets(ns).Get(ctx, statefulset, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	if stfullset.Spec.Replicas != nil && *stfullset.Spec.Replicas > 0 {
-		currentReplicas = *stfullset.Spec.Replicas
-	} else {
-		fmt.Fprintln(w, "There is no buildkits available, scaling new replica")
-		var replicas int64
-		if lastReplicas := stfullset.Annotations[metadata.DeployAgentLastReplicasAnnotationKey]; lastReplicas != "" {
-			replicas, err = strconv.ParseInt(lastReplicas, 10, 32)
-			if err != nil {
-				return err
-			}
-			currentReplicas = int32(replicas) //nolint
-		}
-	}
-
-	currentReplicas++
-	stfullset.Spec.Replicas = &currentReplicas
-
-	_, err = cs.AppsV1().StatefulSets(ns).Update(ctx, stfullset, metav1.UpdateOptions{})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
