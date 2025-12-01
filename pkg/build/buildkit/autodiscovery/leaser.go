@@ -24,6 +24,7 @@ type leaser struct {
 	kubernetesInterface kubernetes.Interface
 	leasablePodsCh      <-chan *corev1.Pod
 	leasedPodsCh        chan<- *corev1.Pod
+	leaseAcquiringWg    *sync.WaitGroup
 	leaseCancelByPod    map[string]context.CancelFunc
 	holderName          string
 }
@@ -42,6 +43,7 @@ func newLeaser(kubernetesInterface kubernetes.Interface, leasablePodsCh <-chan *
 		kubernetesInterface: kubernetesInterface,
 		leasablePodsCh:      leasablePodsCh,
 		leasedPodsCh:        leasedPodsCh,
+		leaseAcquiringWg:    &sync.WaitGroup{},
 		leaseCancelByPod:    make(map[string]context.CancelFunc),
 		holderName:          holderName,
 	}, leasedPodsCh, nil
@@ -58,6 +60,7 @@ func (l *leaser) releaseAll(opts ...releaseOptions) {
 	} else {
 		opt = opts[0]
 	}
+	l.leaseAcquiringWg.Wait()
 	for name, leaseCancel := range l.leaseCancelByPod {
 		if opt.except == name {
 			continue
@@ -74,7 +77,6 @@ func (l *leaser) releaseAll(opts ...releaseOptions) {
 func (l *leaser) acquireLeaseForAllPods(ctx context.Context, opts KubernertesDiscoveryOptions) {
 	// NOTE:(ravilock) the usage of WaitGroup here is to ensure that we only close the leasedPodsCh
 	// after all goroutines that might write to it are done. i.e. The goroutines that acquire leases for a buildkit pod.
-	wg := &sync.WaitGroup{}
 	for leasablePod := range l.leasablePodsCh {
 		if _, found := l.leaseCancelByPod[leasablePod.Name]; found {
 			continue
@@ -83,17 +85,20 @@ func (l *leaser) acquireLeaseForAllPods(ctx context.Context, opts KubernertesDis
 		leaseCtx, leaseCancel := context.WithCancel(ctx)
 		l.leaseCancelByPod[leasablePod.Name] = leaseCancel
 
-		wg.Add(1)
-		go l.acquireLeaseForPod(leaseCtx, leasablePod, opts, wg)
+		l.leaseAcquiringWg.Add(1)
+		go func() {
+			defer l.leaseAcquiringWg.Done()
+			l.acquireLeaseForPod(leaseCtx, leasablePod, opts)
+		}()
 	}
-	wg.Wait()
+	l.leaseAcquiringWg.Wait()
 	close(l.leasedPodsCh)
 }
 
 // acquireLeaseForPod tries to acquire a lease for the given pod.
 // it is a blocking call and only returns after the lease is lost or the given context is canceled.
 // it should always be used in a separate goroutine.
-func (l *leaser) acquireLeaseForPod(ctx context.Context, pod *corev1.Pod, opts KubernertesDiscoveryOptions, wg *sync.WaitGroup) {
+func (l *leaser) acquireLeaseForPod(ctx context.Context, pod *corev1.Pod, opts KubernertesDiscoveryOptions) {
 	uniqueHolderName := fmt.Sprintf("%s-%d", l.holderName, time.Now().Unix())
 	klog.V(4).Infof("Attempting to acquire the lease for pod %s/%s under holder name %q...", pod.Namespace, pod.Name, uniqueHolderName)
 	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
@@ -125,5 +130,4 @@ func (l *leaser) acquireLeaseForPod(ctx context.Context, pod *corev1.Pod, opts K
 		},
 	})
 	klog.V(4).Infof("Shutting off the lease for %s/%s pod", pod.Namespace, pod.Name)
-	wg.Done()
 }
