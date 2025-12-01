@@ -96,7 +96,7 @@ func runDownscaler(ctx context.Context, clientset kubernetes.Interface, podSelec
 
 		statefulset, err := clientset.AppsV1().StatefulSets(ns).Get(ctx, statefulSet, v1.GetOptions{})
 		if err != nil {
-			klog.Errorf("failed to get statefullsets from ns: %s, err: %s", ns, err.Error())
+			klog.Errorf("failed to get statefulsets from ns: %s, err: %s", ns, err.Error())
 			continue
 		}
 

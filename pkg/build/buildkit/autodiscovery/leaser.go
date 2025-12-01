@@ -44,7 +44,7 @@ func newLeaser(kubernetesInterface kubernetes.Interface, leasablePodsCh <-chan *
 		leasedPodsCh:        leasedPodsCh,
 		leaseCancelByPod:    make(map[string]context.CancelFunc),
 		holderName:          holderName,
-	}, leasablePodsCh, nil
+	}, leasedPodsCh, nil
 }
 
 type releaseOptions struct {
@@ -118,7 +118,7 @@ func (l *leaser) acquireLeaseForPod(ctx context.Context, pod *corev1.Pod, opts K
 					klog.V(4).Infof("Selected BuildKit pod: %s/%s", pod.Namespace, pod.Name)
 
 				case <-ctx.Done():
-					klog.V(4).Infof("Received context cancelation: %s/%s", pod.Namespace, pod.Name)
+					klog.V(4).Infof("Received context cancellation: %s/%s", pod.Namespace, pod.Name)
 				}
 			},
 			OnStoppedLeading: func() {},

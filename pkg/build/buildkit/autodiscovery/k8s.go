@@ -159,7 +159,10 @@ func (d *K8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 		case <-time.After(opts.Timeout):
 			leaser.releaseAll()
 			return nil, fmt.Errorf("max deadline exceeded to discover BuildKit pod")
-		case leasedPod := <-leasedPodsCh:
+		case leasedPod, ok := <-leasedPodsCh:
+			if !ok {
+				continue
+			}
 			defer leaser.releaseAll(releaseOptions{except: leasedPod.Name})
 			return leasedPod, nil
 		}

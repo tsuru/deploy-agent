@@ -112,7 +112,7 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 		defer clientCleanUp()
 	}
 
-	var startTime time.Time
+	startTime := time.Now()
 	metrics.BuildsActive.WithLabelValues(buildkitNamespace).Inc()
 	defer func() {
 		metrics.BuildDuration.WithLabelValues(buildkitNamespace).Observe(time.Since(startTime).Seconds())
@@ -120,7 +120,6 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 	}()
 	buildKind := pb.BuildKind_name[int32(r.Kind)]
 	metrics.BuildsTotal.WithLabelValues(buildkitNamespace, buildKind).Inc()
-	startTime = time.Now()
 	switch buildKind {
 	case "BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD":
 		return b.buildFromAppSourceFiles(ctx, c, r, ow)
