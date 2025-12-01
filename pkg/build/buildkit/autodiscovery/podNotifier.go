@@ -38,9 +38,9 @@ func (n *podNotifier) notify(ctx context.Context, conditions ...filterCondition)
 			pod := e.Object.(*corev1.Pod)
 			if applyConditions(pod, conditions...) {
 				n.pods <- pod
+			} else {
+				klog.V(4).Infof("Pod %s/%s is not ready yet", pod.Namespace, pod.Name)
 			}
-
-			klog.V(4).Infof("Pod %s/%s is not ready yet", pod.Namespace, pod.Name)
 		case <-ctx.Done():
 			return
 		}
