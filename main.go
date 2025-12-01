@@ -129,7 +129,13 @@ func startMetricsServer(port int) {
 	http.Handle("/metrics", promhttp.Handler())
 	addr := fmt.Sprintf(":%d", port)
 	fmt.Println("Starting metrics server at", addr)
-	if err := http.ListenAndServe(addr, nil); err != nil {
+	server := &http.Server{
+		Addr:              addr,
+		ReadTimeout:       5 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start metrics server: %v\n", err)
 	}
 }
@@ -201,15 +207,15 @@ func newBuildKit() (*buildkit.BuildKit, error) {
 		}
 
 		kdopts := autodiscovery.KubernertesDiscoveryOptions{
-			Timeout:                cfg.BuildKitAutoDiscoveryTimeout,
-			PodSelector:            cfg.BuildKitAutoDiscoveryKubernetesPodSelector,
-			Namespace:              cfg.BuildKitAutoDiscoveryKubernetesNamespace,
-			Port:                   cfg.BuildKitAutoDiscoveryKubernetesPort,
-			SetTsuruAppLabel:       cfg.BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels,
-			UseSameNamespaceAsApp:  cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp,
-			LeasePrefix:            cfg.BuildKitAutoDiscoveryKubernetesLeasePrefix,
-			Statefulset:            cfg.BuildKitAutoDiscoveryStatefulset,
-			ScaleGracefulPeriod:    cfg.BuildKitAutoDiscoveryScaleGracefulPeriod,
+			Timeout:               cfg.BuildKitAutoDiscoveryTimeout,
+			PodSelector:           cfg.BuildKitAutoDiscoveryKubernetesPodSelector,
+			Namespace:             cfg.BuildKitAutoDiscoveryKubernetesNamespace,
+			Port:                  cfg.BuildKitAutoDiscoveryKubernetesPort,
+			SetTsuruAppLabel:      cfg.BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels,
+			UseSameNamespaceAsApp: cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp,
+			LeasePrefix:           cfg.BuildKitAutoDiscoveryKubernetesLeasePrefix,
+			Statefulset:           cfg.BuildKitAutoDiscoveryStatefulset,
+			ScaleGracefulPeriod:   cfg.BuildKitAutoDiscoveryScaleGracefulPeriod,
 		}
 
 		return b.WithKubernetesDiscovery(cs, dcs, kdopts), nil

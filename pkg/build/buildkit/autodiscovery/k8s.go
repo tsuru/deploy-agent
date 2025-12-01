@@ -39,15 +39,15 @@ var (
 )
 
 type KubernertesDiscoveryOptions struct {
-	PodSelector            string
-	Namespace              string
-	LeasePrefix            string
-	Statefulset            string
-	Port                   int
-	UseSameNamespaceAsApp  bool
-	SetTsuruAppLabel       bool
-	ScaleGracefulPeriod    time.Duration
-	Timeout                time.Duration
+	PodSelector           string
+	Namespace             string
+	LeasePrefix           string
+	Statefulset           string
+	Port                  int
+	UseSameNamespaceAsApp bool
+	SetTsuruAppLabel      bool
+	ScaleGracefulPeriod   time.Duration
+	Timeout               time.Duration
 }
 
 type K8sDiscoverer struct {
