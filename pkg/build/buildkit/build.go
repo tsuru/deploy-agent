@@ -39,11 +39,14 @@ import (
 
 	"github.com/tsuru/deploy-agent/pkg/build"
 	"github.com/tsuru/deploy-agent/pkg/build/buildkit/autodiscovery"
+	"github.com/tsuru/deploy-agent/pkg/build/buildkit/metrics"
 	"github.com/tsuru/deploy-agent/pkg/build/buildkit/scaler"
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 	repo "github.com/tsuru/deploy-agent/pkg/repository"
 	"github.com/tsuru/deploy-agent/pkg/util"
 )
+
+const defaultBuildKitNamespace = "tsuru-system"
 
 var _ build.Builder = (*BuildKit)(nil)
 
@@ -100,7 +103,7 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 		return nil, errors.New("writer must implement console.File")
 	}
 
-	c, clientCleanUp, err := b.client(ctx, r, w)
+	c, clientCleanUp, buildkitNamespace, err := b.client(ctx, r, w)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +112,15 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 		defer clientCleanUp()
 	}
 
-	switch pb.BuildKind_name[int32(r.Kind)] {
+	startTime := time.Now()
+	metrics.BuildsActive.WithLabelValues(buildkitNamespace).Inc()
+	defer func() {
+		metrics.BuildDuration.WithLabelValues(buildkitNamespace).Observe(time.Since(startTime).Seconds())
+		metrics.BuildsActive.WithLabelValues(buildkitNamespace).Dec()
+	}()
+	buildKind := pb.BuildKind_name[int32(r.Kind)]
+	metrics.BuildsTotal.WithLabelValues(buildkitNamespace, buildKind).Inc()
+	switch buildKind {
 	case "BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD":
 		return b.buildFromAppSourceFiles(ctx, c, r, ow)
 
@@ -127,9 +138,9 @@ func (b *BuildKit) Build(ctx context.Context, r *pb.BuildRequest, w io.Writer) (
 
 	case "BUILD_KIND_PLATFORM_WITH_CONTAINER_FILE":
 		return nil, b.buildPlatform(ctx, c, r, ow)
+	default:
+		return nil, status.Errorf(codes.Unimplemented, "build kind not supported")
 	}
-
-	return nil, status.Errorf(codes.Unimplemented, "build kind not supported")
 }
 
 func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, c *client.Client, r *pb.BuildRequest, w console.File) (*pb.TsuruConfig, error) {
@@ -614,7 +625,7 @@ func callBuildKitToExtractTsuruConfigs(ctx context.Context, c *client.Client, lo
 
 type clientCleanUp func()
 
-func (b *BuildKit) client(ctx context.Context, req *pb.BuildRequest, w io.Writer) (*client.Client, clientCleanUp, error) {
+func (b *BuildKit) client(ctx context.Context, req *pb.BuildRequest, w io.Writer) (*client.Client, clientCleanUp, string, error) {
 	isBuildForApp := strings.HasPrefix(pb.BuildKind_name[int32(req.Kind)], "BUILD_KIND_APP_")
 
 	if isBuildForApp && b.opts.DiscoverBuildKitClientForApp {
@@ -625,5 +636,5 @@ func (b *BuildKit) client(ctx context.Context, req *pb.BuildRequest, w io.Writer
 		return d.Discover(ctx, *b.kdopts, req, w)
 	}
 
-	return b.cli, func() {}, nil
+	return b.cli, func() {}, defaultBuildKitNamespace, nil
 }

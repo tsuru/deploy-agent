@@ -21,7 +21,7 @@ func NewServer(b Builder) *Server {
 }
 
 type Server struct {
-	*pb.UnimplementedBuildServer
+	pb.UnimplementedBuildServer
 	b Builder
 }
 

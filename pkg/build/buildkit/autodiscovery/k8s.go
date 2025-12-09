@@ -9,12 +9,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/moby/buildkit/client"
+	"github.com/tsuru/deploy-agent/pkg/build/buildkit/metrics"
 	"github.com/tsuru/deploy-agent/pkg/build/buildkit/scaler"
 	pb "github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 	"github.com/tsuru/deploy-agent/pkg/build/metadata"
@@ -23,11 +23,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/leaderelection"
-	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/klog"
 )
 
@@ -58,15 +55,24 @@ type K8sDiscoverer struct {
 	DynamicInterface    dynamic.Interface
 }
 
-func (d *K8sDiscoverer) Discover(ctx context.Context, opts KubernertesDiscoveryOptions, req *pb.BuildRequest, w io.Writer) (*client.Client, func(), error) {
+func (d *K8sDiscoverer) Discover(ctx context.Context, opts KubernertesDiscoveryOptions, req *pb.BuildRequest, w io.Writer) (*client.Client, func(), string, error) {
 	if req.App == nil {
-		return nil, noopCleaner, fmt.Errorf("there's only support for discovering BuildKit pods from Tsuru apps")
+		return nil, noopCleaner, "", fmt.Errorf("there's only support for discovering BuildKit pods from Tsuru apps")
 	}
 
-	return d.discoverBuildKitClientFromApp(ctx, opts, req.App, w)
+	ns, err := d.buildkitPodNamespace(ctx, opts, req.App.Name)
+	if err != nil {
+		return nil, noopCleaner, "", err
+	}
+
+	client, cleaner, err := d.discoverBuildKitClientFromApp(ctx, opts, req.App, ns, w)
+	if err != nil {
+		return nil, noopCleaner, ns, err
+	}
+	return client, cleaner, ns, nil
 }
 
-func (d *K8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts KubernertesDiscoveryOptions, app *pb.TsuruApp, w io.Writer) (*client.Client, func(), error) {
+func (d *K8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts KubernertesDiscoveryOptions, app *pb.TsuruApp, namespace string, w io.Writer) (*client.Client, func(), error) {
 	leaderCtx, leaderCancel := context.WithCancel(ctx)
 	cfns := []func(){
 		func() {
@@ -75,7 +81,7 @@ func (d *K8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 		},
 	}
 
-	pod, err := d.discoverBuildKitPod(leaderCtx, opts, app.Name, w)
+	pod, err := d.discoverBuildKitPod(leaderCtx, opts, namespace, w)
 	if err != nil {
 		return nil, cleanUps(cfns...), err
 	}
@@ -114,77 +120,54 @@ func (d *K8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 	return c, cleanUps(cfns...), nil
 }
 
-func (d *K8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts KubernertesDiscoveryOptions, app string, w io.Writer) (*corev1.Pod, error) {
+func (d *K8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts KubernertesDiscoveryOptions, namespace string, w io.Writer) (*corev1.Pod, error) {
 	deadlineCtx, deadlineCancel := context.WithCancel(ctx)
 	defer deadlineCancel()
 
-	ns, err := d.buildkitPodNamespace(deadlineCtx, opts, app)
-	if err != nil {
-		return nil, err
+	metrics.BuildsWaitingForLease.WithLabelValues(namespace).Inc()
+	defer metrics.BuildsWaitingForLease.WithLabelValues(namespace).Dec()
+
+	if opts.Statefulset != "" {
+		err := scaler.MayUpscale(ctx, d.KubernetesInterface, namespace, opts.Statefulset, w)
+		if err != nil {
+			return nil, fmt.Errorf("failed trying upscale BuildKit statefulset(%s - %s): %w", namespace, opts.Statefulset, err)
+		}
 	}
-
-	errCh := make(chan error, 1)
-	defer close(errCh)
-
-	pods := make(chan *corev1.Pod)
-	defer close(pods)
 
 	watchCtx, watchCancel := context.WithCancel(deadlineCtx)
-	defer watchCancel() // watch cancellation must happen before than closing the pods channel
+	defer watchCancel()
 
-	go func() {
-		nerr := watchBuildKitPods(watchCtx, d.KubernetesInterface, opts, ns, pods, w)
-		if nerr != nil {
-			errCh <- nerr
-		}
-	}()
-
-	selected := make(chan *corev1.Pod, 1)
-	defer close(selected)
-
-	leaseCancelByPod := make(map[string]context.CancelFunc)
-
-	go func() {
-		for pod := range pods {
-			if _, found := leaseCancelByPod[pod.Name]; found {
-				continue
-			}
-
-			leaseCtx, leaseCancel := context.WithCancel(ctx)
-			leaseCancelByPod[pod.Name] = leaseCancel
-
-			go acquireLeaseForPod(leaseCtx, d.KubernetesInterface, selected, pod, errCh, opts)
-		}
-	}()
-
-	releaseLeaderLock := func(except string) {
-		for name, leaseCancel := range leaseCancelByPod {
-			if except == name {
-				continue
-			}
-
-			klog.V(4).Infof("Releasing lock for %s pod", name)
-			leaseCancel()
-		}
+	podWatcher, err := d.KubernetesInterface.CoreV1().Pods(namespace).Watch(watchCtx, metav1.ListOptions{
+		LabelSelector: opts.PodSelector,
+		Watch:         true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pod watcher: %w", err)
 	}
 
-	var pod *corev1.Pod
+	notifier, leasablePodsCh := newPodNotifier(podWatcher)
+	go notifier.notify(watchCtx, isPodReady)
 
-	select {
-	case <-time.After(opts.Timeout):
-		releaseLeaderLock("") // release all lease locksa
-		return nil, fmt.Errorf("max deadline exceeded to discover BuildKit pod")
-
-	case err = <-errCh:
-		releaseLeaderLock("") // release all lease locks
-		return nil, err
-
-	case pod = <-selected:
+	leaser, leasedPodsCh, err := newLeaser(d.KubernetesInterface, leasablePodsCh)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pod leaser: %w", err)
 	}
+	go leaser.acquireLeaseForAllPods(deadlineCtx, opts)
 
-	defer releaseLeaderLock(pod.Name) // release all lease locks except from the chosen pod
-
-	return pod, nil
+	for {
+		select {
+		case <-time.After(opts.Timeout):
+			go leaser.releaseAll()
+			return nil, fmt.Errorf("max deadline of %s exceeded to discover BuildKit pod", opts.Timeout)
+		case leasedPod, ok := <-leasedPodsCh:
+			if !ok {
+				go leaser.releaseAll()
+				return nil, fmt.Errorf("leased pods channel was closed before acquiring any lease")
+			}
+			go leaser.releaseAll(releaseOptions{except: leasedPod.Name})
+			return leasedPod, nil
+		}
+	}
 }
 
 func (d *K8sDiscoverer) buildkitPodNamespace(ctx context.Context, opts KubernertesDiscoveryOptions, app string) (string, error) {
@@ -214,89 +197,17 @@ func (d *K8sDiscoverer) buildkitPodNamespace(ctx context.Context, opts Kubernert
 	return ns, nil
 }
 
-func watchBuildKitPods(ctx context.Context, cs kubernetes.Interface, opts KubernertesDiscoveryOptions, ns string, pods chan<- *corev1.Pod, writer io.Writer) error {
-	if opts.Statefulset != "" {
-		scaleErr := scaler.MayUpscale(ctx, cs, ns, opts.Statefulset, writer)
-		if scaleErr != nil {
-			return scaleErr
-		}
-	}
-
-	w, err := cs.CoreV1().Pods(ns).Watch(ctx, metav1.ListOptions{
-		LabelSelector: opts.PodSelector,
-		Watch:         true,
-	})
-	if err != nil {
-		return err
-	}
-
-	defer w.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-
-		case e := <-w.ResultChan():
-			if e.Type != watch.Added && e.Type != watch.Modified {
-				continue
-			}
-
-			pod := e.Object.(*corev1.Pod)
-			if isPodReady(pod) {
-				pods <- pod
-			}
-
-			klog.V(4).Infof("Pod %s/%s is not ready yet", pod.Namespace, pod.Name)
-		}
-	}
-}
-
-func acquireLeaseForPod(ctx context.Context, cs kubernetes.Interface, ch chan<- *corev1.Pod, pod *corev1.Pod, errCh chan<- error, opts KubernertesDiscoveryOptions) {
-	podname := os.Getenv("POD_NAME")
-	if podname == "" {
-		hostname, err := os.Hostname()
-		if err != nil {
-			errCh <- err
+func isPodReady(pod *corev1.Pod) bool {
+	var ready bool
+	for _, c := range pod.Status.Conditions {
+		if c.Type != corev1.PodReady {
+			continue
 		}
 
-		podname = hostname
+		ready = c.Status == corev1.ConditionTrue
 	}
 
-	uniqueHolderName := fmt.Sprintf("%s-%d", podname, time.Now().Unix())
-
-	klog.V(4).Infof("Attempting to acquire the lease for pod %s/%s under holder name %q...", pod.Namespace, pod.Name, uniqueHolderName)
-
-	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
-		Lock: &resourcelock.LeaseLock{
-			LeaseMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-%s", strings.TrimRight(opts.LeasePrefix, "-"), pod.Name),
-				Namespace: pod.Namespace,
-			},
-			Client: cs.CoordinationV1(),
-			LockConfig: resourcelock.ResourceLockConfig{
-				Identity: uniqueHolderName,
-			},
-		},
-		ReleaseOnCancel: true,
-		LeaseDuration:   5 * time.Second,
-		RenewDeadline:   2 * time.Second,
-		RetryPeriod:     500 * time.Millisecond,
-		Callbacks: leaderelection.LeaderCallbacks{
-			OnStartedLeading: func(c context.Context) {
-				select {
-				case ch <- pod:
-					klog.V(4).Infof("Selected BuildKit pod: %s/%s", pod.Namespace, pod.Name)
-
-				case <-ctx.Done():
-					klog.V(4).Infof("Received context cancelation: %s/%s", pod.Namespace, pod.Name)
-				}
-			},
-			OnStoppedLeading: func() {},
-		},
-	})
-
-	klog.V(4).Infof("Shutting off the lease for %s/%s pod", pod.Namespace, pod.Name)
+	return pod.Status.Phase == corev1.PodRunning && pod.Status.PodIP != "" && ready
 }
 
 func setTsuruAppLabelOnBuildKitPod(ctx context.Context, cs kubernetes.Interface, pod, ns string, app *pb.TsuruApp) error {
@@ -385,17 +296,4 @@ func cleanUps(fns ...func()) func() {
 			fn()
 		}
 	}
-}
-
-func isPodReady(pod *corev1.Pod) bool {
-	var ready bool
-	for _, c := range pod.Status.Conditions {
-		if c.Type != corev1.PodReady {
-			continue
-		}
-
-		ready = c.Status == corev1.ConditionTrue
-	}
-
-	return pod.Status.Phase == corev1.PodRunning && pod.Status.PodIP != "" && ready
 }

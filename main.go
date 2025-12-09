@@ -10,12 +10,14 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/moby/buildkit/client"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"k8s.io/client-go/dynamic"
@@ -48,6 +50,7 @@ var cfg struct {
 	BuildKitAutoDiscoveryTimeout                              time.Duration
 	BuildKitAutoDiscoveryKubernetesPort                       int
 	Port                                                      int
+	MetricsPort                                               int
 	ServerMaxRecvMsgSize                                      int
 	ServerMaxSendMsgSize                                      int
 	BuildKitAutoDiscoveryScaleGracefulPeriod                  time.Duration
@@ -61,6 +64,7 @@ func main() {
 	klog.InitFlags(flag.CommandLine)
 
 	flag.IntVar(&cfg.Port, "port", 8080, "Server TCP port")
+	flag.IntVar(&cfg.MetricsPort, "metrics-port", 9090, "Metrics server TCP port")
 	flag.IntVar(&cfg.ServerMaxRecvMsgSize, "max-receiving-message-size", DefaultServerMaxRecvMsgSize, "Max message size in bytes that server can receive")
 	flag.IntVar(&cfg.ServerMaxSendMsgSize, "max-sending-message-size", DefaultServerMaxSendMsgSize, "Max message size in bytes that server can send")
 
@@ -108,6 +112,7 @@ func main() {
 	buildpb.RegisterBuildServer(s, build.NewServer(bk))
 	healthpb.RegisterHealthServer(s, health.NewServer())
 
+	go startMetricsServer(cfg.MetricsPort)
 	go handleGracefulTermination(s)
 
 	fmt.Println("Starting gRPC server at", l.Addr().String())
@@ -118,6 +123,22 @@ func main() {
 	}
 
 	fmt.Println("gRPC server terminated")
+}
+
+func startMetricsServer(port int) {
+	http.Handle("/metrics", promhttp.Handler())
+	addr := fmt.Sprintf(":%d", port)
+	fmt.Println("Starting metrics server at", addr)
+	server := &http.Server{
+		Addr:              addr,
+		ReadTimeout:       5 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+	}
+	if err := server.ListenAndServe(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start metrics server: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func handleGracefulTermination(s *grpc.Server) {
