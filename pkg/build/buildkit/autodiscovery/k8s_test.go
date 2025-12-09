@@ -170,7 +170,7 @@ func TestK8sDiscoverer_DiscoverWithTimeout(t *testing.T) {
 	)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "max deadline exceeded to discover BuildKit pod")
+	assert.Contains(t, err.Error(), "max deadline of 100ms exceeded to discover BuildKit pod")
 }
 
 func TestK8sDiscoverer_DiscoverWithStatefulsetInitialUpscale(t *testing.T) {
