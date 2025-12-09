@@ -30,7 +30,11 @@ func (n *podNotifier) notify(ctx context.Context, conditions ...filterCondition)
 
 	for {
 		select {
-		case e := <-n.podWatcher.ResultChan():
+		case e, ok := <-n.podWatcher.ResultChan():
+			if !ok {
+				klog.Error("Pod watcher channel closed unexpectedly")
+				return
+			}
 			if e.Type != watch.Added && e.Type != watch.Modified {
 				continue
 			}
