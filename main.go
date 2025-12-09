@@ -137,6 +137,7 @@ func startMetricsServer(port int) {
 	}
 	if err := server.ListenAndServe(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start metrics server: %v\n", err)
+		os.Exit(1)
 	}
 }
 
