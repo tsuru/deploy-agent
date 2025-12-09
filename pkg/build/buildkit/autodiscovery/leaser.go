@@ -65,7 +65,6 @@ func (l *leaser) releaseAll(opts ...releaseOptions) {
 		if opt.except == name {
 			continue
 		}
-
 		klog.V(4).Infof("Releasing lock for %s pod", name)
 		leaseCancel()
 	}
