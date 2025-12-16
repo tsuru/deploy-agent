@@ -58,7 +58,7 @@ func TestRunDownscaler(t *testing.T) {
 		},
 	)
 
-	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
+	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful, []string{})
 	assert.NoError(t, err)
 
 	rs, err := cli.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
@@ -101,7 +101,7 @@ func TestRunDownscalerWithReplacedBuildkit(t *testing.T) {
 		},
 	)
 
-	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
+	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful, []string{})
 	assert.NoError(t, err)
 
 	rs, err := cli.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
@@ -147,7 +147,7 @@ func TestRunDownscalerWithEarlyBuild(t *testing.T) {
 		},
 	)
 
-	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
+	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful, []string{})
 	assert.NoError(t, err)
 
 	rs, err := cli.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
@@ -206,7 +206,7 @@ func TestRunDownscalerWithOnePodBuilding(t *testing.T) {
 		},
 	)
 
-	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
+	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful, []string{})
 	assert.NoError(t, err)
 
 	rs, err := cli.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
@@ -267,7 +267,7 @@ func TestRunDownscalerWithManyPods(t *testing.T) {
 		},
 	)
 
-	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
+	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful, []string{})
 	assert.NoError(t, err)
 
 	rs, err := cli.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
@@ -327,7 +327,7 @@ func TestRunDownscalerWithManyPods2(t *testing.T) {
 		},
 	)
 
-	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful)
+	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful, []string{})
 	assert.NoError(t, err)
 
 	rs, err := cli.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
@@ -335,4 +335,131 @@ func TestRunDownscalerWithManyPods2(t *testing.T) {
 
 	require.Len(t, rs.Items, 1)
 	assert.Equal(t, int32(2), *rs.Items[0].Spec.Replicas)
+}
+
+func TestRunDownscalerWithDisabledNamespaces(t *testing.T) {
+	ctx := context.Background()
+
+	lastBuild := time.Now().Add(-3 * time.Hour).Unix()
+
+	cli := fake.NewSimpleClientset(
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "buildkit-0",
+				Namespace: "disabled-ns",
+				Labels: map[string]string{
+					"app": "buildkit",
+				},
+
+				Annotations: map[string]string{
+					metadata.DeployAgentLastBuildStartingLabelKey:   strconv.Itoa(int(time.Now().Unix())),
+					metadata.DeployAgentLastBuildEndingTimeLabelKey: strconv.Itoa(int(lastBuild)),
+				},
+			},
+			Spec: corev1.PodSpec{},
+		},
+		&appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "buildkit",
+				Namespace: "disabled-ns",
+
+				Annotations: map[string]string{
+					metadata.DeployAgentLastReplicasAnnotationKey: "3",
+				},
+			},
+			Spec: appsv1.StatefulSetSpec{
+				Replicas: ptr.To(int32(1)),
+			},
+		},
+	)
+
+	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful, []string{"disabled-ns", "another-ns"})
+	assert.NoError(t, err)
+
+	rs, err := cli.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
+	assert.NoError(t, err)
+
+	require.Len(t, rs.Items, 1)
+	assert.Equal(t, int32(1), *rs.Items[0].Spec.Replicas, "should not downscale namespace in disabled list")
+}
+
+func TestRunDownscalerWithMixedNamespaces(t *testing.T) {
+	ctx := context.Background()
+
+	lastBuild := time.Now().Add(-3 * time.Hour).Unix()
+
+	cli := fake.NewSimpleClientset(
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "buildkit-0",
+				Namespace: "default",
+				Labels: map[string]string{
+					"app": "buildkit",
+				},
+
+				Annotations: map[string]string{
+					metadata.DeployAgentLastBuildStartingLabelKey:   strconv.Itoa(int(time.Now().Unix())),
+					metadata.DeployAgentLastBuildEndingTimeLabelKey: strconv.Itoa(int(lastBuild)),
+				},
+			},
+			Spec: corev1.PodSpec{},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "buildkit-1",
+				Namespace: "disabled-ns",
+				Labels: map[string]string{
+					"app": "buildkit",
+				},
+
+				Annotations: map[string]string{
+					metadata.DeployAgentLastBuildStartingLabelKey:   strconv.Itoa(int(time.Now().Unix())),
+					metadata.DeployAgentLastBuildEndingTimeLabelKey: strconv.Itoa(int(lastBuild)),
+				},
+			},
+			Spec: corev1.PodSpec{},
+		},
+		&appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "buildkit",
+				Namespace: "default",
+
+				Annotations: map[string]string{
+					metadata.DeployAgentLastReplicasAnnotationKey: "3",
+				},
+			},
+			Spec: appsv1.StatefulSetSpec{
+				Replicas: ptr.To(int32(1)),
+			},
+		},
+		&appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "buildkit",
+				Namespace: "disabled-ns",
+
+				Annotations: map[string]string{
+					metadata.DeployAgentLastReplicasAnnotationKey: "3",
+				},
+			},
+			Spec: appsv1.StatefulSetSpec{
+				Replicas: ptr.To(int32(1)),
+			},
+		},
+	)
+
+	err := runDownscaler(ctx, cli, "app=buildkit", "buildkit", testGraceful, []string{"disabled-ns"})
+	assert.NoError(t, err)
+
+	stsList, err := cli.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
+	assert.NoError(t, err)
+
+	require.Len(t, stsList.Items, 2)
+
+	for _, sts := range stsList.Items {
+		if sts.Namespace == "default" {
+			assert.Equal(t, int32(0), *sts.Spec.Replicas, "should downscale default namespace")
+		} else if sts.Namespace == "disabled-ns" {
+			assert.Equal(t, int32(1), *sts.Spec.Replicas, "should not downscale disabled namespace")
+		}
+	}
 }

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -45,6 +46,7 @@ var cfg struct {
 	BuildKitAutoDiscoveryKubernetesNamespace                  string
 	BuildKitAutoDiscoveryKubernetesLeasePrefix                string
 	BuildKitAutoDiscoveryStatefulset                          string
+	BuildKitScalingDisabledNamespaces                         string
 	KubernetesConfig                                          string
 	RemoteRepositoryPath                                      string
 	BuildKitAutoDiscoveryTimeout                              time.Duration
@@ -84,6 +86,7 @@ func main() {
 	flag.BoolVar(&cfg.BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels, "buildkit-autodiscovery-kubernetes-set-tsuru-app-labels", false, "Whether should set the Tsuru app labels in the selected BuildKit pod")
 	flag.BoolVar(&cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp, "buildkit-autodiscovery-kubernetes-use-same-namespace-as-tsuru-app", false, "Whether should look for BuildKit in the Tsuru app's namespace")
 	flag.StringVar(&cfg.BuildKitAutoDiscoveryStatefulset, "buildkit-autodiscovery-scale-statefulset", "", "Name of statefulset of buildkit that scale from zero")
+	flag.StringVar(&cfg.BuildKitScalingDisabledNamespaces, "build-kit-scaling-excluded-namespaces", "", "Name of the buildkit namespaces that scaling is disabled separated by comma")
 	flag.DurationVar(&cfg.BuildKitAutoDiscoveryScaleGracefulPeriod, "buildkit-autodiscovery-scale-graceful-period", (2 * time.Hour), "how long time after a build to retain buildkit running")
 
 	flag.BoolVar(&cfg.DisableCache, "disable-cache", false, "Disable BuildKit cache during container image builds")
@@ -208,15 +211,16 @@ func newBuildKit() (*buildkit.BuildKit, error) {
 		}
 
 		kdopts := autodiscovery.KubernertesDiscoveryOptions{
-			Timeout:               cfg.BuildKitAutoDiscoveryTimeout,
-			PodSelector:           cfg.BuildKitAutoDiscoveryKubernetesPodSelector,
-			Namespace:             cfg.BuildKitAutoDiscoveryKubernetesNamespace,
-			Port:                  cfg.BuildKitAutoDiscoveryKubernetesPort,
-			SetTsuruAppLabel:      cfg.BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels,
-			UseSameNamespaceAsApp: cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp,
-			LeasePrefix:           cfg.BuildKitAutoDiscoveryKubernetesLeasePrefix,
-			Statefulset:           cfg.BuildKitAutoDiscoveryStatefulset,
-			ScaleGracefulPeriod:   cfg.BuildKitAutoDiscoveryScaleGracefulPeriod,
+			Timeout:                   cfg.BuildKitAutoDiscoveryTimeout,
+			PodSelector:               cfg.BuildKitAutoDiscoveryKubernetesPodSelector,
+			Namespace:                 cfg.BuildKitAutoDiscoveryKubernetesNamespace,
+			Port:                      cfg.BuildKitAutoDiscoveryKubernetesPort,
+			SetTsuruAppLabel:          cfg.BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels,
+			UseSameNamespaceAsApp:     cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp,
+			LeasePrefix:               cfg.BuildKitAutoDiscoveryKubernetesLeasePrefix,
+			Statefulset:               cfg.BuildKitAutoDiscoveryStatefulset,
+			ScalingDisabledNamespaces: strings.Split(cfg.BuildKitScalingDisabledNamespaces, ","),
+			ScaleGracefulPeriod:       cfg.BuildKitAutoDiscoveryScaleGracefulPeriod,
 		}
 
 		return b.WithKubernetesDiscovery(cs, dcs, kdopts), nil

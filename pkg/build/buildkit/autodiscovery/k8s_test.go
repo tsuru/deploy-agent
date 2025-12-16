@@ -248,6 +248,82 @@ func TestK8sDiscoverer_DiscoverWithStatefulsetInitialUpscale(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, int32(1), *sts.Spec.Replicas)
 	})
+
+	t.Run("Should not upscale if namespace is in disabled scaling list", func(t *testing.T) {
+		buildKitPod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "buildkit-0",
+				Namespace: "tsuru",
+				Labels: map[string]string{
+					"app": "buildkit",
+				},
+			},
+			Status: corev1.PodStatus{
+				Phase: corev1.PodRunning,
+				PodIP: "127.0.0.1",
+				Conditions: []corev1.PodCondition{
+					{
+						Type:   corev1.PodReady,
+						Status: corev1.ConditionTrue,
+					},
+				},
+			},
+		}
+
+		statefulset := &appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "buildkit",
+				Namespace: "tsuru",
+			},
+			Spec: appsv1.StatefulSetSpec{
+				Replicas: ptr.To(int32(0)),
+			},
+		}
+
+		fakeClient := fake.NewSimpleClientset(buildKitPod, statefulset)
+
+		fakeClient.PrependWatchReactor("*", func(action kuberntesTesting.Action) (handled bool, ret watch.Interface, err error) {
+			watcher := watch.NewFake()
+			go func() {
+				time.Sleep(time.Millisecond * 100)
+				watcher.Add(buildKitPod)
+			}()
+			return true, watcher, nil
+		})
+
+		fakeDynamicClient := fakeDynamic.NewSimpleDynamicClient(runtime.NewScheme())
+
+		discoverer := K8sDiscoverer{
+			KubernetesInterface: fakeClient,
+			DynamicInterface:    fakeDynamicClient,
+		}
+
+		var buf bytes.Buffer
+		_, _, _, err := discoverer.Discover(
+			context.TODO(),
+			KubernertesDiscoveryOptions{
+				PodSelector:               "app=buildkit",
+				Namespace:                 "tsuru",
+				Timeout:                   time.Second * 2,
+				Statefulset:               "buildkit",
+				ScalingDisabledNamespaces: []string{"tsuru", "production"},
+				SetTsuruAppLabel:          false,
+			},
+			&grpc_build_v1.BuildRequest{
+				App: &grpc_build_v1.TsuruApp{
+					Name: "test-app",
+				},
+			},
+			&buf,
+		)
+
+		assert.NoError(t, err)
+		assert.NotContains(t, buf.String(), "There is no buildkits available, scaling to one replica")
+
+		sts, err := fakeClient.AppsV1().StatefulSets("tsuru").Get(context.TODO(), "buildkit", metav1.GetOptions{})
+		assert.NoError(t, err)
+		assert.Equal(t, int32(0), *sts.Spec.Replicas)
+	})
 }
 
 func TestK8sDiscoverer_BuildkitPodNamespace(t *testing.T) {
