@@ -249,7 +249,7 @@ func TestK8sDiscoverer_DiscoverWithStatefulsetInitialUpscale(t *testing.T) {
 		assert.Equal(t, int32(1), *sts.Spec.Replicas)
 	})
 
-	t.Run("Should not upscale if namespace is in disabled scaling list", func(t *testing.T) {
+	t.Run("Should not upscale if scaling is disabled", func(t *testing.T) {
 		buildKitPod := &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "buildkit-0",
@@ -302,12 +302,12 @@ func TestK8sDiscoverer_DiscoverWithStatefulsetInitialUpscale(t *testing.T) {
 		_, _, _, err := discoverer.Discover(
 			context.TODO(),
 			KubernertesDiscoveryOptions{
-				PodSelector:               "app=buildkit",
-				Namespace:                 "tsuru",
-				Timeout:                   time.Second * 2,
-				Statefulset:               "buildkit",
-				ScalingDisabledNamespaces: []string{"tsuru", "production"},
-				SetTsuruAppLabel:          false,
+				PodSelector:      "app=buildkit",
+				Namespace:        "tsuru",
+				Timeout:          time.Second * 2,
+				Statefulset:      "buildkit",
+				ScalingDisabled:  true,
+				SetTsuruAppLabel: false,
 			},
 			&grpc_build_v1.BuildRequest{
 				App: &grpc_build_v1.TsuruApp{

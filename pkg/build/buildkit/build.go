@@ -75,8 +75,8 @@ func (b *BuildKit) WithKubernetesDiscovery(cs *kubernetes.Clientset, dcs dynamic
 	b.dk8s = dcs
 	b.kdopts = &opts
 
-	if opts.Statefulset != "" {
-		scaler.StartWorker(cs, opts.PodSelector, opts.Statefulset, opts.ScaleGracefulPeriod, opts.ScalingDisabledNamespaces)
+	if opts.Statefulset != "" && !opts.ScalingDisabled {
+		scaler.StartWorker(cs, opts.PodSelector, opts.Statefulset, opts.ScaleGracefulPeriod)
 	}
 
 	return b

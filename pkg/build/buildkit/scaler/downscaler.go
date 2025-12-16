@@ -14,15 +14,14 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
-	"k8s.io/utils/strings/slices"
 )
 
-func StartWorker(clientset *kubernetes.Clientset, podSelector, statefulSet string, graceful time.Duration, scalingDisabledNamespaces []string) {
+func StartWorker(clientset *kubernetes.Clientset, podSelector, statefulSet string, graceful time.Duration) {
 	ctx := context.Background()
 
 	go func() {
 		for {
-			err := runDownscaler(ctx, clientset, podSelector, statefulSet, graceful, scalingDisabledNamespaces)
+			err := runDownscaler(ctx, clientset, podSelector, statefulSet, graceful)
 			if err != nil {
 				klog.Errorf("failed to run downscaler tick: %s", err.Error())
 			}
@@ -31,7 +30,7 @@ func StartWorker(clientset *kubernetes.Clientset, podSelector, statefulSet strin
 	}()
 }
 
-func runDownscaler(ctx context.Context, clientset kubernetes.Interface, podSelector, statefulSet string, graceful time.Duration, scalingDisabledNamespaces []string) (err error) {
+func runDownscaler(ctx context.Context, clientset kubernetes.Interface, podSelector, statefulSet string, graceful time.Duration) (err error) {
 	defer func() {
 		recoverErr := recover()
 		if recoverErr != nil {
@@ -49,9 +48,6 @@ func runDownscaler(ctx context.Context, clientset kubernetes.Interface, podSelec
 	maxEndtimeByNS := map[string]int64{}
 
 	for _, pod := range buildKitPods.Items {
-		if slices.Contains(scalingDisabledNamespaces, pod.GetNamespace()) {
-			continue
-		}
 		usageAt := int64(-1)
 
 		lastBuildStart := pod.Annotations[metadata.DeployAgentLastBuildStartingLabelKey]

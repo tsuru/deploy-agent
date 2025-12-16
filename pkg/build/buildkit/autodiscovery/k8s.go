@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -43,9 +42,9 @@ type KubernertesDiscoveryOptions struct {
 	PodSelector               string
 	Namespace                 string
 	LeasePrefix               string
-	Statefulset               string
-	ScalingDisabledNamespaces []string
-	Port                      int
+	Statefulset       string
+	ScalingDisabled   bool
+	Port              int
 	UseSameNamespaceAsApp     bool
 	SetTsuruAppLabel          bool
 	ScaleGracefulPeriod       time.Duration
@@ -129,7 +128,7 @@ func (d *K8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 	metrics.BuildsWaitingForLease.WithLabelValues(namespace).Inc()
 	defer metrics.BuildsWaitingForLease.WithLabelValues(namespace).Dec()
 
-	if opts.Statefulset != "" && !slices.Contains(opts.ScalingDisabledNamespaces, namespace) {
+	if opts.Statefulset != "" && !opts.ScalingDisabled {
 		err := scaler.MayUpscale(ctx, d.KubernetesInterface, namespace, opts.Statefulset, w)
 		if err != nil {
 			return nil, fmt.Errorf("failed trying upscale BuildKit statefulset(%s - %s): %w", namespace, opts.Statefulset, err)
