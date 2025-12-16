@@ -46,7 +46,6 @@ var cfg struct {
 	BuildKitAutoDiscoveryKubernetesLeasePrefix                string
 	BuildKitAutoDiscoveryStatefulset                          string
 	KubernetesConfig                                          string
-	BuildKitScalingDisabled                                   bool
 	RemoteRepositoryPath                                      string
 	BuildKitAutoDiscoveryTimeout                              time.Duration
 	BuildKitAutoDiscoveryKubernetesPort                       int
@@ -55,6 +54,7 @@ var cfg struct {
 	ServerMaxRecvMsgSize                                      int
 	ServerMaxSendMsgSize                                      int
 	BuildKitAutoDiscoveryScaleGracefulPeriod                  time.Duration
+	BuildKitAutoDiscoveryScalingDisabled                      bool
 	BuildKitAutoDiscovery                                     bool
 	BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels          bool
 	BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp bool
@@ -85,7 +85,7 @@ func main() {
 	flag.BoolVar(&cfg.BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels, "buildkit-autodiscovery-kubernetes-set-tsuru-app-labels", false, "Whether should set the Tsuru app labels in the selected BuildKit pod")
 	flag.BoolVar(&cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp, "buildkit-autodiscovery-kubernetes-use-same-namespace-as-tsuru-app", false, "Whether should look for BuildKit in the Tsuru app's namespace")
 	flag.StringVar(&cfg.BuildKitAutoDiscoveryStatefulset, "buildkit-autodiscovery-scale-statefulset", "", "Name of statefulset of buildkit that scale from zero")
-	flag.BoolVar(&cfg.BuildKitScalingDisabled, "buildkit-scaling-disabled", false, "Disable buildkit scaling")
+	flag.BoolVar(&cfg.BuildKitAutoDiscoveryScalingDisabled, "buildkit-autodiscovery-scaling-disabled", false, "Disable buildkit scaling")
 	flag.DurationVar(&cfg.BuildKitAutoDiscoveryScaleGracefulPeriod, "buildkit-autodiscovery-scale-graceful-period", (2 * time.Hour), "how long time after a build to retain buildkit running")
 
 	flag.BoolVar(&cfg.DisableCache, "disable-cache", false, "Disable BuildKit cache during container image builds")
@@ -218,7 +218,7 @@ func newBuildKit() (*buildkit.BuildKit, error) {
 			UseSameNamespaceAsApp: cfg.BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp,
 			LeasePrefix:           cfg.BuildKitAutoDiscoveryKubernetesLeasePrefix,
 			Statefulset:           cfg.BuildKitAutoDiscoveryStatefulset,
-			ScalingDisabled:       cfg.BuildKitScalingDisabled,
+			ScalingDisabled:       cfg.BuildKitAutoDiscoveryScalingDisabled,
 			ScaleGracefulPeriod:   cfg.BuildKitAutoDiscoveryScaleGracefulPeriod,
 		}
 
