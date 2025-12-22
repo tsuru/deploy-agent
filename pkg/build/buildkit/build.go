@@ -487,6 +487,7 @@ func (b *BuildKit) buildFromContainerFile(ctx context.Context, c *client.Client,
 			return nil, err
 		}
 		if tsuruYamlData != "" {
+			fmt.Fprintln(w, "Found user-defined tsuru.yaml file in build context, using it.")
 			tc.TsuruYaml = tsuruYamlData
 		}
 	}
