@@ -1,0 +1,6 @@
+healthcheck:
+  path: /healthz
+  interval_seconds: 3
+  timeout_seconds: 1
+  ports:
+  - port: 443

@@ -697,6 +697,43 @@ kubernetes:
 		}, appFiles)
 	})
 
+	t.Run("Extract tsuru.yaml from context when is not present on container fs", func(t *testing.T) {
+		destImage := baseRegistry(t, "my-app", "")
+
+		dockerfile, err := os.ReadFile("./testdata/tsuru-files-from-context/Dockerfile")
+		require.NoError(t, err)
+
+		req := &pb.BuildRequest{
+			Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE,
+			App: &pb.TsuruApp{
+				Name: "my-app",
+			},
+			DestinationImages: []string{destImage},
+			Containerfile:     string(dockerfile),
+			Data:              compressGZIP(t, "./testdata/tsuru-files-from-context/"),
+			PushOptions: &pb.PushOptions{
+				InsecureRegistry: registryHTTP,
+			},
+		}
+
+		appFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).Build(context.TODO(), req, os.Stdout)
+		require.NoError(t, err)
+		assert.Equal(t, &pb.TsuruConfig{
+			Procfile: "",
+			TsuruYaml: `healthcheck:
+  path: /healthz
+  interval_seconds: 3
+  timeout_seconds: 1
+  ports:
+  - port: 443
+`,
+			ImageConfig: &pb.ContainerImageConfig{
+				Cmd:        []string{"echo", "Hello from Tsuru files from context!"},
+				WorkingDir: "/tmp",
+			},
+		}, appFiles)
+	})
+
 	t.Run("Dockerfile mounting the app's env vars", func(t *testing.T) {
 		destImage := baseRegistry(t, "my-app", "")
 
