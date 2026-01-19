@@ -230,6 +230,25 @@ func generateContainerfile(w io.Writer, image string, tsuruYamlHooks *build.Tsur
 	return err
 }
 
+func findAndReadTsuruYaml(tmpDir string) (string, error) {
+	contextDir := filepath.Join(tmpDir, "context")
+
+	// Try all possible Tsuru YAML filenames
+	for _, filename := range build.TsuruYamlNames {
+		tsuruYamlPath := filepath.Join(contextDir, filename)
+		if _, err := os.Stat(tsuruYamlPath); err == nil {
+			tsuruYamlData, err := os.ReadFile(tsuruYamlPath)
+			if err != nil {
+				return "", fmt.Errorf("failed to read %s: %w", filename, err)
+			}
+			return string(tsuruYamlData), nil
+		}
+	}
+
+	// No Tsuru YAML file found, return empty string (not an error)
+	return "", nil
+}
+
 func (b *BuildKit) buildFromContainerImage(ctx context.Context, c *client.Client, r *pb.BuildRequest, w console.File) (*pb.TsuruConfig, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -460,6 +479,16 @@ func (b *BuildKit) buildFromContainerFile(ctx context.Context, c *client.Client,
 	tc, err := b.extractTsuruConfigsFromContainerImage(ctx, c, r.DestinationImages[0], ic.WorkingDir)
 	if err != nil {
 		return nil, err
+	}
+
+	if tc.TsuruYaml == "" {
+		tsuruYamlData, err := findAndReadTsuruYaml(tmpDir)
+		if err != nil {
+			return nil, err
+		}
+		if tsuruYamlData != "" {
+			tc.TsuruYaml = tsuruYamlData
+		}
 	}
 
 	tc.ImageConfig = ic
