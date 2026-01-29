@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -55,6 +56,11 @@ type BuildKitOptions struct {
 	TempDir                      string
 	DiscoverBuildKitClientForApp bool
 	DisableCache                 bool
+	DetectCPUArch                bool
+}
+
+func getCurrentPlatform() string {
+	return fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)
 }
 
 type BuildKit struct {
@@ -181,7 +187,7 @@ func (b *BuildKit) buildFromAppSourceFiles(ctx context.Context, c *client.Client
 		}
 	}
 
-	if err = callBuildKitBuild(ctx, c, tmpDir, r, w, b.opts.DisableCache); err != nil {
+	if err = b.callBuildKitBuild(ctx, c, tmpDir, r, w); err != nil {
 		return nil, err
 	}
 
@@ -267,7 +273,7 @@ func (b *BuildKit) buildFromContainerImage(ctx context.Context, c *client.Client
 		}
 	}
 
-	if err = callBuildKitBuild(ctx, c, tmpDir, r, w, b.opts.DisableCache); err != nil {
+	if err = b.callBuildKitBuild(ctx, c, tmpDir, r, w); err != nil {
 		return nil, err
 	}
 
@@ -462,7 +468,7 @@ func (b *BuildKit) buildFromContainerFile(ctx context.Context, c *client.Client,
 		}
 	}
 
-	if err = callBuildKitBuild(ctx, c, tmpDir, r, w, b.opts.DisableCache); err != nil {
+	if err = b.callBuildKitBuild(ctx, c, tmpDir, r, w); err != nil {
 		return nil, err
 	}
 
@@ -508,12 +514,12 @@ func (b *BuildKit) buildPlatform(ctx context.Context, c *client.Client, r *pb.Bu
 			return err
 		}
 	}
-	return callBuildKitBuild(ctx, c, tmpDir, r, w, b.opts.DisableCache)
+	return b.callBuildKitBuild(ctx, c, tmpDir, r, w)
 }
 
-func callBuildKitBuild(ctx context.Context, c *client.Client, buildContextDir string, r *pb.BuildRequest, w console.File, disableCache bool) error {
+func (b *BuildKit) callBuildKitBuild(ctx context.Context, c *client.Client, buildContextDir string, r *pb.BuildRequest, w console.File) error {
 	// Force prune when cache is disabled
-	if disableCache {
+	if b.opts.DisableCache {
 		fmt.Fprintln(w, "Cache disabled, performing remote prune before build...")
 		if err := c.Prune(ctx, nil, client.PruneAll); err != nil {
 			fmt.Fprintf(w, "Warning: Failed to prune remote cache: %v\n", err)
@@ -562,8 +568,12 @@ func callBuildKitBuild(ctx context.Context, c *client.Client, buildContextDir st
 			"build-arg:tsuru_deploy_cache": strconv.FormatInt(time.Now().Unix(), 10),
 		}
 
-		if disableCache {
+		if b.opts.DisableCache {
 			frontendAttrs["no-cache"] = ""
+		}
+
+		if b.opts.DetectCPUArch {
+			frontendAttrs["platform"] = getCurrentPlatform()
 		}
 
 		opts := client.SolveOpt{
