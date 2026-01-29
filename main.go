@@ -1,4 +1,4 @@
-// Copyright 2025 tsuru authors. All rights reserved.
+// Copyright 2026 tsuru authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -58,6 +59,12 @@ var cfg struct {
 	BuildKitAutoDiscoveryKubernetesSetTsuruAppLabels          bool
 	BuildKitAutoDiscoveryKubernetesUseSameNamespaceAsTsuruApp bool
 	DisableCache                                              bool
+
+	// BuildKitDetectCPUArch could be use with caution only on local development
+	// environments where the developer is sure about the architecture
+	// of the BuildKit server and the host machine are the same.
+	// This flag is NOT recommended for production environments.
+	BuildKitDetectCPUArch bool
 }
 
 func main() {
@@ -87,6 +94,7 @@ func main() {
 	flag.DurationVar(&cfg.BuildKitAutoDiscoveryScaleGracefulPeriod, "buildkit-autodiscovery-scale-graceful-period", (2 * time.Hour), "how long time after a build to retain buildkit running")
 
 	flag.BoolVar(&cfg.DisableCache, "disable-cache", false, "Disable BuildKit cache during container image builds")
+	flag.BoolVar(&cfg.BuildKitDetectCPUArch, "buildkit-detect-cpu-arch", getBoolEnvOrDefault("BUILDKIT_DETECT_CPU_ARCH", false), "Whether to detect CPU architecture of the host machine and use it to pass to BuildKit")
 
 	flag.Parse()
 
@@ -160,11 +168,21 @@ func getEnvOrDefault(env, def string) string {
 	return def
 }
 
+func getBoolEnvOrDefault(env string, def bool) bool {
+	if envvar, found := os.LookupEnv(env); found {
+		v, _ := strconv.ParseBool(envvar)
+		return v
+	}
+
+	return def
+}
+
 func newBuildKit() (*buildkit.BuildKit, error) {
 	opts := buildkit.BuildKitOptions{
 		TempDir:                      cfg.BuildkitTmpDir,
 		DiscoverBuildKitClientForApp: cfg.BuildKitAutoDiscovery,
 		DisableCache:                 cfg.DisableCache,
+		DetectCPUArch:                cfg.BuildKitDetectCPUArch,
 	}
 
 	var c *client.Client
