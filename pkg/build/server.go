@@ -39,7 +39,7 @@ func (s *Server) Build(req *pb.BuildRequest, stream pb.Build_BuildServer) error 
 	}
 
 	w := &BuildResponseOutputWriter{stream: stream}
-	fmt.Fprintln(w, "---> Starting container image build")
+	fmt.Fprintln(w, " ---> Starting container image build")
 
 	appFiles, err := s.b.Build(ctx, req, w)
 	if err != nil {
@@ -52,7 +52,7 @@ func (s *Server) Build(req *pb.BuildRequest, stream pb.Build_BuildServer) error 
 		}
 	}
 
-	fmt.Fprintln(w, "--> Container image build finished")
+	fmt.Fprintln(w, " ---> Container image build finished")
 
 	return nil
 }
