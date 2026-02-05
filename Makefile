@@ -50,4 +50,4 @@ generate:
 
 .PHONY: build/container-image
 build/container-image:
-	$(DOCKER) build -t 100.64.100.100:5000/tsuru/deploy-agent:dev ./
+	$(DOCKER) build -t tsuru/deploy-agent-local:latest ./

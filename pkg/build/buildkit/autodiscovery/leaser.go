@@ -7,7 +7,6 @@ package autodiscovery
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -35,16 +34,7 @@ type leaser struct {
 	holderName          string
 }
 
-func newLeaser(kubernetesInterface kubernetes.Interface, leasablePodsCh <-chan *corev1.Pod) (*leaser, <-chan *corev1.Pod, error) {
-	holderName := os.Getenv("POD_NAME")
-	if holderName == "" {
-		hostname, err := os.Hostname()
-		if err != nil {
-			return nil, nil, err
-		}
-		holderName = hostname
-	}
-	holderName = fmt.Sprintf("%s-%d", holderName, time.Now().UnixNano())
+func newLeaser(kubernetesInterface kubernetes.Interface, leasablePodsCh <-chan *corev1.Pod, holderName string) (*leaser, <-chan *corev1.Pod, error) {
 	leasedPodsCh := make(chan *corev1.Pod, 1)
 	return &leaser{
 		kubernetesInterface: kubernetesInterface,
@@ -105,7 +95,6 @@ func (l *leaser) acquireLeaseForAllPods(ctx context.Context, opts KubernertesDis
 // it is a blocking call and only returns after the lease is lost or the given context is canceled.
 // it should always be used in a separate goroutine.
 func (l *leaser) acquireLeaseForPod(ctx context.Context, pod *corev1.Pod, opts KubernertesDiscoveryOptions) {
-	fmt.Printf("Attempting to acquire the lease for pod %s/%s under holder name %q...\n", pod.Namespace, pod.Name, l.holderName)
 	klog.V(4).Infof("Attempting to acquire the lease for pod %s/%s under holder name %q...", pod.Namespace, pod.Name, l.holderName)
 	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
 		Lock: &resourcelock.LeaseLock{
@@ -126,7 +115,6 @@ func (l *leaser) acquireLeaseForPod(ctx context.Context, pod *corev1.Pod, opts K
 			OnStartedLeading: func(_ context.Context) {
 				select {
 				case l.leasedPodsCh <- pod:
-					fmt.Printf("Selected BuildKit pod: %s/%s under holder name %q\n", pod.Namespace, pod.Name, l.holderName)
 					klog.V(4).Infof("Selected BuildKit pod: %s/%s", pod.Namespace, pod.Name)
 
 				case <-ctx.Done():
