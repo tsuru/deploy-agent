@@ -16,7 +16,6 @@ import (
 
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 
-	"github.com/moby/buildkit/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
@@ -397,7 +396,6 @@ func TestK8sDiscoverer_ConcurrencySafetyWithLeases(t *testing.T) {
 
 	dynamicClient := fakeDynamic.NewSimpleDynamicClient(runtime.NewScheme())
 
-	var client1 *client.Client
 	var cleanups1 func()
 	var buf1 bytes.Buffer
 	doneCh1 := make(chan struct{})
@@ -410,7 +408,6 @@ func TestK8sDiscoverer_ConcurrencySafetyWithLeases(t *testing.T) {
 			Name: "test-app-1",
 		},
 	}
-	var client2 *client.Client
 	var cleanups2 func()
 	var buf2 bytes.Buffer
 	doneCh2 := make(chan struct{})
@@ -432,35 +429,33 @@ func TestK8sDiscoverer_ConcurrencySafetyWithLeases(t *testing.T) {
 	}
 
 	go func() {
-		client, cleanups, ns, err := discoverer1.Discover(context.Background(), discoveryOptions, req1, &buf1)
+		_, cleanups, ns, err := discoverer1.Discover(context.Background(), discoveryOptions, req1, &buf1)
 		require.Equal(t, buildkitPod.Namespace, ns)
 		require.NoError(t, err)
 		require.NotNil(t, cleanups)
-		client1 = client
 		cleanups1 = cleanups
 		doneCh1 <- struct{}{}
 	}()
 	go func() {
-		client, cleanups, ns, err := discoverer2.Discover(context.Background(), discoveryOptions, req2, &buf2)
+		_, cleanups, ns, err := discoverer2.Discover(context.Background(), discoveryOptions, req2, &buf2)
 		require.Equal(t, buildkitPod.Namespace, ns)
 		require.NoError(t, err)
 		require.NotNil(t, cleanups)
-		client2 = client
 		cleanups2 = cleanups
 		doneCh2 <- struct{}{}
 	}()
 
-	var firstAquiredClient *client.Client
+	var firstAquiredClient string
 	var firstAquiredCleanups func()
+	var secondAquiredCleanups func()
 	select {
 	case <-doneCh1:
-		firstAquiredClient = client1
+		firstAquiredClient = "client-1"
 		firstAquiredCleanups = cleanups1
 	case <-doneCh2:
-		firstAquiredClient = client2
+		firstAquiredClient = "client-2"
 		firstAquiredCleanups = cleanups2
 	}
-	require.NotNil(t, firstAquiredClient)
 	time.Sleep(leaseDuration) // wait a bit to increase chances of the second discoverer trying to acquire the lease while the first one has it
 
 	leaseList, err := kubeClient.CoordinationV1().Leases("tsuru").List(context.TODO(), metav1.ListOptions{})
@@ -471,6 +466,13 @@ func TestK8sDiscoverer_ConcurrencySafetyWithLeases(t *testing.T) {
 	require.NotZero(t, *firstAquiredLease.Spec.HolderIdentity, "the first discoverer should acquire the lease and set the holder identity")
 
 	time.Sleep(leaseDuration) // wait a bit to ensure the first discoverer has released the lease and the second one has a chance to acquire it
+	if firstAquiredClient == "client-1" {
+		<-doneCh2
+		secondAquiredCleanups = cleanups2
+	} else {
+		<-doneCh1
+		secondAquiredCleanups = cleanups1
+	}
 
 	leaseList, err = kubeClient.CoordinationV1().Leases("tsuru").List(context.TODO(), metav1.ListOptions{})
 	require.NoError(t, err)
@@ -478,11 +480,7 @@ func TestK8sDiscoverer_ConcurrencySafetyWithLeases(t *testing.T) {
 	secondAquiredLease := leaseList.Items[0].DeepCopy()
 	require.NotZero(t, *secondAquiredLease.Spec.HolderIdentity, "the second discoverer should acquire the lease and set the holder identity")
 	require.NotEqual(t, *firstAquiredLease.Spec.HolderIdentity, *secondAquiredLease.Spec.HolderIdentity, "the second discoverer should acquire a different lease after the first one releases it")
-	if firstAquiredClient == client1 {
-		cleanups2()
-	} else {
-		cleanups1()
-	}
+	secondAquiredCleanups()
 
 	time.Sleep(leaseDuration) // wait a bit to ensure the cleanup has released the lease
 	leaseList, err = kubeClient.CoordinationV1().Leases("tsuru").List(context.TODO(), metav1.ListOptions{})
