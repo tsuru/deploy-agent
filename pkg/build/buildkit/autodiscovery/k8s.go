@@ -121,9 +121,6 @@ func (d *K8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 }
 
 func (d *K8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts KubernertesDiscoveryOptions, namespace string, w io.Writer) (*corev1.Pod, error) {
-	deadlineCtx, deadlineCancel := context.WithCancel(ctx)
-	defer deadlineCancel()
-
 	metrics.BuildsWaitingForLease.WithLabelValues(namespace).Inc()
 	defer metrics.BuildsWaitingForLease.WithLabelValues(namespace).Dec()
 
@@ -134,7 +131,7 @@ func (d *K8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 		}
 	}
 
-	watchCtx, watchCancel := context.WithCancel(deadlineCtx)
+	watchCtx, watchCancel := context.WithCancel(ctx)
 	defer watchCancel()
 
 	podWatcher, err := d.KubernetesInterface.CoreV1().Pods(namespace).Watch(watchCtx, metav1.ListOptions{
@@ -152,7 +149,7 @@ func (d *K8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts Kubernerte
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pod leaser: %w", err)
 	}
-	go leaser.acquireLeaseForAllPods(deadlineCtx, opts)
+	go leaser.acquireLeaseForAllPods(ctx, opts)
 
 	for {
 		select {

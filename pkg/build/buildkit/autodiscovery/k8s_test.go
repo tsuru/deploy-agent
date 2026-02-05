@@ -488,7 +488,7 @@ func TestK8sDiscoverer_ConcurrencySafetyWithLeases(t *testing.T) {
 	leaseList, err = kubeClient.CoordinationV1().Leases("tsuru").List(context.TODO(), metav1.ListOptions{})
 	require.NoError(t, err)
 	require.Len(t, leaseList.Items, 1)
-	notHeldLease := leaseList.Items[0]
+	notHeldLease := leaseList.Items[0].DeepCopy()
 	require.Zero(t, *notHeldLease.Spec.HolderIdentity)
 }
 
