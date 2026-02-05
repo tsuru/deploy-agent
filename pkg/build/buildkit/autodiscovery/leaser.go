@@ -20,6 +20,12 @@ import (
 	"k8s.io/klog"
 )
 
+var (
+	leaseDuration = 5 * time.Second
+	renewDeadline = 2 * time.Second
+	retryPeriod   = 500 * time.Millisecond
+)
+
 type leaser struct {
 	kubernetesInterface kubernetes.Interface
 	leasablePodsCh      <-chan *corev1.Pod
@@ -38,6 +44,7 @@ func newLeaser(kubernetesInterface kubernetes.Interface, leasablePodsCh <-chan *
 		}
 		holderName = hostname
 	}
+	holderName = fmt.Sprintf("%s-%d", holderName, time.Now().UnixNano())
 	leasedPodsCh := make(chan *corev1.Pod, 1)
 	return &leaser{
 		kubernetesInterface: kubernetesInterface,
@@ -98,8 +105,8 @@ func (l *leaser) acquireLeaseForAllPods(ctx context.Context, opts KubernertesDis
 // it is a blocking call and only returns after the lease is lost or the given context is canceled.
 // it should always be used in a separate goroutine.
 func (l *leaser) acquireLeaseForPod(ctx context.Context, pod *corev1.Pod, opts KubernertesDiscoveryOptions) {
-	uniqueHolderName := fmt.Sprintf("%s-%d", l.holderName, time.Now().Unix())
-	klog.V(4).Infof("Attempting to acquire the lease for pod %s/%s under holder name %q...", pod.Namespace, pod.Name, uniqueHolderName)
+	fmt.Printf("Attempting to acquire the lease for pod %s/%s under holder name %q...\n", pod.Namespace, pod.Name, l.holderName)
+	klog.V(4).Infof("Attempting to acquire the lease for pod %s/%s under holder name %q...", pod.Namespace, pod.Name, l.holderName)
 	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
 		Lock: &resourcelock.LeaseLock{
 			LeaseMeta: metav1.ObjectMeta{
@@ -108,17 +115,18 @@ func (l *leaser) acquireLeaseForPod(ctx context.Context, pod *corev1.Pod, opts K
 			},
 			Client: l.kubernetesInterface.CoordinationV1(),
 			LockConfig: resourcelock.ResourceLockConfig{
-				Identity: uniqueHolderName,
+				Identity: l.holderName,
 			},
 		},
 		ReleaseOnCancel: true,
-		LeaseDuration:   5 * time.Second,
-		RenewDeadline:   2 * time.Second,
-		RetryPeriod:     500 * time.Millisecond,
+		LeaseDuration:   leaseDuration,
+		RenewDeadline:   renewDeadline,
+		RetryPeriod:     retryPeriod,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(_ context.Context) {
 				select {
 				case l.leasedPodsCh <- pod:
+					fmt.Printf("Selected BuildKit pod: %s/%s under holder name %q\n", pod.Namespace, pod.Name, l.holderName)
 					klog.V(4).Infof("Selected BuildKit pod: %s/%s", pod.Namespace, pod.Name)
 
 				case <-ctx.Done():
