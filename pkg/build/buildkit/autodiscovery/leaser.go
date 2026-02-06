@@ -57,7 +57,6 @@ func (l *leaser) releaseAll(opts ...releaseOptions) {
 	} else {
 		opt = opts[0]
 	}
-	l.leaseAcquiringWg.Wait()
 	for name, leaseCancel := range l.leaseCancelByPod {
 		if opt.except == name {
 			continue
