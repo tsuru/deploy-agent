@@ -94,7 +94,7 @@ func (l *leaser) acquireLeaseForAllPods(ctx context.Context, opts KubernertesDis
 // it is a blocking call and only returns after the lease is lost or the given context is canceled.
 // it should always be used in a separate goroutine.
 func (l *leaser) acquireLeaseForPod(ctx context.Context, pod *corev1.Pod, opts KubernertesDiscoveryOptions) {
-	klog.V(4).Infof("Attempting to acquire the lease for pod %s/%s under holder name %q...", pod.Namespace, pod.Name, l.holderName)
+	klog.V(4).Infof("Attempting to acquire the lease for pod %s/%s under holder name %s", pod.Namespace, pod.Name, l.holderName)
 	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
 		Lock: &resourcelock.LeaseLock{
 			LeaseMeta: metav1.ObjectMeta{
@@ -114,7 +114,7 @@ func (l *leaser) acquireLeaseForPod(ctx context.Context, pod *corev1.Pod, opts K
 			OnStartedLeading: func(_ context.Context) {
 				select {
 				case l.leasedPodsCh <- pod:
-					klog.V(4).Infof("Selected BuildKit pod: %s/%s", pod.Namespace, pod.Name)
+					klog.V(4).Infof("Selected BuildKit pod: %s/%s under holder name %s", pod.Namespace, pod.Name, l.holderName)
 
 				case <-ctx.Done():
 					klog.V(4).Infof("Received context cancellation: %s/%s", pod.Namespace, pod.Name)
@@ -123,5 +123,5 @@ func (l *leaser) acquireLeaseForPod(ctx context.Context, pod *corev1.Pod, opts K
 			OnStoppedLeading: func() {},
 		},
 	})
-	klog.V(4).Infof("Shutting off the lease for %s/%s pod", pod.Namespace, pod.Name)
+	klog.V(4).Infof("Shutting off the lease acquirer for %s/%s pod under holder name %s", pod.Namespace, pod.Name, l.holderName)
 }
