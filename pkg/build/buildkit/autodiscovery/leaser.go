@@ -31,6 +31,7 @@ type leaser struct {
 	leasedPodsCh        chan<- *corev1.Pod
 	leaseAcquiringWg    *sync.WaitGroup
 	leaseCancelByPod    map[string]context.CancelFunc
+	leaseCancelMutex    *sync.Mutex
 	holderName          string
 }
 
@@ -42,6 +43,7 @@ func newLeaser(kubernetesInterface kubernetes.Interface, leasablePodsCh <-chan *
 		leasedPodsCh:        leasedPodsCh,
 		leaseAcquiringWg:    &sync.WaitGroup{},
 		leaseCancelByPod:    make(map[string]context.CancelFunc),
+		leaseCancelMutex:    &sync.Mutex{},
 		holderName:          holderName,
 	}, leasedPodsCh, nil
 }
@@ -57,6 +59,7 @@ func (l *leaser) releaseAll(opts ...releaseOptions) {
 	} else {
 		opt = opts[0]
 	}
+	l.leaseCancelMutex.Lock()
 	for name, leaseCancel := range l.leaseCancelByPod {
 		if opt.except == name {
 			continue
@@ -64,6 +67,7 @@ func (l *leaser) releaseAll(opts ...releaseOptions) {
 		klog.V(4).Infof("Releasing lock for %s pod", name)
 		leaseCancel()
 	}
+	l.leaseCancelMutex.Unlock()
 }
 
 // acquireLeaseForAllPods tries to acquire leases for all pods received on leasablePodsCh.
@@ -73,12 +77,15 @@ func (l *leaser) acquireLeaseForAllPods(ctx context.Context, opts KubernertesDis
 	// NOTE:(ravilock) the usage of WaitGroup here is to ensure that we only close the leasedPodsCh
 	// after all goroutines that might write to it are done. i.e. The goroutines that acquire leases for a buildkit pod.
 	for leasablePod := range l.leasablePodsCh {
+		l.leaseCancelMutex.Lock()
 		if _, found := l.leaseCancelByPod[leasablePod.Name]; found {
+			l.leaseCancelMutex.Unlock()
 			continue
 		}
 
 		leaseCtx, leaseCancel := context.WithCancel(ctx)
 		l.leaseCancelByPod[leasablePod.Name] = leaseCancel
+		l.leaseCancelMutex.Unlock()
 
 		l.leaseAcquiringWg.Add(1)
 		go func() {

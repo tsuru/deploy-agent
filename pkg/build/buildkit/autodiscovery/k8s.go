@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package autodiscovery is responsible for discovering BuildKit instances running in Kubernetes clusters,
+// by watching for pods with specific labels and acquiring a lease on them to ensure exclusive access.
+// It also handles setting and unsetting Tsuru app labels on the discovered BuildKit pods,
+// allowing for better integration with Tsuru's app management.
+// The discovery process includes a timeout mechanism to prevent indefinite waiting for a BuildKit pod to become available.
 package autodiscovery
 
 import (
