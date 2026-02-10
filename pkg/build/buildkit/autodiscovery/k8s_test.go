@@ -8,15 +8,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
+	"sync"
 	"testing"
 	"time"
+
+	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tsuru/deploy-agent/pkg/build/grpc_build_v1"
 	"github.com/tsuru/deploy-agent/pkg/build/metadata"
 	appsv1 "k8s.io/api/apps/v1"
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -25,9 +30,105 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	fakeDynamic "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
+	clientTesting "k8s.io/client-go/testing"
 	kuberntesTesting "k8s.io/client-go/testing"
 	"k8s.io/utils/ptr"
 )
+
+type leaseReactor struct {
+	leases []*coordinationv1.Lease
+	lock   sync.Mutex
+}
+
+func newLeaseReactor() *leaseReactor {
+	return &leaseReactor{
+		leases: make([]*coordinationv1.Lease, 0),
+	}
+}
+
+func (l *leaseReactor) Handles(action clientTesting.Action) bool {
+	return action.GetResource().Resource == "leases"
+}
+
+func (l *leaseReactor) React(action clientTesting.Action) (handled bool, ret runtime.Object, err error) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	switch action.GetVerb() {
+	case "list":
+		if _, ok := action.(clientTesting.ListAction); ok {
+			leaseList := &coordinationv1.LeaseList{
+				Items: []coordinationv1.Lease{},
+			}
+			for _, lease := range l.leases {
+				leaseList.Items = append(leaseList.Items, *lease.DeepCopy())
+			}
+			return true, leaseList, nil
+		}
+		return false, nil, nil
+	case "create":
+		if createAction, ok := action.(clientTesting.CreateAction); ok {
+			lease, err := l.createLease(createAction)
+			return true, lease, err
+		}
+		return false, nil, nil
+	case "get":
+		if getAction, ok := action.(clientTesting.GetAction); ok {
+			lease, err := l.getLease(getAction)
+			return true, lease, err
+		}
+		return false, nil, nil
+	case "update":
+		if updateAction, ok := action.(clientTesting.UpdateAction); ok {
+			lease, err := l.updateLease(updateAction)
+			return true, lease, err
+		}
+		return false, nil, nil
+	case "delete":
+		panic("should not be called")
+	}
+	return false, nil, nil
+}
+
+func (l *leaseReactor) getLease(getAction clientTesting.GetAction) (ret runtime.Object, err error) {
+	for _, lease := range l.leases {
+		if lease.Name == getAction.GetName() && lease.Namespace == getAction.GetNamespace() {
+			return lease.DeepCopy(), nil
+		}
+	}
+	return nil, k8sErrors.NewNotFound(coordinationv1.Resource("leases"), getAction.GetName())
+}
+
+func (l *leaseReactor) createLease(createAction clientTesting.CreateAction) (ret runtime.Object, err error) {
+	leaseObject, ok := createAction.GetObject().(*coordinationv1.Lease)
+	if !ok {
+		return nil, errors.New("not a lease object")
+	}
+	for _, lease := range l.leases {
+		if lease.Name == leaseObject.Name && lease.Namespace == leaseObject.Namespace {
+			return nil, k8sErrors.NewAlreadyExists(coordinationv1.Resource("leases"), leaseObject.Name)
+		}
+	}
+	lease := leaseObject.DeepCopy()
+	lease.CreationTimestamp = metav1.Now()
+	l.leases = append(l.leases, lease)
+	return leaseObject, nil
+}
+
+func (l *leaseReactor) updateLease(updateAction clientTesting.UpdateAction) (ret runtime.Object, err error) {
+	updateLeaseObject, ok := updateAction.GetObject().(*coordinationv1.Lease)
+	if !ok {
+		return nil, errors.New("not a lease object")
+	}
+	for i, currentLease := range l.leases {
+		if currentLease.Name == updateLeaseObject.Name && currentLease.Namespace == updateLeaseObject.Namespace {
+			lease := updateLeaseObject.DeepCopy()
+			lease.CreationTimestamp = currentLease.CreationTimestamp
+			l.leases[i] = lease
+			return updateLeaseObject, nil
+		}
+	}
+	return nil, k8sErrors.NewNotFound(coordinationv1.Resource("leases"), updateLeaseObject.Name)
+}
 
 func TestK8sDiscoverer_Discover(t *testing.T) {
 	buildKitPod := &corev1.Pod{
@@ -248,6 +349,145 @@ func TestK8sDiscoverer_DiscoverWithStatefulsetInitialUpscale(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, int32(1), *sts.Spec.Replicas)
 	})
+}
+
+func TestK8sDiscoverer_ConcurrencySafetyWithLeases(t *testing.T) {
+	// We only keep one buildkit pod to ensure both discoverers are trying to acquire the same lease
+	buildkitPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "buildkit-0",
+			Namespace: "tsuru",
+			Labels: map[string]string{
+				"app": "buildkit",
+			},
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			PodIP: "127.0.0.1",
+			Conditions: []corev1.PodCondition{
+				{
+					Type:   corev1.PodReady,
+					Status: corev1.ConditionTrue,
+				},
+			},
+		},
+	}
+	statefulset := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "buildkit",
+			Namespace: "tsuru",
+		},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: ptr.To(int32(1)),
+		},
+	}
+
+	kubeClient := fake.NewSimpleClientset(buildkitPod, statefulset)
+	kubeClient.PrependWatchReactor("*", func(action kuberntesTesting.Action) (handled bool, ret watch.Interface, err error) {
+		watcher := watch.NewFake()
+		go func() {
+			time.Sleep(time.Millisecond * 100)
+			watcher.Add(buildkitPod)
+		}()
+		return true, watcher, nil
+	})
+	leaseReactor := newLeaseReactor()
+	kubeClient.ReactionChain = append([]clientTesting.Reactor{leaseReactor}, kubeClient.ReactionChain...)
+
+	dynamicClient := fakeDynamic.NewSimpleDynamicClient(runtime.NewScheme())
+
+	var cleanups1 func()
+	var buf1 bytes.Buffer
+	doneCh1 := make(chan struct{})
+	discoverer1 := K8sDiscoverer{
+		KubernetesInterface: kubeClient,
+		DynamicInterface:    dynamicClient,
+	}
+	req1 := &grpc_build_v1.BuildRequest{
+		App: &grpc_build_v1.TsuruApp{
+			Name: "test-app-1",
+		},
+	}
+	var cleanups2 func()
+	var buf2 bytes.Buffer
+	doneCh2 := make(chan struct{})
+	discoverer2 := K8sDiscoverer{
+		KubernetesInterface: kubeClient,
+		DynamicInterface:    dynamicClient,
+	}
+	req2 := &grpc_build_v1.BuildRequest{
+		App: &grpc_build_v1.TsuruApp{
+			Name: "test-app-2",
+		},
+	}
+	discoveryOptions := KubernertesDiscoveryOptions{
+		PodSelector:      "app=buildkit",
+		Namespace:        "tsuru",
+		Timeout:          time.Minute * 2,
+		Statefulset:      "buildkit",
+		SetTsuruAppLabel: false,
+	}
+
+	go func() {
+		_, cleanups, ns, err := discoverer1.Discover(context.Background(), discoveryOptions, req1, &buf1)
+		require.Equal(t, buildkitPod.Namespace, ns)
+		require.NoError(t, err)
+		require.NotNil(t, cleanups)
+		cleanups1 = cleanups
+		doneCh1 <- struct{}{}
+	}()
+	go func() {
+		_, cleanups, ns, err := discoverer2.Discover(context.Background(), discoveryOptions, req2, &buf2)
+		require.Equal(t, buildkitPod.Namespace, ns)
+		require.NoError(t, err)
+		require.NotNil(t, cleanups)
+		cleanups2 = cleanups
+		doneCh2 <- struct{}{}
+	}()
+
+	var firstAquiredClient string
+	var firstAquiredCleanups func()
+	var secondAquiredCleanups func()
+	select {
+	case <-doneCh1:
+		firstAquiredClient = "client-1"
+		firstAquiredCleanups = cleanups1
+	case <-doneCh2:
+		firstAquiredClient = "client-2"
+		firstAquiredCleanups = cleanups2
+	}
+	time.Sleep(leaseDuration) // wait a bit to increase chances of the second discoverer trying to acquire the lease while the first one has it
+
+	leaseList, err := kubeClient.CoordinationV1().Leases("tsuru").List(context.TODO(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, leaseList.Items, 1, "there should be only one lease created")
+	firstAquiredLease := leaseList.Items[0].DeepCopy()
+	firstAquiredCleanups()
+	require.NotZero(t, *firstAquiredLease.Spec.HolderIdentity, "the first discoverer should acquire the lease and set the holder identity")
+
+	time.Sleep(leaseDuration) // wait a bit to ensure the first discoverer has released the lease and the second one has a chance to acquire it
+	if firstAquiredClient == "client-1" {
+		<-doneCh2
+		secondAquiredCleanups = cleanups2
+	} else {
+		<-doneCh1
+		secondAquiredCleanups = cleanups1
+	}
+
+	leaseList, err = kubeClient.CoordinationV1().Leases("tsuru").List(context.TODO(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, leaseList.Items, 1, "there should be only one lease created")
+	secondAquiredLease := leaseList.Items[0].DeepCopy()
+	require.NotZero(t, *secondAquiredLease.Spec.HolderIdentity, "the second discoverer should acquire the lease and set the holder identity")
+	require.NotEqual(t, *firstAquiredLease.Spec.HolderIdentity, *secondAquiredLease.Spec.HolderIdentity, "the second discoverer should acquire a different lease after the first one releases it")
+	secondAquiredCleanups()
+
+	time.Sleep(leaseDuration) // wait a bit to ensure the cleanup has released the lease
+	leaseList, err = kubeClient.CoordinationV1().Leases("tsuru").List(context.TODO(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, leaseList.Items, 1)
+	notHeldLease := leaseList.Items[0].DeepCopy()
+	require.Zero(t, *notHeldLease.Spec.HolderIdentity)
 }
 
 func TestK8sDiscoverer_BuildkitPodNamespace(t *testing.T) {

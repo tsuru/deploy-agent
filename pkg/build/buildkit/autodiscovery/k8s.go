@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package autodiscovery is responsible for discovering BuildKit instances running in Kubernetes clusters,
+// by watching for pods with specific labels and acquiring a lease on them to ensure exclusive access.
+// It also handles setting and unsetting Tsuru app labels on the discovered BuildKit pods,
+// allowing for better integration with Tsuru's app management.
+// The discovery process includes a timeout mechanism to prevent indefinite waiting for a BuildKit pod to become available.
 package autodiscovery
 
 import (
@@ -9,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -120,56 +126,6 @@ func (d *K8sDiscoverer) discoverBuildKitClientFromApp(ctx context.Context, opts 
 	return c, cleanUps(cfns...), nil
 }
 
-func (d *K8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts KubernertesDiscoveryOptions, namespace string, w io.Writer) (*corev1.Pod, error) {
-	deadlineCtx, deadlineCancel := context.WithCancel(ctx)
-	defer deadlineCancel()
-
-	metrics.BuildsWaitingForLease.WithLabelValues(namespace).Inc()
-	defer metrics.BuildsWaitingForLease.WithLabelValues(namespace).Dec()
-
-	if opts.Statefulset != "" {
-		err := scaler.MayUpscale(ctx, d.KubernetesInterface, namespace, opts.Statefulset, w)
-		if err != nil {
-			return nil, fmt.Errorf("failed trying upscale BuildKit statefulset(%s - %s): %w", namespace, opts.Statefulset, err)
-		}
-	}
-
-	watchCtx, watchCancel := context.WithCancel(deadlineCtx)
-	defer watchCancel()
-
-	podWatcher, err := d.KubernetesInterface.CoreV1().Pods(namespace).Watch(watchCtx, metav1.ListOptions{
-		LabelSelector: opts.PodSelector,
-		Watch:         true,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create pod watcher: %w", err)
-	}
-
-	notifier, leasablePodsCh := newPodNotifier(podWatcher)
-	go notifier.notify(watchCtx, isPodReady)
-
-	leaser, leasedPodsCh, err := newLeaser(d.KubernetesInterface, leasablePodsCh)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create pod leaser: %w", err)
-	}
-	go leaser.acquireLeaseForAllPods(deadlineCtx, opts)
-
-	for {
-		select {
-		case <-time.After(opts.Timeout):
-			go leaser.releaseAll()
-			return nil, fmt.Errorf("max deadline of %s exceeded to discover BuildKit pod", opts.Timeout)
-		case leasedPod, ok := <-leasedPodsCh:
-			if !ok {
-				go leaser.releaseAll()
-				return nil, fmt.Errorf("leased pods channel was closed before acquiring any lease")
-			}
-			go leaser.releaseAll(releaseOptions{except: leasedPod.Name})
-			return leasedPod, nil
-		}
-	}
-}
-
 func (d *K8sDiscoverer) buildkitPodNamespace(ctx context.Context, opts KubernertesDiscoveryOptions, app string) (string, error) {
 	if !opts.UseSameNamespaceAsApp {
 		return opts.Namespace, nil
@@ -195,6 +151,71 @@ func (d *K8sDiscoverer) buildkitPodNamespace(ctx context.Context, opts Kubernert
 	klog.V(4).Infof("App %s is running on namespace %s...", app, ns)
 
 	return ns, nil
+}
+
+func (d *K8sDiscoverer) discoverBuildKitPod(ctx context.Context, opts KubernertesDiscoveryOptions, namespace string, w io.Writer) (*corev1.Pod, error) {
+	metrics.BuildsWaitingForLease.WithLabelValues(namespace).Inc()
+	defer metrics.BuildsWaitingForLease.WithLabelValues(namespace).Dec()
+
+	if opts.Statefulset != "" {
+		err := scaler.MayUpscale(ctx, d.KubernetesInterface, namespace, opts.Statefulset, w)
+		if err != nil {
+			return nil, fmt.Errorf("failed trying upscale BuildKit statefulset(%s - %s): %w", namespace, opts.Statefulset, err)
+		}
+	}
+
+	watchCtx, watchCancel := context.WithCancel(ctx)
+	defer watchCancel()
+
+	podWatcher, err := d.KubernetesInterface.CoreV1().Pods(namespace).Watch(watchCtx, metav1.ListOptions{
+		LabelSelector: opts.PodSelector,
+		Watch:         true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pod watcher: %w", err)
+	}
+
+	holderName, err := getHolderName()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get lease holder name: %w", err)
+	}
+
+	notifier, leasablePodsCh := newPodNotifier(podWatcher, holderName)
+	go notifier.notify(watchCtx, isPodReady)
+
+	leaser, leasedPodsCh, err := newLeaser(d.KubernetesInterface, leasablePodsCh, holderName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pod leaser: %w", err)
+	}
+	go leaser.acquireLeaseForAllPods(ctx, opts)
+
+	for {
+		select {
+		case <-time.After(opts.Timeout):
+			leaser.releaseAll()
+			return nil, fmt.Errorf("max deadline of %s exceeded to discover BuildKit pod", opts.Timeout)
+		case leasedPod, ok := <-leasedPodsCh:
+			if !ok {
+				leaser.releaseAll()
+				return nil, fmt.Errorf("leased pods channel was closed before acquiring any lease")
+			}
+			leaser.releaseAll(releaseOptions{except: leasedPod.Name})
+			return leasedPod, nil
+		}
+	}
+}
+
+func getHolderName() (string, error) {
+	holderName := os.Getenv("POD_NAME")
+	if holderName == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			return "", err
+		}
+		holderName = hostname
+	}
+	holderName = fmt.Sprintf("%s-%d", holderName, time.Now().UnixNano())
+	return holderName, nil
 }
 
 func isPodReady(pod *corev1.Pod) bool {

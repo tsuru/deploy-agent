@@ -15,11 +15,12 @@ import (
 type podNotifier struct {
 	podWatcher watch.Interface
 	pods       chan<- *corev1.Pod
+	holderName string
 }
 
-func newPodNotifier(podWatcher watch.Interface) (*podNotifier, <-chan *corev1.Pod) {
+func newPodNotifier(podWatcher watch.Interface, holderName string) (*podNotifier, <-chan *corev1.Pod) {
 	pods := make(chan *corev1.Pod)
-	return &podNotifier{podWatcher: podWatcher, pods: pods}, pods
+	return &podNotifier{podWatcher: podWatcher, pods: pods, holderName: holderName}, pods
 }
 
 type filterCondition func(pod *corev1.Pod) bool
@@ -43,7 +44,7 @@ func (n *podNotifier) notify(ctx context.Context, conditions ...filterCondition)
 			if applyConditions(pod, conditions...) {
 				n.pods <- pod
 			} else {
-				klog.V(4).Infof("Pod %s/%s is not ready yet", pod.Namespace, pod.Name)
+				klog.V(4).Infof("Pod %s/%s is not ready yet - holderName %q", pod.Namespace, pod.Name, n.holderName)
 			}
 		case <-ctx.Done():
 			return
