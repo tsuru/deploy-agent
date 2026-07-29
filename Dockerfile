@@ -11,6 +11,7 @@ RUN set -x \
 FROM alpine:${alpine_version}
 COPY --from=build-stage /go/src/github.com/tsuru/deploy-agent/bin/deploy-agent /usr/local/bin/
 ARG docker_credential_gcr_version=2.1.6
+ARG docker_credential_ecr_login_version=0.12.0
 ARG grpc_health_probe_version=0.4.14
 ARG TARGETARCH
 RUN set -ex \
@@ -20,6 +21,9 @@ RUN set -ex \
     && mv docker-credential-gcr /usr/local/bin/ \
     && docker-credential-gcr version \
     && docker-credential-gcr configure-docker --include-artifact-registry \
+    && curl -fsSL -o /usr/local/bin/docker-credential-ecr-login "https://amazon-ecr-credential-helper-releases.s3.us-east-2.amazonaws.com/${docker_credential_ecr_login_version}/linux-${TARGETARCH}/docker-credential-ecr-login" \
+    && chmod +x /usr/local/bin/docker-credential-ecr-login \
+    && docker-credential-ecr-login -v \
     && curl -fsSL -o /usr/local/bin/grpc_health_probe "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v${grpc_health_probe_version}/grpc_health_probe-linux-${TARGETARCH}" \
     && chmod +x /usr/local/bin/grpc_health_probe
 EXPOSE 8080
