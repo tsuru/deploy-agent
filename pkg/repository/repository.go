@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/tsuru/deploy-agent/pkg/repository/ecr"
 	"github.com/tsuru/deploy-agent/pkg/repository/fake"
 	"github.com/tsuru/deploy-agent/pkg/repository/oci"
 )
@@ -23,6 +24,8 @@ func repositoryProvider(providerType string, data map[string]string) (Repository
 	switch providerType {
 	case "oci":
 		return oci.NewOCI(data), nil
+	case "ecr":
+		return ecr.NewECR(data), nil
 	case "fake":
 		return &fake.FakeRepository{}, nil
 	default:

@@ -8,6 +8,56 @@ It exposes a well-defined API over a gRPC service that translates all Tsuru oper
 [Cloud Build]: https://cloud.google.com/build
 [kaniko]: https://github.com/GoogleContainerTools/kaniko
 
+## Remote repository providers
+
+Some container registries (Amazon ECR, Oracle Cloud OCIR) do not create image
+repositories on first push — pushes to a nonexistent repository fail (e.g. ECR
+returns `404 Not Found`). Since Tsuru names images with one repository per app,
+deploy-agent can create the repository before pushing.
+
+Enable it by pointing `--remote-repository-path` (or the
+`REMOTE_REPOSITORY_PATH` environment variable) at a JSON file mapping each
+registry host to a provider config:
+
+```json
+{
+  "123456789012.dkr.ecr.us-east-1.amazonaws.com": {
+    "provider": "ecr"
+  },
+  "sa-saopaulo-1.ocir.io": {
+    "provider": "oci",
+    "compartmentID": "ocid1.compartment.oc1..aaaa...",
+    "profile": "DEFAULT",
+    "configPath": "/etc/oci/config"
+  }
+}
+```
+
+Registries that auto-create repositories on push (Docker Hub, GCR/Artifact
+Registry, Harbor, Distribution) need no entry.
+
+### `ecr` provider
+
+Creates the repository via the AWS API using the default credential chain
+(IRSA, instance profile, or environment variables) — the same ambient
+credentials used by `docker-credential-ecr-login` for the push itself. The AWS
+region is resolved from the optional `"region"` config key, falling back to
+the region in the registry hostname, then to the SDK defaults. An
+already-existing repository is not an error. The identity needs the
+`ecr:CreateRepository` permission on the repository prefix, e.g.:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["ecr:CreateRepository"],
+  "Resource": "arn:aws:ecr:<region>:<account>:repository/tsuru/*"
+}
+```
+
+Repositories are created with ECR defaults; to control settings like image
+scanning or lifecycle policies, pre-create the repositories with your IaC
+tooling instead — the provider treats them as already existing.
+
 ## Local Development Setup
 
 To set up your local development environment for deploy-agent, follow these steps:
