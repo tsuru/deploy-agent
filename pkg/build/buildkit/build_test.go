@@ -15,12 +15,10 @@ import (
 	"strings"
 	"testing"
 
-	dockertypes "github.com/docker/docker/api/types"
-	dockertypescontainer "github.com/docker/docker/api/types/container"
-	dockerstrslice "github.com/docker/docker/api/types/strslice"
-	dockerclient "github.com/docker/docker/client"
-	dockerstdcopy "github.com/docker/docker/pkg/stdcopy"
 	"github.com/moby/buildkit/client"
+	dockerstdcopy "github.com/moby/moby/api/pkg/stdcopy"
+	dockertypescontainer "github.com/moby/moby/api/types/container"
+	dockerclient "github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -109,7 +107,7 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedProcfile(t *testing.T) {
 	dc := newDockerClient(t)
 	defer dc.Close()
 
-	r, err := dc.ImagePull(context.TODO(), destImage, dockertypes.ImagePullOptions{})
+	r, err := dc.ImagePull(context.TODO(), destImage, dockerclient.ImagePullOptions{})
 	require.NoError(t, err)
 	defer r.Close()
 
@@ -119,14 +117,16 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedProcfile(t *testing.T) {
 
 	defer func() {
 		fmt.Printf("Removing container image %s\n", destImage)
-		_, nerr := dc.ImageRemove(context.TODO(), destImage, dockertypes.ImageRemoveOptions{Force: true})
+		_, nerr := dc.ImageRemove(context.TODO(), destImage, dockerclient.ImageRemoveOptions{Force: true})
 		require.NoError(t, nerr)
 	}()
 
-	containerCreateResp, err := dc.ContainerCreate(context.TODO(), &dockertypescontainer.Config{
+	containerCreateResp, err := dc.ContainerCreate(context.TODO(), dockerclient.ContainerCreateOptions{
 		Image: destImage,
-		Cmd:   dockerstrslice.StrSlice{"sleep", "Inf"},
-	}, nil, nil, nil, "")
+		Config: &dockertypescontainer.Config{
+			Cmd: []string{"sleep", "Inf"},
+		},
+	})
 	require.NoError(t, err)
 	require.NotEmpty(t, containerCreateResp.ID, "container ID cannot be empty")
 
@@ -135,16 +135,17 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedProcfile(t *testing.T) {
 
 	defer func() {
 		fmt.Printf("Removing container (ID=%s)\n", containerID)
-		require.NoError(t, dc.ContainerRemove(context.TODO(), containerID, dockertypes.ContainerRemoveOptions{Force: true, RemoveVolumes: true}))
+		_, err := dc.ContainerRemove(context.TODO(), containerID, dockerclient.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
+		require.NoError(t, err)
 	}()
 
-	err = dc.ContainerStart(context.TODO(), containerID, dockertypes.ContainerStartOptions{})
+	_, err = dc.ContainerStart(context.TODO(), containerID, dockerclient.ContainerStartOptions{})
 	require.NoError(t, err)
 	fmt.Printf("Starting container (ID=%s)\n", containerID)
 
 	t.Run("ensure app archive is on expected location", func(t *testing.T) {
-		execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
-			Tty:          true,
+		execCreateResp, err := dc.ExecCreate(context.TODO(), containerID, dockerclient.ExecCreateOptions{
+			TTY:          true,
 			AttachStderr: true,
 			AttachStdout: true,
 			Cmd:          []string{"sha256sum", "/home/application/archive.tar.gz"},
@@ -154,7 +155,7 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedProcfile(t *testing.T) {
 
 		execID := execCreateResp.ID
 
-		hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+		hijackedResp, err := dc.ExecAttach(context.TODO(), execID, dockerclient.ExecAttachOptions{})
 		require.NoError(t, err)
 		require.NotNil(t, hijackedResp.Reader)
 		defer hijackedResp.Close()
@@ -165,18 +166,18 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedProcfile(t *testing.T) {
 		assert.Equal(t, fmt.Sprintf("%x  /home/application/archive.tar.gz\r\n", sha256.Sum256(req.Data)), stdout.String())
 		assert.Empty(t, stderr.String())
 
-		execInspectResp, err := dc.ContainerExecInspect(context.TODO(), execID)
+		execInspectResp, err := dc.ExecInspect(context.TODO(), execID, dockerclient.ExecInspectOptions{})
 		require.NoError(t, err)
-		assert.Equal(t, execID, execInspectResp.ExecID)
+		assert.Equal(t, execID, execInspectResp.ID)
 		assert.Equal(t, containerID, execInspectResp.ContainerID)
 		assert.False(t, execInspectResp.Running)
 		assert.Empty(t, execInspectResp.ExitCode)
-		assert.NotEmpty(t, execInspectResp.Pid)
+		assert.NotEmpty(t, execInspectResp.PID)
 	})
 
 	t.Run("ensure build hooks were executed", func(t *testing.T) {
-		execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
-			Tty:          true,
+		execCreateResp, err := dc.ExecCreate(context.TODO(), containerID, dockerclient.ExecCreateOptions{
+			TTY:          true,
 			AttachStderr: true,
 			AttachStdout: true,
 			Cmd:          []string{"cat", "/tmp/tsuru/envs"},
@@ -186,7 +187,7 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedProcfile(t *testing.T) {
 
 		execID := execCreateResp.ID
 
-		hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+		hijackedResp, err := dc.ExecAttach(context.TODO(), execID, dockerclient.ExecAttachOptions{})
 		require.NoError(t, err)
 		require.NotNil(t, hijackedResp.Reader)
 		defer hijackedResp.Close()
@@ -197,18 +198,18 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedProcfile(t *testing.T) {
 		assert.Equal(t, "MY_ENV_VAR=my awesome env var :P\r\nDATABASE_PASSWORD=a@3a`fo@&$(ls -lah)\r\n", stdout.String())
 		assert.Empty(t, stderr.String())
 
-		execInspectResp, err := dc.ContainerExecInspect(context.TODO(), execID)
+		execInspectResp, err := dc.ExecInspect(context.TODO(), execID, dockerclient.ExecInspectOptions{})
 		require.NoError(t, err)
-		assert.Equal(t, execID, execInspectResp.ExecID)
+		assert.Equal(t, execID, execInspectResp.ID)
 		assert.Equal(t, containerID, execInspectResp.ContainerID)
 		assert.False(t, execInspectResp.Running)
 		assert.Empty(t, execInspectResp.ExitCode)
-		assert.NotEmpty(t, execInspectResp.Pid)
+		assert.NotEmpty(t, execInspectResp.PID)
 	})
 
 	t.Run("check if system packages were installed", func(t *testing.T) {
-		execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
-			Tty:          true,
+		execCreateResp, err := dc.ExecCreate(context.TODO(), containerID, dockerclient.ExecCreateOptions{
+			TTY:          true,
 			AttachStderr: true,
 			AttachStdout: true,
 			Cmd:          []string{"tcpdump", "--version"},
@@ -218,7 +219,7 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedProcfile(t *testing.T) {
 
 		execID := execCreateResp.ID
 
-		hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+		hijackedResp, err := dc.ExecAttach(context.TODO(), execID, dockerclient.ExecAttachOptions{})
 		require.NoError(t, err)
 		require.NotNil(t, hijackedResp.Reader)
 		defer hijackedResp.Close()
@@ -229,18 +230,18 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedProcfile(t *testing.T) {
 		assert.Regexp(t, `(.*)tcpdump version (.*)`, stdout.String())
 		assert.Empty(t, stderr.String())
 
-		execInspectResp, err := dc.ContainerExecInspect(context.TODO(), execID)
+		execInspectResp, err := dc.ExecInspect(context.TODO(), execID, dockerclient.ExecInspectOptions{})
 		require.NoError(t, err)
-		assert.Equal(t, execID, execInspectResp.ExecID)
+		assert.Equal(t, execID, execInspectResp.ID)
 		assert.Equal(t, containerID, execInspectResp.ContainerID)
 		assert.False(t, execInspectResp.Running)
 		assert.Empty(t, execInspectResp.ExitCode)
-		assert.NotEmpty(t, execInspectResp.Pid)
+		assert.NotEmpty(t, execInspectResp.PID)
 	})
 
 	t.Run("ensure the specific python version was installed", func(t *testing.T) {
-		execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
-			Tty:          true,
+		execCreateResp, err := dc.ExecCreate(context.TODO(), containerID, dockerclient.ExecCreateOptions{
+			TTY:          true,
 			AttachStderr: true,
 			AttachStdout: true,
 			Cmd:          []string{"bash", "-lc", "python --version"}, // bash -l is mandatory to force loading the ~/.profile file which includes python in the PATH
@@ -250,7 +251,7 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedProcfile(t *testing.T) {
 
 		execID := execCreateResp.ID
 
-		hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+		hijackedResp, err := dc.ExecAttach(context.TODO(), execID, dockerclient.ExecAttachOptions{})
 		require.NoError(t, err)
 		require.NotNil(t, hijackedResp.Reader)
 		defer hijackedResp.Close()
@@ -261,13 +262,13 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedProcfile(t *testing.T) {
 		assert.Regexp(t, `Python 3.10.4\s`, stdout.String())
 		assert.Empty(t, stderr.String())
 
-		execInspectResp, err := dc.ContainerExecInspect(context.TODO(), execID)
+		execInspectResp, err := dc.ExecInspect(context.TODO(), execID, dockerclient.ExecInspectOptions{})
 		require.NoError(t, err)
-		assert.Equal(t, execID, execInspectResp.ExecID)
+		assert.Equal(t, execID, execInspectResp.ID)
 		assert.Equal(t, containerID, execInspectResp.ContainerID)
 		assert.False(t, execInspectResp.Running)
 		assert.Empty(t, execInspectResp.ExitCode)
-		assert.NotEmpty(t, execInspectResp.Pid)
+		assert.NotEmpty(t, execInspectResp.PID)
 	})
 }
 
@@ -323,7 +324,7 @@ processes:
 	dc := newDockerClient(t)
 	defer dc.Close()
 
-	r, err := dc.ImagePull(context.TODO(), destImage, dockertypes.ImagePullOptions{})
+	r, err := dc.ImagePull(context.TODO(), destImage, dockerclient.ImagePullOptions{})
 	require.NoError(t, err)
 	defer r.Close()
 
@@ -333,14 +334,16 @@ processes:
 
 	defer func() {
 		fmt.Printf("Removing container image %s\n", destImage)
-		_, nerr := dc.ImageRemove(context.TODO(), destImage, dockertypes.ImageRemoveOptions{Force: true})
+		_, nerr := dc.ImageRemove(context.TODO(), destImage, dockerclient.ImageRemoveOptions{Force: true})
 		require.NoError(t, nerr)
 	}()
 
-	containerCreateResp, err := dc.ContainerCreate(context.TODO(), &dockertypescontainer.Config{
+	containerCreateResp, err := dc.ContainerCreate(context.TODO(), dockerclient.ContainerCreateOptions{
 		Image: destImage,
-		Cmd:   dockerstrslice.StrSlice{"sleep", "Inf"},
-	}, nil, nil, nil, "")
+		Config: &dockertypescontainer.Config{
+			Cmd: []string{"sleep", "Inf"},
+		},
+	})
 	require.NoError(t, err)
 	require.NotEmpty(t, containerCreateResp.ID, "container ID cannot be empty")
 
@@ -349,16 +352,17 @@ processes:
 
 	defer func() {
 		fmt.Printf("Removing container (ID=%s)\n", containerID)
-		require.NoError(t, dc.ContainerRemove(context.TODO(), containerID, dockertypes.ContainerRemoveOptions{Force: true, RemoveVolumes: true}))
+		_, err := dc.ContainerRemove(context.TODO(), containerID, dockerclient.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
+		require.NoError(t, err)
 	}()
 
-	err = dc.ContainerStart(context.TODO(), containerID, dockertypes.ContainerStartOptions{})
+	_, err = dc.ContainerStart(context.TODO(), containerID, dockerclient.ContainerStartOptions{})
 	require.NoError(t, err)
 	fmt.Printf("Starting container (ID=%s)\n", containerID)
 
 	t.Run("ensure app archive is on expected location", func(t *testing.T) {
-		execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
-			Tty:          true,
+		execCreateResp, err := dc.ExecCreate(context.TODO(), containerID, dockerclient.ExecCreateOptions{
+			TTY:          true,
 			AttachStderr: true,
 			AttachStdout: true,
 			Cmd:          []string{"sha256sum", "/home/application/archive.tar.gz"},
@@ -368,7 +372,7 @@ processes:
 
 		execID := execCreateResp.ID
 
-		hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+		hijackedResp, err := dc.ExecAttach(context.TODO(), execID, dockerclient.ExecAttachOptions{})
 		require.NoError(t, err)
 		require.NotNil(t, hijackedResp.Reader)
 		defer hijackedResp.Close()
@@ -379,18 +383,18 @@ processes:
 		assert.Equal(t, fmt.Sprintf("%x  /home/application/archive.tar.gz\r\n", sha256.Sum256(req.Data)), stdout.String())
 		assert.Empty(t, stderr.String())
 
-		execInspectResp, err := dc.ContainerExecInspect(context.TODO(), execID)
+		execInspectResp, err := dc.ExecInspect(context.TODO(), execID, dockerclient.ExecInspectOptions{})
 		require.NoError(t, err)
-		assert.Equal(t, execID, execInspectResp.ExecID)
+		assert.Equal(t, execID, execInspectResp.ID)
 		assert.Equal(t, containerID, execInspectResp.ContainerID)
 		assert.False(t, execInspectResp.Running)
 		assert.Empty(t, execInspectResp.ExitCode)
-		assert.NotEmpty(t, execInspectResp.Pid)
+		assert.NotEmpty(t, execInspectResp.PID)
 	})
 
 	t.Run("ensure build hooks were executed", func(t *testing.T) {
-		execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
-			Tty:          true,
+		execCreateResp, err := dc.ExecCreate(context.TODO(), containerID, dockerclient.ExecCreateOptions{
+			TTY:          true,
 			AttachStderr: true,
 			AttachStdout: true,
 			Cmd:          []string{"cat", "/tmp/tsuru/envs"},
@@ -400,7 +404,7 @@ processes:
 
 		execID := execCreateResp.ID
 
-		hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+		hijackedResp, err := dc.ExecAttach(context.TODO(), execID, dockerclient.ExecAttachOptions{})
 		require.NoError(t, err)
 		require.NotNil(t, hijackedResp.Reader)
 		defer hijackedResp.Close()
@@ -411,18 +415,18 @@ processes:
 		assert.Equal(t, "MY_ENV_VAR=my awesome env var :P\r\nDATABASE_PASSWORD=a@3a`fo@&$(ls -lah)\r\n", stdout.String())
 		assert.Empty(t, stderr.String())
 
-		execInspectResp, err := dc.ContainerExecInspect(context.TODO(), execID)
+		execInspectResp, err := dc.ExecInspect(context.TODO(), execID, dockerclient.ExecInspectOptions{})
 		require.NoError(t, err)
-		assert.Equal(t, execID, execInspectResp.ExecID)
+		assert.Equal(t, execID, execInspectResp.ID)
 		assert.Equal(t, containerID, execInspectResp.ContainerID)
 		assert.False(t, execInspectResp.Running)
 		assert.Empty(t, execInspectResp.ExitCode)
-		assert.NotEmpty(t, execInspectResp.Pid)
+		assert.NotEmpty(t, execInspectResp.PID)
 	})
 
 	t.Run("check if system packages were installed", func(t *testing.T) {
-		execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
-			Tty:          true,
+		execCreateResp, err := dc.ExecCreate(context.TODO(), containerID, dockerclient.ExecCreateOptions{
+			TTY:          true,
 			AttachStderr: true,
 			AttachStdout: true,
 			Cmd:          []string{"tcpdump", "--version"},
@@ -432,7 +436,7 @@ processes:
 
 		execID := execCreateResp.ID
 
-		hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+		hijackedResp, err := dc.ExecAttach(context.TODO(), execID, dockerclient.ExecAttachOptions{})
 		require.NoError(t, err)
 		require.NotNil(t, hijackedResp.Reader)
 		defer hijackedResp.Close()
@@ -443,18 +447,18 @@ processes:
 		assert.Regexp(t, `(.*)tcpdump version (.*)`, stdout.String())
 		assert.Empty(t, stderr.String())
 
-		execInspectResp, err := dc.ContainerExecInspect(context.TODO(), execID)
+		execInspectResp, err := dc.ExecInspect(context.TODO(), execID, dockerclient.ExecInspectOptions{})
 		require.NoError(t, err)
-		assert.Equal(t, execID, execInspectResp.ExecID)
+		assert.Equal(t, execID, execInspectResp.ID)
 		assert.Equal(t, containerID, execInspectResp.ContainerID)
 		assert.False(t, execInspectResp.Running)
 		assert.Empty(t, execInspectResp.ExitCode)
-		assert.NotEmpty(t, execInspectResp.Pid)
+		assert.NotEmpty(t, execInspectResp.PID)
 	})
 
 	t.Run("ensure the specific python version was installed", func(t *testing.T) {
-		execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
-			Tty:          true,
+		execCreateResp, err := dc.ExecCreate(context.TODO(), containerID, dockerclient.ExecCreateOptions{
+			TTY:          true,
 			AttachStderr: true,
 			AttachStdout: true,
 			Cmd:          []string{"bash", "-lc", "python --version"}, // bash -l is mandatory to force loading the ~/.profile file which includes python in the PATH
@@ -464,7 +468,7 @@ processes:
 
 		execID := execCreateResp.ID
 
-		hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+		hijackedResp, err := dc.ExecAttach(context.TODO(), execID, dockerclient.ExecAttachOptions{})
 		require.NoError(t, err)
 		require.NotNil(t, hijackedResp.Reader)
 		defer hijackedResp.Close()
@@ -475,13 +479,13 @@ processes:
 		assert.Regexp(t, `Python 3.10.4\s`, stdout.String())
 		assert.Empty(t, stderr.String())
 
-		execInspectResp, err := dc.ContainerExecInspect(context.TODO(), execID)
+		execInspectResp, err := dc.ExecInspect(context.TODO(), execID, dockerclient.ExecInspectOptions{})
 		require.NoError(t, err)
-		assert.Equal(t, execID, execInspectResp.ExecID)
+		assert.Equal(t, execID, execInspectResp.ID)
 		assert.Equal(t, containerID, execInspectResp.ContainerID)
 		assert.False(t, execInspectResp.Running)
 		assert.Empty(t, execInspectResp.ExitCode)
-		assert.NotEmpty(t, execInspectResp.Pid)
+		assert.NotEmpty(t, execInspectResp.PID)
 	})
 }
 
@@ -527,7 +531,7 @@ func TestBuildKit_Build_FromContainerImages(t *testing.T) {
 		data := compressGZIP(t, "./testdata/container_image/")
 		r := bytes.NewReader(data)
 
-		buildResp, err := dc.ImageBuild(context.TODO(), r, dockertypes.ImageBuildOptions{
+		buildResp, err := dc.ImageBuild(context.TODO(), r, dockerclient.ImageBuildOptions{
 			Tags:        []string{srcImage},
 			Remove:      true,
 			ForceRemove: true,
@@ -540,7 +544,7 @@ func TestBuildKit_Build_FromContainerImages(t *testing.T) {
 		_, err = io.Copy(os.Stdout, buildResp.Body)
 		require.NoError(t, err)
 
-		pushReader, err := dc.ImagePush(context.TODO(), srcImage, dockertypes.ImagePushOptions{RegistryAuth: "fake auth token"})
+		pushReader, err := dc.ImagePush(context.TODO(), srcImage, dockerclient.ImagePushOptions{RegistryAuth: "fake auth token"})
 		require.NoError(t, err)
 		defer pushReader.Close()
 
@@ -774,7 +778,7 @@ ENV MY_ANOTHER_VAR="another var"
 		dc := newDockerClient(t)
 		defer dc.Close()
 
-		r, err := dc.ImagePull(context.TODO(), destImage, dockertypes.ImagePullOptions{})
+		r, err := dc.ImagePull(context.TODO(), destImage, dockerclient.ImagePullOptions{})
 		require.NoError(t, err)
 		defer r.Close()
 
@@ -784,12 +788,12 @@ ENV MY_ANOTHER_VAR="another var"
 
 		defer func() {
 			fmt.Printf("Removing container image %s\n", destImage)
-			_, nerr := dc.ImageRemove(context.TODO(), destImage, dockertypes.ImageRemoveOptions{Force: true})
+			_, nerr := dc.ImageRemove(context.TODO(), destImage, dockerclient.ImageRemoveOptions{Force: true})
 			require.NoError(t, nerr)
 		}()
 
 		t.Run("should not store the env vars in the container image manifest", func(t *testing.T) {
-			is, _, err := dc.ImageInspectWithRaw(context.TODO(), destImage)
+			is, err := dc.ImageInspect(context.TODO(), destImage)
 			require.NoError(t, err)
 			require.NotNil(t, is.Config)
 			assert.NotEmpty(t, is.Config.Env)
@@ -804,10 +808,12 @@ ENV MY_ANOTHER_VAR="another var"
 		})
 
 		t.Run("should be able to see env vars during the build", func(t *testing.T) {
-			containerCreateResp, err := dc.ContainerCreate(context.TODO(), &dockertypescontainer.Config{
+			containerCreateResp, err := dc.ContainerCreate(context.TODO(), dockerclient.ContainerCreateOptions{
 				Image: destImage,
-				Cmd:   dockerstrslice.StrSlice{"sleep", "Inf"},
-			}, nil, nil, nil, "")
+				Config: &dockertypescontainer.Config{
+					Cmd: []string{"sleep", "Inf"},
+				},
+			})
 			require.NoError(t, err)
 			require.NotEmpty(t, containerCreateResp.ID, "container ID cannot be empty")
 
@@ -816,15 +822,16 @@ ENV MY_ANOTHER_VAR="another var"
 
 			defer func() {
 				fmt.Printf("Removing container (ID=%s)\n", containerID)
-				require.NoError(t, dc.ContainerRemove(context.TODO(), containerID, dockertypes.ContainerRemoveOptions{Force: true, RemoveVolumes: true}))
+				_, err := dc.ContainerRemove(context.TODO(), containerID, dockerclient.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
+				require.NoError(t, err)
 			}()
 
-			err = dc.ContainerStart(context.TODO(), containerID, dockertypes.ContainerStartOptions{})
+			_, err = dc.ContainerStart(context.TODO(), containerID, dockerclient.ContainerStartOptions{})
 			require.NoError(t, err)
 			fmt.Printf("Starting container (ID=%s)\n", containerID)
 
-			execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
-				Tty:          true,
+			execCreateResp, err := dc.ExecCreate(context.TODO(), containerID, dockerclient.ExecCreateOptions{
+				TTY:          true,
 				AttachStderr: true,
 				AttachStdout: true,
 				Cmd:          []string{"cat", "/tmp/envs"},
@@ -834,7 +841,7 @@ ENV MY_ANOTHER_VAR="another var"
 
 			execID := execCreateResp.ID
 
-			hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+			hijackedResp, err := dc.ExecAttach(context.TODO(), execID, dockerclient.ExecAttachOptions{})
 			require.NoError(t, err)
 			require.NotNil(t, hijackedResp.Reader)
 			defer hijackedResp.Close()
@@ -997,7 +1004,7 @@ ENV MY_ANOTHER_VAR="another var"
 		dc := newDockerClient(t)
 		defer dc.Close()
 
-		r, err := dc.ImagePull(context.TODO(), destImage, dockertypes.ImagePullOptions{})
+		r, err := dc.ImagePull(context.TODO(), destImage, dockerclient.ImagePullOptions{})
 		require.NoError(t, err)
 		defer r.Close()
 
@@ -1007,12 +1014,12 @@ ENV MY_ANOTHER_VAR="another var"
 
 		defer func() {
 			fmt.Printf("Removing container image %s\n", destImage)
-			_, nerr := dc.ImageRemove(context.TODO(), destImage, dockertypes.ImageRemoveOptions{Force: true})
+			_, nerr := dc.ImageRemove(context.TODO(), destImage, dockerclient.ImageRemoveOptions{Force: true})
 			require.NoError(t, nerr)
 		}()
 
 		t.Run("should not store the env vars in the container image manifest", func(t *testing.T) {
-			is, _, err := dc.ImageInspectWithRaw(context.TODO(), destImage)
+			is, err := dc.ImageInspect(context.TODO(), destImage)
 			require.NoError(t, err)
 			require.NotNil(t, is.Config)
 			assert.NotEmpty(t, is.Config.Env)
@@ -1026,10 +1033,12 @@ ENV MY_ANOTHER_VAR="another var"
 			}
 		})
 		t.Run("should be able to see env vars during the build", func(t *testing.T) {
-			containerCreateResp, err := dc.ContainerCreate(context.TODO(), &dockertypescontainer.Config{
+			containerCreateResp, err := dc.ContainerCreate(context.TODO(), dockerclient.ContainerCreateOptions{
 				Image: destImage,
-				Cmd:   dockerstrslice.StrSlice{"sleep", "Inf"},
-			}, nil, nil, nil, "")
+				Config: &dockertypescontainer.Config{
+					Cmd: []string{"sleep", "Inf"},
+				},
+			})
 			require.NoError(t, err)
 			require.NotEmpty(t, containerCreateResp.ID, "container ID cannot be empty")
 
@@ -1038,15 +1047,16 @@ ENV MY_ANOTHER_VAR="another var"
 
 			defer func() {
 				fmt.Printf("Removing container (ID=%s)\n", containerID)
-				require.NoError(t, dc.ContainerRemove(context.TODO(), containerID, dockertypes.ContainerRemoveOptions{Force: true, RemoveVolumes: true}))
+				_, err := dc.ContainerRemove(context.TODO(), containerID, dockerclient.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
+				require.NoError(t, err)
 			}()
 
-			err = dc.ContainerStart(context.TODO(), containerID, dockertypes.ContainerStartOptions{})
+			_, err = dc.ContainerStart(context.TODO(), containerID, dockerclient.ContainerStartOptions{})
 			require.NoError(t, err)
 			fmt.Printf("Starting container (ID=%s)\n", containerID)
 
-			execCreateResp, err := dc.ContainerExecCreate(context.TODO(), containerID, dockertypes.ExecConfig{
-				Tty:          true,
+			execCreateResp, err := dc.ExecCreate(context.TODO(), containerID, dockerclient.ExecCreateOptions{
+				TTY:          true,
 				AttachStderr: true,
 				AttachStdout: true,
 				Cmd:          []string{"cat", "/tmp/envs"},
@@ -1056,7 +1066,7 @@ ENV MY_ANOTHER_VAR="another var"
 
 			execID := execCreateResp.ID
 
-			hijackedResp, err := dc.ContainerExecAttach(context.TODO(), execID, dockertypes.ExecStartCheck{})
+			hijackedResp, err := dc.ExecAttach(context.TODO(), execID, dockerclient.ExecAttachOptions{})
 			require.NoError(t, err)
 			require.NotNil(t, hijackedResp.Reader)
 			defer hijackedResp.Close()
@@ -1111,7 +1121,7 @@ ENV MY_ANOTHER_VAR="another var"
 			dc := newDockerClient(t)
 			defer dc.Close()
 
-			r, err := dc.ImagePull(context.TODO(), destImage, dockertypes.ImagePullOptions{})
+			r, err := dc.ImagePull(context.TODO(), destImage, dockerclient.ImagePullOptions{})
 			require.NoError(t, err)
 			defer r.Close()
 
@@ -1121,7 +1131,7 @@ ENV MY_ANOTHER_VAR="another var"
 
 			defer func() {
 				fmt.Printf("Removing container image %s\n", destImage)
-				_, nerr := dc.ImageRemove(context.TODO(), destImage, dockertypes.ImageRemoveOptions{Force: true})
+				_, nerr := dc.ImageRemove(context.TODO(), destImage, dockerclient.ImageRemoveOptions{Force: true})
 				require.NoError(t, nerr)
 			}()
 		})
@@ -1219,7 +1229,7 @@ func newBuildKitClient(t *testing.T) *client.Client {
 
 func newDockerClient(t *testing.T) *dockerclient.Client {
 	t.Helper()
-	c, err := dockerclient.NewClientWithOpts(dockerclient.WithVersionFromEnv(), dockerclient.WithAPIVersionNegotiation(), dockerclient.WithHost(dockerHost))
+	c, err := dockerclient.New(dockerclient.WithAPIVersionFromEnv(), dockerclient.WithHost(dockerHost))
 	require.NoError(t, err)
 	return c
 }

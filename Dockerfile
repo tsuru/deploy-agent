@@ -1,4 +1,4 @@
-ARG go_version=1.24
+ARG go_version=1.24.9
 ARG alpine_version=3.22
 
 FROM golang:${go_version}-alpine${alpine_version} AS build-stage
