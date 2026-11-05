@@ -620,6 +620,204 @@ func TestExtractGZIPFileToDir_StopsAtFirstEscape(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Regression tests for the os.Root migration.
+// ---------------------------------------------------------------------------
+
+// TestExtractGZIPFileToDir_DirectoryEntriesAcceptTypeBits guards the bug where
+// finfo.Mode() includes fs.ModeDir for directory entries; os.Root.Mkdir rejects
+// mode bits outside 0o777, so the type bits must be masked before creation.
+func TestExtractGZIPFileToDir_DirectoryEntriesAcceptTypeBits(t *testing.T) {
+	sandbox, dst, err := extractToSandbox(t, []tarEntry{
+		{name: "d700/", typeflag: tar.TypeDir, mode: 0o700},
+		{name: "d750/", typeflag: tar.TypeDir, mode: 0o750},
+		{name: "d700/f.txt", body: "x"},
+	})
+	require.NoError(t, err)
+	assertNothingEscaped(t, sandbox)
+
+	for name, want := range map[string]os.FileMode{
+		"d700": 0o700,
+		"d750": 0o750,
+	} {
+		fi, serr := os.Stat(filepath.Join(dst, name))
+		require.NoError(t, serr)
+		assert.True(t, fi.IsDir(), "%s must be a directory", name)
+		assert.Equal(t, want, fi.Mode().Perm(), "permissions of %s", name)
+	}
+}
+
+// TestExtractGZIPFileToDir_RelativeSymlinkTargetMath guards the bug where a
+// relative link target was resolved against the filesystem root instead of the
+// link's own directory, letting "../x" slip past validation.
+func TestExtractGZIPFileToDir_RelativeSymlinkTargetMath(t *testing.T) {
+	t.Run("safe targets stay inside", func(t *testing.T) {
+		sandbox, dst, err := extractToSandbox(t, []tarEntry{
+			{name: "a.txt", body: "aaa"},
+			{name: "sub/", typeflag: tar.TypeDir},
+			{name: "sub/deep/", typeflag: tar.TypeDir},
+			{name: "sub/up", typeflag: tar.TypeSymlink, linkname: "../a.txt"},
+			{name: "sub/deep/up", typeflag: tar.TypeSymlink, linkname: "../../a.txt"},
+			{name: "sub/toroot", typeflag: tar.TypeSymlink, linkname: ".."},
+		})
+		require.NoError(t, err)
+		assertNothingEscaped(t, sandbox)
+
+		dstReal, rerr := filepath.EvalSymlinks(dst)
+		require.NoError(t, rerr)
+
+		for path, want := range map[string]string{
+			"sub/up":      "aaa",
+			"sub/deep/up": "aaa",
+		} {
+			got, readErr := os.ReadFile(filepath.Join(dst, filepath.FromSlash(path)))
+			require.NoErrorf(t, readErr, "reading %s", path)
+			assert.Equal(t, want, string(got))
+		}
+
+		fi, serr := os.Stat(filepath.Join(dst, "sub", "toroot"))
+		require.NoError(t, serr)
+		assert.True(t, fi.IsDir(), "link to root via .. must resolve inside")
+
+		real, rerr := filepath.EvalSymlinks(filepath.Join(dst, "sub", "toroot"))
+		require.NoError(t, rerr)
+		assert.Equal(t, dstReal, real)
+	})
+
+	t.Run("escaping targets are rejected", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			linkPath string
+			entries  []tarEntry
+		}{
+			{
+				name:     "root link to parent",
+				entries:  []tarEntry{{name: "slink", typeflag: tar.TypeSymlink, linkname: ".."}},
+				linkPath: "slink",
+			},
+			{
+				name:     "root link to sibling escape",
+				entries:  []tarEntry{{name: "slink", typeflag: tar.TypeSymlink, linkname: "../escape"}},
+				linkPath: "slink",
+			},
+			{
+				name: "nested link beyond root",
+				entries: []tarEntry{
+					{name: "sub/", typeflag: tar.TypeDir},
+					{name: "sub/slink", typeflag: tar.TypeSymlink, linkname: "../../../etc"},
+				},
+				linkPath: "sub/slink",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				sandbox, dst, err := extractToSandbox(t, tt.entries)
+				require.Error(t, err)
+				assertNothingEscaped(t, sandbox)
+
+				_, statErr := os.Lstat(filepath.Join(dst, filepath.FromSlash(tt.linkPath)))
+				assert.True(t, os.IsNotExist(statErr), "escaping symlink must not be created")
+			})
+		}
+	})
+}
+
+// TestExtractGZIPFileToDir_CreatesDeepDirectoryEntriesWithoutParents covers the
+// os.Root limitation that Root.Mkdir is not recursive: mkdirAll must create
+// missing parents itself, even when the archive only carries a deep dir entry.
+func TestExtractGZIPFileToDir_CreatesDeepDirectoryEntriesWithoutParents(t *testing.T) {
+	sandbox, dst, err := extractToSandbox(t, []tarEntry{
+		{name: "a/b/c/", typeflag: tar.TypeDir, mode: 0o750},
+	})
+	require.NoError(t, err)
+	assertNothingEscaped(t, sandbox)
+
+	fi, err := os.Stat(filepath.Join(dst, "a", "b", "c"))
+	require.NoError(t, err)
+	assert.True(t, fi.IsDir())
+	assert.Equal(t, os.FileMode(0o750), fi.Mode().Perm())
+}
+
+// TestExtractGZIPFileToDir_SymlinkInNestedDirectory covers the os.Root
+// limitation that Root has no Symlink method: creation goes through os.Symlink
+// after the parent is validated with Root.OpenRoot. It must work inside nested
+// directories and still reject escapes.
+func TestExtractGZIPFileToDir_SymlinkInNestedDirectory(t *testing.T) {
+	t.Run("safe nested link", func(t *testing.T) {
+		sandbox, dst, err := extractToSandbox(t, []tarEntry{
+			{name: "a.txt", body: "aaa"},
+			{name: "sub/", typeflag: tar.TypeDir},
+			{name: "sub/deep/", typeflag: tar.TypeDir},
+			{name: "sub/deep/link", typeflag: tar.TypeSymlink, linkname: "../../a.txt"},
+		})
+		require.NoError(t, err)
+		assertNothingEscaped(t, sandbox)
+
+		link := filepath.Join(dst, "sub", "deep", "link")
+		fi, serr := os.Lstat(link)
+		require.NoError(t, serr)
+		assert.NotZero(t, fi.Mode()&os.ModeSymlink)
+
+		target, serr := os.Readlink(link)
+		require.NoError(t, serr)
+		assert.Equal(t, "../../a.txt", target)
+
+		got, rerr := os.ReadFile(link)
+		require.NoError(t, rerr)
+		assert.Equal(t, "aaa", string(got))
+	})
+
+	t.Run("escaping nested link", func(t *testing.T) {
+		sandbox, dst, err := extractToSandbox(t, []tarEntry{
+			{name: "sub/", typeflag: tar.TypeDir},
+			{name: "sub/deep/", typeflag: tar.TypeDir},
+			{name: "sub/deep/link", typeflag: tar.TypeSymlink, linkname: "../../../escape"},
+		})
+		require.Error(t, err)
+		assertNothingEscaped(t, sandbox)
+
+		_, statErr := os.Lstat(filepath.Join(dst, "sub", "deep", "link"))
+		assert.True(t, os.IsNotExist(statErr), "escaping nested symlink must not be created")
+	})
+}
+
+// TestExtractGZIPFileToDir_PreservesModificationTimeInNestedDirectory covers the
+// os.Root limitation that Root has no Chtimes method: times are applied through
+// os.Chtimes on a path derived from the confined root, including for nested
+// files whose parent directories were resolved through Root.
+func TestExtractGZIPFileToDir_PreservesModificationTimeInNestedDirectory(t *testing.T) {
+	want := time.Unix(1700001234, 0)
+
+	sandbox, dst, err := extractToSandbox(t, []tarEntry{
+		{name: "sub/", typeflag: tar.TypeDir},
+		{name: "sub/deep/", typeflag: tar.TypeDir},
+		{name: "sub/deep/timed.txt", body: "x", modTime: want},
+	})
+	require.NoError(t, err)
+	assertNothingEscaped(t, sandbox)
+
+	fi, err := os.Stat(filepath.Join(dst, "sub", "deep", "timed.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, want.Unix(), fi.ModTime().Unix())
+}
+
+// TestExtractGZIPFileToDir_TruncatesReusedPaths covers the O_TRUNC behaviour
+// used with Root.OpenFile: a later, shorter entry for the same path must not
+// leave bytes from the earlier entry behind.
+func TestExtractGZIPFileToDir_TruncatesReusedPaths(t *testing.T) {
+	sandbox, dst, err := extractToSandbox(t, []tarEntry{
+		{name: "dup.txt", body: "this-is-long"},
+		{name: "dup.txt", body: "short"},
+	})
+	require.NoError(t, err)
+	assertNothingEscaped(t, sandbox)
+
+	got, err := os.ReadFile(filepath.Join(dst, "dup.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "short", string(got))
+}
+
+// ---------------------------------------------------------------------------
 // Contract with the BuildKit consumer lives in the integration suite:
 // pkg/build/buildkit/build_test.go exercises the real
 // generateBuildLocalDir -> ExtractGZIPFileToDir -> BuildKit COPY path.
