@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -357,4 +358,263 @@ func TestExtractGZIPFileToDir_ExtractsIntoExistingDirectory(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "old", string(got))
 	assertNothingEscaped(t, sandbox)
+}
+
+// ---------------------------------------------------------------------------
+// Vulnerability: path traversal (zip slip).
+// ---------------------------------------------------------------------------
+
+func TestExtractGZIPFileToDir_RejectsPathTraversal(t *testing.T) {
+	tests := []struct {
+		name    string
+		entries []tarEntry
+	}{
+		{
+			name:    "parent traversal regular file",
+			entries: []tarEntry{{name: "../escape.txt", body: "pwned"}},
+		},
+		{
+			name:    "double parent traversal regular file",
+			entries: []tarEntry{{name: "../../escape.txt", body: "pwned"}},
+		},
+		{
+			name:    "nested traversal regular file",
+			entries: []tarEntry{{name: "a/b/../../../escape.txt", body: "pwned"}},
+		},
+		{
+			name:    "absolute path regular file",
+			entries: []tarEntry{{name: "/escape.txt", body: "pwned"}},
+		},
+		{
+			name:    "parent traversal directory",
+			entries: []tarEntry{{name: "../escapedir/", typeflag: tar.TypeDir}},
+		},
+		{
+			name:    "absolute path directory",
+			entries: []tarEntry{{name: "/escapedir/", typeflag: tar.TypeDir}},
+		},
+		{
+			name:    "traversal via safe prefix then escape",
+			entries: []tarEntry{{name: "safe/../../escape.txt", body: "pwned"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sandbox, _, err := extractToSandbox(t, tt.entries)
+			require.Error(t, err, "extraction must reject a path escaping the destination")
+			assertNothingEscaped(t, sandbox)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Vulnerability: symlink escape.
+// ---------------------------------------------------------------------------
+
+func TestExtractGZIPFileToDir_RejectsSymlinkEscape(t *testing.T) {
+	tests := []struct {
+		name    string
+		entries []tarEntry
+		created string
+	}{
+		{
+			name:    "absolute root",
+			entries: []tarEntry{{name: "slink", typeflag: tar.TypeSymlink, linkname: "/"}},
+			created: "slink",
+		},
+		{
+			name:    "absolute etc",
+			entries: []tarEntry{{name: "slink", typeflag: tar.TypeSymlink, linkname: "/etc"}},
+			created: "slink",
+		},
+		{
+			name:    "absolute home",
+			entries: []tarEntry{{name: "slink", typeflag: tar.TypeSymlink, linkname: "/root"}},
+			created: "slink",
+		},
+		{
+			name:    "relative escaping with one level",
+			entries: []tarEntry{{name: "slink", typeflag: tar.TypeSymlink, linkname: "../escape"}},
+			created: "slink",
+		},
+		{
+			name:    "relative escaping with many levels",
+			entries: []tarEntry{{name: "slink", typeflag: tar.TypeSymlink, linkname: "../../../../etc"}},
+			created: "slink",
+		},
+		{
+			name:    "relative to parent directory",
+			entries: []tarEntry{{name: "slink", typeflag: tar.TypeSymlink, linkname: ".."}},
+			created: "slink",
+		},
+		{
+			name: "nested entry escaping",
+			entries: []tarEntry{
+				{name: "sub/", typeflag: tar.TypeDir},
+				{name: "sub/slink", typeflag: tar.TypeSymlink, linkname: "../../../etc"},
+			},
+			created: "sub/slink",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sandbox, dst, err := extractToSandbox(t, tt.entries)
+			require.Error(t, err, "extraction must reject a symlink pointing outside the destination")
+			assertNothingEscaped(t, sandbox)
+
+			// The symlink itself must not have been created.
+			_, statErr := os.Lstat(filepath.Join(dst, filepath.FromSlash(tt.created)))
+			assert.True(t, os.IsNotExist(statErr), "escaping symlink must not be created")
+		})
+	}
+}
+
+func TestExtractGZIPFileToDir_RejectsWriteThroughSymlink(t *testing.T) {
+	outside := t.TempDir()
+
+	sandbox, _, err := extractToSandbox(t, []tarEntry{
+		{name: "slink", typeflag: tar.TypeSymlink, linkname: outside},
+		{name: "slink/pwned.txt", body: "pwned"},
+	})
+	require.Error(t, err, "extraction must reject writing through an escaping symlink")
+	assertNothingEscaped(t, sandbox)
+
+	entries, rerr := os.ReadDir(outside)
+	require.NoError(t, rerr)
+	assert.Empty(t, entries, "archive wrote through a symlink outside the destination")
+}
+
+func TestExtractGZIPFileToDir_RejectsPreexistingSymlinkEscape(t *testing.T) {
+	outside := t.TempDir()
+	sandbox := t.TempDir()
+	dst := filepath.Join(sandbox, "context")
+	require.NoError(t, os.Mkdir(dst, 0o755))
+
+	// Plant a symlink inside the destination pointing outside of it, as if the
+	// destination were not pristine.
+	require.NoError(t, os.Symlink(outside, filepath.Join(dst, "link")))
+
+	buf := buildArchive(t, []tarEntry{
+		{name: "link/", typeflag: tar.TypeDir},
+	})
+	err := ExtractGZIPFileToDir(context.Background(), buf, dst)
+	require.Error(t, err, "extraction must not traverse a pre-existing escaping symlink")
+
+	entries, rerr := os.ReadDir(outside)
+	require.NoError(t, rerr)
+	assert.Empty(t, entries)
+}
+
+// ---------------------------------------------------------------------------
+// Vulnerability: ownership from the archive must be ignored.
+// ---------------------------------------------------------------------------
+
+func TestExtractGZIPFileToDir_DoesNotApplyOwnerFromArchive(t *testing.T) {
+	sandbox, dst, err := extractToSandbox(t, []tarEntry{
+		{name: "owned.txt", body: "x", uid: intPtr(12345), gid: intPtr(54321)},
+	})
+	require.NoError(t, err, "extraction must not fail on a foreign uid/gid")
+	assertNothingEscaped(t, sandbox)
+
+	fi, err := os.Stat(filepath.Join(dst, "owned.txt"))
+	require.NoError(t, err)
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	require.True(t, ok)
+	assert.Equal(t, uint32(os.Getuid()), st.Uid, "file must keep the current owner")
+	assert.Equal(t, uint32(os.Getgid()), st.Gid, "file must keep the current group")
+}
+
+func TestExtractGZIPFileToDir_DoesNotLchownSymlinkFromArchive(t *testing.T) {
+	_, dst, err := extractToSandbox(t, []tarEntry{
+		{name: "a.txt", body: "aaa"},
+		{name: "link", typeflag: tar.TypeSymlink, linkname: "a.txt", uid: intPtr(12345), gid: intPtr(54321)},
+	})
+	require.NoError(t, err, "extraction must not fail on a foreign uid/gid for symlinks")
+
+	fi, err := os.Lstat(filepath.Join(dst, "link"))
+	require.NoError(t, err)
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	require.True(t, ok)
+	assert.Equal(t, uint32(os.Getuid()), st.Uid)
+	assert.Equal(t, uint32(os.Getgid()), st.Gid)
+}
+
+// ---------------------------------------------------------------------------
+// Error handling.
+// ---------------------------------------------------------------------------
+
+func TestExtractGZIPFileToDir_Errors(t *testing.T) {
+	t.Run("returns context error when canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		buf := buildArchive(t, []tarEntry{{name: "a.txt", body: "a"}})
+		err := ExtractGZIPFileToDir(ctx, buf, t.TempDir())
+		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("rejects invalid gzip data", func(t *testing.T) {
+		err := ExtractGZIPFileToDir(context.Background(), bytes.NewReader([]byte("not gzip")), t.TempDir())
+		require.Error(t, err)
+	})
+
+	t.Run("rejects corrupt tar data without panicking", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("ExtractGZIPFileToDir panicked on corrupt tar data: %v", r)
+			}
+		}()
+
+		var buf bytes.Buffer
+		zw := gzip.NewWriter(&buf)
+		_, err := zw.Write([]byte("this is not a valid tar stream, just garbage bytes"))
+		require.NoError(t, err)
+		require.NoError(t, zw.Close())
+
+		err = ExtractGZIPFileToDir(context.Background(), &buf, t.TempDir())
+		require.Error(t, err)
+	})
+
+	t.Run("rejects unsupported entry types", func(t *testing.T) {
+		for _, tt := range []struct {
+			name     string
+			typeflag byte
+		}{
+			{"hardlink", tar.TypeLink},
+			{"fifo", tar.TypeFifo},
+			{"char device", tar.TypeChar},
+			{"block device", tar.TypeBlock},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				sandbox, _, err := extractToSandbox(t, []tarEntry{
+					{name: "weird", typeflag: tt.typeflag, linkname: "target"},
+				})
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "not supported file type")
+				assertNothingEscaped(t, sandbox)
+			})
+		}
+	})
+}
+
+// TestExtractGZIPFileToDir_StopsAtFirstEscape documents that extraction is
+// streaming: entries before an illegal one are already written, while the
+// illegal entry itself is rejected and nothing escapes.
+func TestExtractGZIPFileToDir_StopsAtFirstEscape(t *testing.T) {
+	sandbox, dst, err := extractToSandbox(t, []tarEntry{
+		{name: "ok.txt", body: "fine"},
+		{name: "../escape.txt", body: "pwned"},
+		{name: "never.txt", body: "never"},
+	})
+	require.Error(t, err)
+	assertNothingEscaped(t, sandbox)
+
+	got, rerr := os.ReadFile(filepath.Join(dst, "ok.txt"))
+	require.NoError(t, rerr)
+	assert.Equal(t, "fine", string(got))
+
+	_, rerr = os.Stat(filepath.Join(dst, "never.txt"))
+	assert.True(t, os.IsNotExist(rerr), "entries after the illegal one must not be extracted")
 }
