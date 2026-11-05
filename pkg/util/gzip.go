@@ -14,11 +14,18 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func CompressGZIPFile(ctx context.Context, w io.Writer, rootDir string) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+
+	// Canonicalize the root so relative names stay correct when it (or a
+	// parent) is a symlink, e.g. on macOS where /var -> /private/var.
+	if resolved, err := filepath.EvalSymlinks(rootDir); err == nil {
+		rootDir = resolved
 	}
 
 	zw, err := gzip.NewWriterLevel(w, gzip.BestCompression)
@@ -117,6 +124,12 @@ func ExtractGZIPFileToDir(ctx context.Context, r io.Reader, dst string) error {
 		return err
 	}
 
+	// Canonicalize the destination so comparisons against symlink-resolved
+	// paths are consistent (on macOS /var is a symlink to /private/var).
+	if resolved, rerr := filepath.EvalSymlinks(dir); rerr == nil {
+		dir = resolved
+	}
+
 	zr, err := gzip.NewReader(r)
 	if err != nil {
 		return err
@@ -133,14 +146,24 @@ func ExtractGZIPFileToDir(ctx context.Context, r io.Reader, dst string) error {
 		if errors.Is(err, io.EOF) {
 			break
 		}
+		if err != nil {
+			return err
+		}
 
 		finfo := h.FileInfo()
 
-		target := filepath.Join(dir, filepath.Clean(h.Name))
+		target, err := secureJoin(dir, h.Name)
+		if err != nil {
+			return err
+		}
 
 		switch h.Typeflag {
 		case tar.TypeDir:
 			if err = os.MkdirAll(target, finfo.Mode()); err != nil {
+				return err
+			}
+
+			if err = ensureNoSymlinkEscape(dir, target); err != nil {
 				return err
 			}
 
@@ -155,9 +178,8 @@ func ExtractGZIPFileToDir(ctx context.Context, r io.Reader, dst string) error {
 				return err
 			}
 
-			if err = f.Chown(h.Uid, h.Gid); err != nil {
-				return err
-			}
+			// NOTE: intentionally not chowning to the header's uid/gid: the
+			// archive is attacker-controlled and the agent may run as root.
 
 			if err = f.Close(); err != nil {
 				return err
@@ -168,18 +190,85 @@ func ExtractGZIPFileToDir(ctx context.Context, r io.Reader, dst string) error {
 			}
 
 		case tar.TypeSymlink:
+			if err = validateSymlinkTarget(dir, h.Name, h.Linkname); err != nil {
+				return err
+			}
+
 			if err = os.Symlink(h.Linkname, target); err != nil {
 				return err
 			}
 
-			if err = os.Lchown(target, h.Uid, h.Gid); err != nil {
-				return err
-			}
+			// NOTE: intentionally not lchowning to the header's uid/gid.
 
 		default:
 			return fmt.Errorf("not supported file type at file %q", h.Name)
 		}
 	}
 
+	return nil
+}
+
+// secureJoin joins name to dir and guarantees the result stays inside dir,
+// rejecting absolute paths and names that escape via "../". It rejects rather
+// than silently sanitizes so malicious archives fail loudly.
+func secureJoin(dir, name string) (string, error) {
+	if name == "" {
+		return "", errors.New("illegal empty path in archive")
+	}
+
+	clean := filepath.Clean(name)
+	if filepath.IsAbs(clean) ||
+		clean == ".." ||
+		strings.HasPrefix(clean, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("illegal path in archive: %q", name)
+	}
+
+	target := filepath.Join(dir, clean)
+	if err := ensureInside(dir, target); err != nil {
+		return "", fmt.Errorf("illegal path in archive %q: %w", name, err)
+	}
+	return target, nil
+}
+
+// ensureInside verifies that p is dir itself or nested inside it.
+func ensureInside(dir, p string) error {
+	if p == dir {
+		return nil
+	}
+	if strings.HasPrefix(p, dir+string(os.PathSeparator)) {
+		return nil
+	}
+	return errors.New("path escapes the extraction directory")
+}
+
+// ensureNoSymlinkEscape verifies that target, after resolving symlinks on the
+// filesystem, still lives inside dir. This defends against a symlink created
+// by an earlier archive entry being used as a path component.
+func ensureNoSymlinkEscape(dir, target string) error {
+	real, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		return err
+	}
+	real, err = filepath.Abs(real)
+	if err != nil {
+		return err
+	}
+	if err := ensureInside(dir, real); err != nil {
+		return fmt.Errorf("illegal path in archive %q: %w", target, err)
+	}
+	return nil
+}
+
+// validateSymlinkTarget rejects symlinks whose destination leaves dir. It
+// rejects absolute targets and resolves relative targets against the
+// symlink's own directory before checking containment.
+func validateSymlinkTarget(dir, name, linkname string) error {
+	if filepath.IsAbs(linkname) {
+		return fmt.Errorf("illegal absolute symlink target %q for entry %q", linkname, name)
+	}
+	resolved := filepath.Join(dir, filepath.Dir(filepath.Clean("/"+name)), linkname)
+	if err := ensureInside(dir, resolved); err != nil {
+		return fmt.Errorf("illegal symlink target %q for entry %q: %w", linkname, name, err)
+	}
 	return nil
 }
