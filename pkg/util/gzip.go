@@ -134,6 +134,10 @@ func ExtractGZIPFileToDir(ctx context.Context, r io.Reader, dst string) error {
 			break
 		}
 
+		if err != nil {
+			return fmt.Errorf("failed to read next file in the tarball: %w", err)
+		}
+
 		finfo := h.FileInfo()
 
 		target := filepath.Join(dir, filepath.Clean(h.Name))
