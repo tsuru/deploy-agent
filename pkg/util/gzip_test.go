@@ -456,6 +456,14 @@ func TestExtractGZIPFileToDir_RejectsSymlinkEscape(t *testing.T) {
 			},
 			created: "sub/slink",
 		},
+		{
+			name: "escape via symlinked parent pointing to root",
+			entries: []tarEntry{
+				{name: "a", typeflag: tar.TypeSymlink, linkname: "."},
+				{name: "a/a/a/leak", typeflag: tar.TypeSymlink, linkname: "../../../escape"},
+			},
+			created: "leak",
+		},
 	}
 
 	for _, tt := range tests {

@@ -179,6 +179,7 @@ func ExtractGZIPFileToDir(ctx context.Context, r io.Reader, dst string) error {
 			}
 
 			if _, err = io.CopyN(f, tr, finfo.Size()); err != nil {
+				f.Close()
 				return err
 			}
 
@@ -194,6 +195,10 @@ func ExtractGZIPFileToDir(ctx context.Context, r io.Reader, dst string) error {
 			}
 
 		case tar.TypeSymlink:
+			if err = rejectSymlinkedParents(root, name); err != nil {
+				return err
+			}
+
 			if err = validateSymlinkTarget(name, h.Linkname); err != nil {
 				return err
 			}
@@ -294,6 +299,35 @@ func validateSymlinkTarget(name, linkname string) error {
 	resolved := filepath.Join(filepath.Dir(name), linkname)
 	if resolved == ".." || strings.HasPrefix(resolved, ".."+string(os.PathSeparator)) {
 		return fmt.Errorf("illegal symlink target %q for entry %q", linkname, name)
+	}
+
+	return nil
+}
+
+// rejectSymlinkedParents makes validateSymlinkTarget's lexical check exact: if
+// no parent component is a symlink, the link's real directory is its lexical
+// one. Otherwise a link such as "a/a/a/leak" could be created through a
+// symlinked parent and resolve somewhere else than the lexical path suggests.
+func rejectSymlinkedParents(root *os.Root, name string) error {
+	parent := filepath.Dir(name)
+	if parent == "." {
+		return nil
+	}
+
+	var cur string
+	for _, part := range strings.Split(filepath.ToSlash(parent), "/") {
+		cur = filepath.Join(cur, part)
+
+		fi, err := root.Lstat(cur)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if fi.Mode()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("illegal symlink entry %q: parent %q is a symlink", name, cur)
+		}
 	}
 
 	return nil
