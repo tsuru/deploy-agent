@@ -618,3 +618,9 @@ func TestExtractGZIPFileToDir_StopsAtFirstEscape(t *testing.T) {
 	_, rerr = os.Stat(filepath.Join(dst, "never.txt"))
 	assert.True(t, os.IsNotExist(rerr), "entries after the illegal one must not be extracted")
 }
+
+// ---------------------------------------------------------------------------
+// Contract with the BuildKit consumer lives in the integration suite:
+// pkg/build/buildkit/build_test.go exercises the real
+// generateBuildLocalDir -> ExtractGZIPFileToDir -> BuildKit COPY path.
+// ---------------------------------------------------------------------------
