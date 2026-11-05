@@ -130,6 +130,14 @@ func ExtractGZIPFileToDir(ctx context.Context, r io.Reader, dst string) error {
 		dir = resolved
 	}
 
+	// os.Root confines every subsequent operation to dir: any name whose
+	// components escape the root is rejected by the OS layer itself.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
 	zr, err := gzip.NewReader(r)
 	if err != nil {
 		return err
@@ -152,24 +160,20 @@ func ExtractGZIPFileToDir(ctx context.Context, r io.Reader, dst string) error {
 
 		finfo := h.FileInfo()
 
-		target, err := secureJoin(dir, h.Name)
+		name, err := archiveName(h.Name)
 		if err != nil {
 			return err
 		}
 
 		switch h.Typeflag {
 		case tar.TypeDir:
-			if err = os.MkdirAll(target, finfo.Mode()); err != nil {
-				return err
-			}
-
-			if err = ensureNoSymlinkEscape(dir, target); err != nil {
+			if err = mkdirAll(root, name, finfo.Mode().Perm()); err != nil {
 				return err
 			}
 
 		case tar.TypeReg:
 			var f *os.File
-			f, err = os.OpenFile(target, os.O_CREATE|os.O_RDWR, finfo.Mode())
+			f, err = root.OpenFile(name, os.O_CREATE|os.O_RDWR|os.O_TRUNC, finfo.Mode().Perm())
 			if err != nil {
 				return err
 			}
@@ -185,16 +189,27 @@ func ExtractGZIPFileToDir(ctx context.Context, r io.Reader, dst string) error {
 				return err
 			}
 
-			if err = os.Chtimes(target, h.ChangeTime, finfo.ModTime()); err != nil {
+			if err = os.Chtimes(filepath.Join(root.Name(), name), h.ChangeTime, finfo.ModTime()); err != nil {
 				return err
 			}
 
 		case tar.TypeSymlink:
-			if err = validateSymlinkTarget(dir, h.Name, h.Linkname); err != nil {
+			if err = validateSymlinkTarget(name, h.Linkname); err != nil {
 				return err
 			}
 
-			if err = os.Symlink(h.Linkname, target); err != nil {
+			// Validate the parent directory through the confined root before
+			// creating the link, so an earlier symlink entry cannot redirect
+			// the parent path outside dir.
+			if parent := filepath.Dir(name); parent != "." {
+				pr, perr := root.OpenRoot(parent)
+				if perr != nil {
+					return fmt.Errorf("illegal symlink parent for entry %q: %w", h.Name, perr)
+				}
+				pr.Close()
+			}
+
+			if err = os.Symlink(h.Linkname, filepath.Join(root.Name(), name)); err != nil {
 				return err
 			}
 
@@ -208,10 +223,11 @@ func ExtractGZIPFileToDir(ctx context.Context, r io.Reader, dst string) error {
 	return nil
 }
 
-// secureJoin joins name to dir and guarantees the result stays inside dir,
-// rejecting absolute paths and names that escape via "../". It rejects rather
-// than silently sanitizes so malicious archives fail loudly.
-func secureJoin(dir, name string) (string, error) {
+// archiveName normalizes an archive entry name and rejects absolute paths and
+// names that escape upwards. Containment is additionally enforced by os.Root
+// at the point of each filesystem operation; this check fails loudly and
+// rejects hostile names before touching the filesystem.
+func archiveName(name string) (string, error) {
 	if name == "" {
 		return "", errors.New("illegal empty path in archive")
 	}
@@ -223,52 +239,62 @@ func secureJoin(dir, name string) (string, error) {
 		return "", fmt.Errorf("illegal path in archive: %q", name)
 	}
 
-	target := filepath.Join(dir, clean)
-	if err := ensureInside(dir, target); err != nil {
-		return "", fmt.Errorf("illegal path in archive %q: %w", name, err)
-	}
-	return target, nil
+	return clean, nil
 }
 
-// ensureInside verifies that p is dir itself or nested inside it.
-func ensureInside(dir, p string) error {
-	if p == dir {
+// mkdirAll creates name and any missing parents beneath root, one component at
+// a time through os.Root.Mkdir so that symlinked components cannot escape.
+func mkdirAll(root *os.Root, name string, perm os.FileMode) error {
+	if name == "." {
 		return nil
 	}
-	if strings.HasPrefix(p, dir+string(os.PathSeparator)) {
-		return nil
-	}
-	return errors.New("path escapes the extraction directory")
-}
 
-// ensureNoSymlinkEscape verifies that target, after resolving symlinks on the
-// filesystem, still lives inside dir. This defends against a symlink created
-// by an earlier archive entry being used as a path component.
-func ensureNoSymlinkEscape(dir, target string) error {
-	real, err := filepath.EvalSymlinks(target)
-	if err != nil {
-		return err
+	parts := strings.Split(filepath.ToSlash(name), "/")
+	var cur string
+	for _, part := range parts {
+		if part == "" || part == "." {
+			continue
+		}
+		if cur == "" {
+			cur = part
+		} else {
+			cur = filepath.Join(cur, part)
+		}
+
+		err := root.Mkdir(cur, perm)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return err
+		}
+
+		// The path already exists; it must be a directory, not a file or a
+		// symlink that redirects elsewhere.
+		info, serr := root.Stat(cur)
+		if serr != nil {
+			return serr
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("illegal path in archive: %q is not a directory", cur)
+		}
 	}
-	real, err = filepath.Abs(real)
-	if err != nil {
-		return err
-	}
-	if err := ensureInside(dir, real); err != nil {
-		return fmt.Errorf("illegal path in archive %q: %w", target, err)
-	}
+
 	return nil
 }
 
-// validateSymlinkTarget rejects symlinks whose destination leaves dir. It
-// rejects absolute targets and resolves relative targets against the
-// symlink's own directory before checking containment.
-func validateSymlinkTarget(dir, name, linkname string) error {
+// validateSymlinkTarget rejects symlinks whose destination leaves the
+// extraction root. Absolute targets are rejected; relative targets are
+// resolved against the link's own directory and must stay inside the root.
+func validateSymlinkTarget(name, linkname string) error {
 	if filepath.IsAbs(linkname) {
 		return fmt.Errorf("illegal absolute symlink target %q for entry %q", linkname, name)
 	}
-	resolved := filepath.Join(dir, filepath.Dir(filepath.Clean("/"+name)), linkname)
-	if err := ensureInside(dir, resolved); err != nil {
-		return fmt.Errorf("illegal symlink target %q for entry %q: %w", linkname, name, err)
+
+	resolved := filepath.Join(filepath.Dir(name), linkname)
+	if resolved == ".." || strings.HasPrefix(resolved, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("illegal symlink target %q for entry %q", linkname, name)
 	}
+
 	return nil
 }
