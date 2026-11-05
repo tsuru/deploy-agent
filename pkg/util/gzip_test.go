@@ -24,14 +24,14 @@ import (
 // "use the current process owner", which keeps the happy-path tests runnable
 // as an unprivileged user.
 type tarEntry struct {
-	name     string
-	body     string
-	typeflag byte
-	linkname string
+	modTime  time.Time
 	uid      *int
 	gid      *int
+	name     string
+	body     string
+	linkname string
 	mode     int64
-	modTime  time.Time
+	typeflag byte
 }
 
 func intPtr(i int) *int { return &i }
@@ -273,9 +273,9 @@ func TestExtractGZIPFileToDir_OutputTree(t *testing.T) {
 func TestExtractGZIPFileToDir_AllowsSymlinksInsideDestination(t *testing.T) {
 	tests := []struct {
 		name    string
-		entries []tarEntry
 		read    string
 		want    string
+		entries []tarEntry
 	}{
 		{
 			name: "sibling relative link",
@@ -342,7 +342,7 @@ func TestExtractGZIPFileToDir_ExtractsIntoExistingDirectory(t *testing.T) {
 	sandbox := t.TempDir()
 	dst := filepath.Join(sandbox, "context")
 	require.NoError(t, os.Mkdir(dst, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(dst, "pre-existing.txt"), []byte("old"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dst, "pre-existing.txt"), []byte("old"), 0o600))
 
 	buf := buildArchive(t, []tarEntry{
 		{name: "new.txt", body: "new"},
@@ -415,8 +415,8 @@ func TestExtractGZIPFileToDir_RejectsPathTraversal(t *testing.T) {
 func TestExtractGZIPFileToDir_RejectsSymlinkEscape(t *testing.T) {
 	tests := []struct {
 		name    string
-		entries []tarEntry
 		created string
+		entries []tarEntry
 	}{
 		{
 			name:    "absolute root",
@@ -522,8 +522,8 @@ func TestExtractGZIPFileToDir_DoesNotApplyOwnerFromArchive(t *testing.T) {
 	require.NoError(t, err)
 	st, ok := fi.Sys().(*syscall.Stat_t)
 	require.True(t, ok)
-	assert.Equal(t, uint32(os.Getuid()), st.Uid, "file must keep the current owner")
-	assert.Equal(t, uint32(os.Getgid()), st.Gid, "file must keep the current group")
+	assert.EqualValues(t, os.Getuid(), st.Uid, "file must keep the current owner")
+	assert.EqualValues(t, os.Getgid(), st.Gid, "file must keep the current group")
 }
 
 func TestExtractGZIPFileToDir_DoesNotLchownSymlinkFromArchive(t *testing.T) {
@@ -537,8 +537,8 @@ func TestExtractGZIPFileToDir_DoesNotLchownSymlinkFromArchive(t *testing.T) {
 	require.NoError(t, err)
 	st, ok := fi.Sys().(*syscall.Stat_t)
 	require.True(t, ok)
-	assert.Equal(t, uint32(os.Getuid()), st.Uid)
-	assert.Equal(t, uint32(os.Getgid()), st.Gid)
+	assert.EqualValues(t, os.Getuid(), st.Uid)
+	assert.EqualValues(t, os.Getgid(), st.Gid)
 }
 
 // ---------------------------------------------------------------------------
