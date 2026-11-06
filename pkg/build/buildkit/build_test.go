@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -82,7 +83,7 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedProcfile(t *testing.T) {
 		Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD,
 		App: &pb.TsuruApp{
 			Name: "my-app",
-			EnvVars: map[string]string{
+			EnvVars: map[string]string{ //nolint:gosec // test fixture
 				"MY_ENV_VAR":        "my awesome env var :P",
 				"PYTHON_VERSION":    "3.10.4",
 				"DATABASE_PASSWORD": "a@3a`fo@&$(ls -lah)",
@@ -278,7 +279,7 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedTsuruYaml(t *testing.T) {
 		Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD,
 		App: &pb.TsuruApp{
 			Name: "my-app",
-			EnvVars: map[string]string{
+			EnvVars: map[string]string{ //nolint:gosec // test fixture
 				"MY_ENV_VAR":        "my awesome env var :P",
 				"PYTHON_VERSION":    "3.10.4",
 				"DATABASE_PASSWORD": "a@3a`fo@&$(ls -lah)",
@@ -920,6 +921,77 @@ EXPOSE 8888/tcp
 				WorkingDir:   "/var/my-app",
 			},
 		}, appFiles)
+	})
+
+	t.Run("normal build context behavior (nested dirs, modes, dotfiles, symlink)", func(t *testing.T) {
+		destImage := baseRegistry(t, "normal-context", "")
+
+		ctxDir := t.TempDir()
+		// Canonicalize the context root so symlink targets computed by
+		// CompressGZIPFile are relative to the same tree (relevant when the
+		// parent of TempDir is itself a symlink, e.g. /var on macOS).
+		ctxDir, err := filepath.EvalSymlinks(ctxDir)
+		require.NoError(t, err)
+
+		require.NoError(t, os.MkdirAll(filepath.Join(ctxDir, "app", "config"), 0o755))
+		require.NoError(t, os.MkdirAll(filepath.Join(ctxDir, "nested", "deep", "dir"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(ctxDir, "app", "main.go"), []byte("package main\n"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(ctxDir, "app", "config", "app.yaml"), []byte("key: value\n"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(ctxDir, "app", "run.sh"), []byte("#!/bin/sh\necho run\n"), 0o755)) //nolint:gosec // executable build-context fixture
+		require.NoError(t, os.WriteFile(filepath.Join(ctxDir, "nested", "deep", "dir", "file.txt"), []byte("deep content"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(ctxDir, ".hidden-file"), []byte("hidden"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(ctxDir, "unicode-\u00e7\u00e3o.txt"), []byte("unicode"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(ctxDir, "file with spaces.txt"), []byte("spaces"), 0o600))
+		// ~1 MiB file to exercise chunked copy through the extractor and COPY.
+		bigFile := bytes.Repeat([]byte("0123456789abcdef"), 64*1024)
+		require.NoError(t, os.WriteFile(filepath.Join(ctxDir, "big.bin"), bigFile, 0o600))
+		require.NoError(t, os.Symlink("app/main.go", filepath.Join(ctxDir, "link.txt")))
+		require.NoError(t, os.Symlink("app", filepath.Join(ctxDir, "dirlink")))
+		require.NoError(t, os.Symlink("link.txt", filepath.Join(ctxDir, "chain.txt")))
+
+		dockerfile := `FROM busybox:latest
+COPY . /ctx
+RUN set -eu; \
+    test -f /ctx/app/main.go; \
+    grep -q 'package main' /ctx/app/main.go; \
+    test -f /ctx/app/config/app.yaml; \
+    grep -q 'key: value' /ctx/app/config/app.yaml; \
+    test -x /ctx/app/run.sh; \
+    test -f /ctx/nested/deep/dir/file.txt; \
+    test "$(cat /ctx/nested/deep/dir/file.txt)" = "deep content"; \
+    test -f /ctx/.hidden-file; \
+    test "$(cat /ctx/.hidden-file)" = "hidden"; \
+    test -f "/ctx/unicode-ção.txt"; \
+    test "$(cat "/ctx/unicode-ção.txt")" = "unicode"; \
+    test -f "/ctx/file with spaces.txt"; \
+    test "$(cat "/ctx/file with spaces.txt")" = "spaces"; \
+    test "$(wc -c < /ctx/big.bin)" = "1048576"; \
+    test -L /ctx/link.txt; \
+    test "$(cat /ctx/link.txt)" = "package main"; \
+    test -L /ctx/dirlink; \
+    test "$(cat /ctx/dirlink/main.go)" = "package main"; \
+    test -L /ctx/chain.txt; \
+    test "$(cat /ctx/chain.txt)" = "package main"
+CMD ["cat", "/ctx/app/main.go"]
+`
+
+		req := &pb.BuildRequest{
+			Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_CONTAINER_FILE,
+			App: &pb.TsuruApp{
+				Name: "normal-context",
+			},
+			DestinationImages: []string{destImage},
+			Containerfile:     dockerfile,
+			Data:              compressGZIP(t, ctxDir),
+			PushOptions: &pb.PushOptions{
+				InsecureRegistry: registryHTTP,
+			},
+		}
+
+		appFiles, err := NewBuildKit(bc, BuildKitOptions{TempDir: t.TempDir()}).Build(context.TODO(), req, os.Stdout)
+		require.NoError(t, err)
+		require.NotNil(t, appFiles.ImageConfig)
+		assert.Equal(t, []string{"cat", "/ctx/app/main.go"}, appFiles.ImageConfig.Cmd)
 	})
 
 	t.Run("multiple exposed ports, should ensure the ascending order of ports", func(t *testing.T) {

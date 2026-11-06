@@ -55,7 +55,7 @@ func runDownscaler(ctx context.Context, clientset kubernetes.Interface, podSelec
 
 		// pod re-scheduled and losed starting and ending annotations
 		if lastBuildStart == "" && lastBuildEnd == "" {
-			usageAt = pod.CreationTimestamp.Time.Unix()
+			usageAt = pod.CreationTimestamp.Unix()
 		}
 
 		if lastBuildStart != "" && lastBuildEnd != "" {

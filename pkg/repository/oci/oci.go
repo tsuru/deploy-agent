@@ -92,7 +92,7 @@ func (r *OCI) exists(ctx context.Context, name string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if len(response.ContainerRepositoryCollection.Items) == 0 {
+	if len(response.Items) == 0 {
 		return false, nil
 	}
 	return true, nil

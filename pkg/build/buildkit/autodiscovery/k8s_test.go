@@ -31,7 +31,6 @@ import (
 	fakeDynamic "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 	clientTesting "k8s.io/client-go/testing"
-	kuberntesTesting "k8s.io/client-go/testing"
 	"k8s.io/utils/ptr"
 )
 
@@ -155,7 +154,7 @@ func TestK8sDiscoverer_Discover(t *testing.T) {
 	}
 	fakeClient := fake.NewSimpleClientset(buildKitPod)
 
-	fakeClient.PrependWatchReactor("*", func(action kuberntesTesting.Action) (handled bool, ret watch.Interface, err error) {
+	fakeClient.PrependWatchReactor("*", func(action clientTesting.Action) (handled bool, ret watch.Interface, err error) {
 		watcher := watch.NewFake()
 
 		go func() {
@@ -242,7 +241,7 @@ func TestK8sDiscoverer_DiscoverWithTimeout(t *testing.T) {
 	}
 	fakeClient := fake.NewSimpleClientset(buildKitPod)
 
-	fakeClient.PrependWatchReactor("*", func(action kuberntesTesting.Action) (handled bool, ret watch.Interface, err error) {
+	fakeClient.PrependWatchReactor("*", func(action clientTesting.Action) (handled bool, ret watch.Interface, err error) {
 		watcher := watch.NewFake()
 		return true, watcher, nil
 	})
@@ -308,7 +307,7 @@ func TestK8sDiscoverer_DiscoverWithStatefulsetInitialUpscale(t *testing.T) {
 
 		fakeClient := fake.NewSimpleClientset(buildKitPod, statefulset)
 
-		fakeClient.PrependWatchReactor("*", func(action kuberntesTesting.Action) (handled bool, ret watch.Interface, err error) {
+		fakeClient.PrependWatchReactor("*", func(action clientTesting.Action) (handled bool, ret watch.Interface, err error) {
 			watcher := watch.NewFake()
 			go func() {
 				time.Sleep(time.Millisecond * 100)
@@ -383,7 +382,7 @@ func TestK8sDiscoverer_ConcurrencySafetyWithLeases(t *testing.T) {
 	}
 
 	kubeClient := fake.NewSimpleClientset(buildkitPod, statefulset)
-	kubeClient.PrependWatchReactor("*", func(action kuberntesTesting.Action) (handled bool, ret watch.Interface, err error) {
+	kubeClient.PrependWatchReactor("*", func(action clientTesting.Action) (handled bool, ret watch.Interface, err error) {
 		watcher := watch.NewFake()
 		go func() {
 			time.Sleep(time.Millisecond * 100)
@@ -697,7 +696,7 @@ func TestSetTsuruAppLabelOnBuildKitPod(t *testing.T) {
 
 	actions := fakeClient.Actions()
 	require.Len(t, actions, 1)
-	patchAction := actions[0].(kuberntesTesting.PatchAction)
+	patchAction := actions[0].(clientTesting.PatchAction)
 
 	assert.Equal(t, "buildkit-0", patchAction.GetName())
 	assert.Equal(t, types.JSONPatchType, patchAction.GetPatchType())
@@ -763,7 +762,7 @@ func TestUnsetTsuruAppLabelOnBuildKitPod(t *testing.T) {
 
 	actions := fakeClient.Actions()
 	require.Len(t, actions, 1)
-	patchAction := actions[0].(kuberntesTesting.PatchAction)
+	patchAction := actions[0].(clientTesting.PatchAction)
 
 	assert.Equal(t, "buildkit-0", patchAction.GetName())
 	assert.Equal(t, types.JSONPatchType, patchAction.GetPatchType())

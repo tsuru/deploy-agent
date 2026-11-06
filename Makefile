@@ -1,5 +1,5 @@
 GO ?= go
-GOLANGCI_LINT ?= golangci-lint
+GOLANGCI_LINT ?= $(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 PROTOC ?= protoc
 DOCKER ?= docker
 
@@ -35,7 +35,7 @@ test/integration:
   DEPLOY_AGENT_INTEGRATION_REGISTRY_HOST=$(INTERNAL_IP):5000 \
   DEPLOY_AGENT_INTEGRATION_REGISTRY_HTTP=true \
   BUILDKIT_HOST=tcp://0.0.0.0:7777 \
-  DOCKER_HOST=tcp://0.0.0.0:2375 \
+  DOCKER_HOST=tcp://127.0.0.1:2375 \
   $(GO) test -v github.com/tsuru/deploy-agent/pkg/build/buildkit
 
 .PHONY: lint

@@ -555,7 +555,7 @@ func (b *BuildKit) callBuildKitBuild(ctx context.Context, c *client.Client, buil
 
 	eg.Go(func() error {
 		var insecureRegistry bool // disabled by default
-		var pushImage bool = true // enabled by default
+		pushImage := true         // enabled by default
 
 		if pots := r.PushOptions; pots != nil {
 			pushImage = !pots.Disable

@@ -1,8 +1,6 @@
 module github.com/tsuru/deploy-agent
 
-go 1.24
-
-toolchain go1.24.9
+go 1.27
 
 require (
 	github.com/alessio/shellescape v1.4.1

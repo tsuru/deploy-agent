@@ -4,11 +4,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.24"
-
-      - uses: actions/checkout@v2
+          go-version: "1.27"
 
       # NOTE: using link-local reserved address block in order to avoid conflict.
       - name: Add fake IP (169.196.255.254) on loopback interface
@@ -17,6 +16,20 @@ jobs:
 
       - name: Running required services (Builkit, Docker Registry, Docker)
         run: docker compose -f ./docker-compose.yaml up -d
+
+      - name: Wait for Docker daemon
+        run: |
+          for i in $(seq 1 60); do
+            if docker -H tcp://127.0.0.1:2375 info >/dev/null 2>&1; then
+              echo "Docker daemon is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Docker daemon did not become ready; showing diagnostics"
+          docker compose -f ./docker-compose.yaml ps || true
+          docker compose -f ./docker-compose.yaml logs --no-color docker || true
+          exit 1
 
       - name: Install protoc and Go compiler plugins
         run: |-
@@ -29,11 +42,13 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.24"
-      - uses: actions/checkout@v2
-      - uses: golangci/golangci-lint-action@v3
+          go-version: "1.27"
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
 
   publish:
     if: github.repository == 'tsuru/deploy-agent' && github.event_name != 'pull_request'
@@ -43,19 +58,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - uses: Surgo/docker-smart-tag-action@v1
+        uses: docker/setup-buildx-action@v4
+      - uses: Surgo/docker-smart-tag-action@v1.0.3
         id: smarttag
         with:
           docker_image: tsuru/deploy-agent
           default_branch: main
           tag_with_sha: "true"
       - name: Handle smart-tag to proper tag var
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
         id: handle_tag
         with:
           script: |
@@ -63,12 +78,12 @@ jobs:
             var orig_tags = `${{steps.smarttag.outputs.tag}}`
             return orig_tags.replace(tag_re,"deploy-agent:v$1")
       - name: docker login
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
       - name: push image tag to Docker Hub (tsuru/deploy-agent)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -83,15 +98,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-      - uses: actions/setup-go@v3
+        uses: docker/setup-qemu-action@v4
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.24"
-      - uses: actions/checkout@v3
+          go-version: "1.27"
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: goreleaser/goreleaser-action@v2
+      - uses: goreleaser/goreleaser-action@v7
         with:
-          args: release
+          version: "~> v2"
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
