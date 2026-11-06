@@ -50,6 +50,19 @@ jobs:
         with:
           version: v2.15.0
 
+  docker-build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          platforms: linux/amd64
+
   publish:
     if: github.repository == 'tsuru/deploy-agent' && github.event_name != 'pull_request'
     needs:
