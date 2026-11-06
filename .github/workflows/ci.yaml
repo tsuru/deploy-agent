@@ -17,6 +17,20 @@ jobs:
       - name: Running required services (Builkit, Docker Registry, Docker)
         run: docker compose -f ./docker-compose.yaml up -d
 
+      - name: Wait for Docker daemon
+        run: |
+          for i in $(seq 1 60); do
+            if docker -H tcp://127.0.0.1:2375 info >/dev/null 2>&1; then
+              echo "Docker daemon is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Docker daemon did not become ready; showing diagnostics"
+          docker compose -f ./docker-compose.yaml ps || true
+          docker compose -f ./docker-compose.yaml logs --no-color docker || true
+          exit 1
+
       - name: Install protoc and Go compiler plugins
         run: |-
           sudo apt install -y protobuf-compiler
