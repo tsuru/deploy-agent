@@ -20,7 +20,7 @@ type FakeArtifactsClient struct {
 }
 
 func (m *FakeArtifactsClient) CreateContainerRepository(ctx context.Context, request artifacts.CreateContainerRepositoryRequest) (response artifacts.CreateContainerRepositoryResponse, err error) {
-	repo := *request.CreateContainerRepositoryDetails.DisplayName
+	repo := *request.DisplayName
 	if _, ok := m.repo[repo]; ok {
 		return artifacts.CreateContainerRepositoryResponse{}, errors.New("repository already exists")
 	}

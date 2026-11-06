@@ -1,34 +1,50 @@
+version: "2"
 run:
-  timeout: 10m
   tests: true
-
 linters:
   enable:
-  - bodyclose
-  - contextcheck
-  - goheader
-  - goimports
-  - gosec
-  - misspell
-  - nestif
-  - reassign
-  - whitespace
-
-linters-settings:
-  gofmt:
-    simplify: true
-
-  goheader:
-    template: |-
-      Copyright {{ YEAR }} {{ AUTHOR }} authors. All rights reserved.
-      Use of this source code is governed by a BSD-style
-      license that can be found in the LICENSE file.
-    values:
-      const:
-        AUTHOR: tsuru
-
-  govet:
-    enable:
-    - fieldalignment
-    - unreachable
-    - shadow
+    - bodyclose
+    - contextcheck
+    - goheader
+    - gosec
+    - misspell
+    - nestif
+    - reassign
+    - whitespace
+  settings:
+    goheader:
+      values:
+        const:
+          AUTHOR: tsuru
+      template: |-
+        Copyright {{ YEAR }} {{ AUTHOR }} authors. All rights reserved.
+        Use of this source code is governed by a BSD-style
+        license that can be found in the LICENSE file.
+    govet:
+      enable:
+        - fieldalignment
+        - unreachable
+        - shadow
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

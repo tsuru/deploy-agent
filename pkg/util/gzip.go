@@ -97,7 +97,7 @@ func CompressGZIPFile(ctx context.Context, w io.Writer, rootDir string) error {
 			return nil
 		}
 
-		f, err := os.Open(path)
+		f, err := os.Open(path) //nolint:gosec // walks the agent-generated source directory
 		if err != nil {
 			return err
 		}
@@ -167,7 +167,7 @@ func ExtractGZIPFileToDir(ctx context.Context, r io.Reader, dst string) error {
 
 		switch h.Typeflag {
 		case tar.TypeDir:
-			if err = mkdirAll(root, name, finfo.Mode().Perm()); err != nil {
+			if err = root.MkdirAll(name, finfo.Mode().Perm()); err != nil {
 				return err
 			}
 
@@ -190,7 +190,7 @@ func ExtractGZIPFileToDir(ctx context.Context, r io.Reader, dst string) error {
 				return err
 			}
 
-			if err = os.Chtimes(filepath.Join(root.Name(), name), h.ChangeTime, finfo.ModTime()); err != nil {
+			if err = root.Chtimes(name, h.ChangeTime, finfo.ModTime()); err != nil {
 				return err
 			}
 
@@ -203,18 +203,11 @@ func ExtractGZIPFileToDir(ctx context.Context, r io.Reader, dst string) error {
 				return err
 			}
 
-			// Validate the parent directory through the confined root before
-			// creating the link, so an earlier symlink entry cannot redirect
-			// the parent path outside dir.
-			if parent := filepath.Dir(name); parent != "." {
-				pr, perr := root.OpenRoot(parent)
-				if perr != nil {
-					return fmt.Errorf("illegal symlink parent for entry %q: %w", h.Name, perr)
-				}
-				pr.Close()
-			}
-
-			if err = os.Symlink(h.Linkname, filepath.Join(root.Name(), name)); err != nil {
+			// Root.Symlink creates the link within the confined root and does
+			// not follow a symlinked parent outside it. Note that it does not
+			// validate oldname, which is why validateSymlinkTarget above is
+			// still required.
+			if err = root.Symlink(h.Linkname, name); err != nil {
 				return err
 			}
 
@@ -245,47 +238,6 @@ func archiveName(name string) (string, error) {
 	}
 
 	return clean, nil
-}
-
-// mkdirAll creates name and any missing parents beneath root, one component at
-// a time through os.Root.Mkdir so that symlinked components cannot escape.
-func mkdirAll(root *os.Root, name string, perm os.FileMode) error {
-	if name == "." {
-		return nil
-	}
-
-	parts := strings.Split(filepath.ToSlash(name), "/")
-	var cur string
-	for _, part := range parts {
-		if part == "" || part == "." {
-			continue
-		}
-		if cur == "" {
-			cur = part
-		} else {
-			cur = filepath.Join(cur, part)
-		}
-
-		err := root.Mkdir(cur, perm)
-		if err == nil {
-			continue
-		}
-		if !errors.Is(err, fs.ErrExist) {
-			return err
-		}
-
-		// The path already exists; it must be a directory, not a file or a
-		// symlink that redirects elsewhere.
-		info, serr := root.Stat(cur)
-		if serr != nil {
-			return serr
-		}
-		if !info.IsDir() {
-			return fmt.Errorf("illegal path in archive: %q is not a directory", cur)
-		}
-	}
-
-	return nil
 }
 
 // validateSymlinkTarget rejects symlinks whose destination leaves the

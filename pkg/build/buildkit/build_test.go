@@ -83,7 +83,7 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedProcfile(t *testing.T) {
 		Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD,
 		App: &pb.TsuruApp{
 			Name: "my-app",
-			EnvVars: map[string]string{
+			EnvVars: map[string]string{ //nolint:gosec // test fixture
 				"MY_ENV_VAR":        "my awesome env var :P",
 				"PYTHON_VERSION":    "3.10.4",
 				"DATABASE_PASSWORD": "a@3a`fo@&$(ls -lah)",
@@ -279,7 +279,7 @@ func TestBuildKit_Build_FromSourceFilesUserDefinedTsuruYaml(t *testing.T) {
 		Kind: pb.BuildKind_BUILD_KIND_APP_BUILD_WITH_SOURCE_UPLOAD,
 		App: &pb.TsuruApp{
 			Name: "my-app",
-			EnvVars: map[string]string{
+			EnvVars: map[string]string{ //nolint:gosec // test fixture
 				"MY_ENV_VAR":        "my awesome env var :P",
 				"PYTHON_VERSION":    "3.10.4",
 				"DATABASE_PASSWORD": "a@3a`fo@&$(ls -lah)",
