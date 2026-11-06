@@ -1,5 +1,5 @@
-ARG go_version=1.27
-ARG alpine_version=3.22
+ARG go_version=1.27.3
+ARG alpine_version=3.24
 
 FROM golang:${go_version}-alpine${alpine_version} AS build-stage
 COPY ./ /go/src/github.com/tsuru/deploy-agent
