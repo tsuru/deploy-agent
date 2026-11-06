@@ -1,5 +1,5 @@
 GO ?= go
-GOLANGCI_LINT ?= golangci-lint
+GOLANGCI_LINT ?= $(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 PROTOC ?= protoc
 DOCKER ?= docker
 
